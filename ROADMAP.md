@@ -50,15 +50,25 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │       ├── Ataque Especial 1 ('Ola del Tridente'): Muro de agua curvo con hueco seguro aleatorio
 │       └── NUEVO Ataque Especial 2 ('Pistola de Agua'): Ráfaga rápida y continua de proyectiles azules concentrados hacia la posición actual del jugador, exigiendo movimiento perpendicular
 │
-└── v0.5.1 — Parche de Balanceo: Chuletas, Gusanos Rastreadores y Pesas Rebotadoras (ACTUAL)
-    ├── [1. Balanceo de 'Chuletas' ('El Copiota')] Menor tiempo de vida (6.5s) y reducción leve del radio de activación/explosión
-    ├── [2. Gusanos Rastreadores (`BaseBoss`)] Oleada ampliada de 3 a 6 proyectiles morados rastreadores por ráfaga
-    └── [3. Lanzamiento de Pesas ('El Borracho')] +1 pesa por ráfaga (4 en total) y rebote contra los bordes del Canvas manteniendo perforación de muros
+├── v0.5.1 — Parche de Balanceo: Chuletas, Gusanos Rastreadores y Pesas Rebotadoras
+│   ├── [1. Balanceo de 'Chuletas' ('El Copiota')] Menor tiempo de vida (6.5s) y reducción leve del radio de activación/explosión
+│   ├── [2. Gusanos Rastreadores (`BaseBoss`)] Oleada ampliada de 3 a 6 proyectiles morados rastreadores por ráfaga
+│   └── [3. Lanzamiento de Pesas ('El Borracho')] +1 pesa por ráfaga (4 en total) y rebote contra los bordes del Canvas manteniendo perforación de muros
+│
+└── v0.5.2 — Balanceo de Economía (Drop Raro de Criptomonedas) y Curva de XP Suavizada (ACTUAL)
+    ├── [1. Balanceo de Economía] Probabilidad de drop de Criptomonedas reducida drásticamente (25% -> 6% en enemigos base) para fomentar el farmeo entre partidas
+    └── [2. Escalado de Experiencia Suavizado] Multiplicador por nivel reducido (1.35x + 20 -> 1.15x + 12) para evitar estancamiento en niveles medios y altos
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.5.2] - 2026-10-27
+- **Balanceado (`Game.ts` - Economía de Criptomonedas)**:
+  - Reducida significativamente la probabilidad de drop de `CryptoCoin` al eliminar enemigos básicos (`25%` → `6%`), jefes normales (`5` → `2` monedas) y mega-jefes (`15` → `6` monedas) para que sean un recurso raro y valioso entre partidas.
+- **Balanceado (`UpgradeSystem.ts` - Curva de Nivel Suavizada)**:
+  - Reducido el multiplicador de escalado de experiencia entre niveles de `xpToNextLevel * 1.35 + 20` a `xpToNextLevel * 1.15 + 12`, suavizando la curva para mantener un ritmo de subida de nivel dinámico sin estancamientos.
 
 ### [v0.5.1] - 2026-10-27
 - **Balanceado (`CheatSheetMine` - Jefe `El Copiota` en `SpecialBosses.ts`)**:

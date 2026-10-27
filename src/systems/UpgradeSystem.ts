@@ -173,7 +173,7 @@ export class UpgradeSystem {
     while (this.currentXp >= this.xpToNextLevel) {
       this.currentXp -= this.xpToNextLevel;
       this.level++;
-      this.xpToNextLevel = Math.round(this.xpToNextLevel * 1.35 + 20);
+      this.xpToNextLevel = Math.round(this.xpToNextLevel * 1.15 + 12);
       this.pendingLevelUps++;
     }
 

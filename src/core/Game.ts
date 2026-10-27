@@ -47,7 +47,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.5.1';
+const GAME_VERSION = 'v0.5.2';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -717,7 +717,7 @@ export class Game {
       this.codeFragments.push(new CodeFragment(drop.x, drop.y, drop.xpValue));
 
       if (isBoss) {
-        for (let c = 0; c < 5; c++) {
+        for (let c = 0; c < 2; c++) {
           this.cryptoCoins.push(
             new CryptoCoin(
               drop.x + (Math.random() - 0.5) * 32,
@@ -726,7 +726,7 @@ export class Game {
             )
           );
         }
-      } else if (Math.random() < 0.25) {
+      } else if (Math.random() < 0.06) {
         this.cryptoCoins.push(new CryptoCoin(drop.x + 8, drop.y - 8, 1));
       }
 
@@ -828,7 +828,7 @@ export class Game {
     this.normalBossesKilledCount = 0;
     this.spawner.syncAfterMegaBoss(this.elapsedTime);
 
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 6; i++) {
       this.cryptoCoins.push(
         new CryptoCoin(
           bossX + (Math.random() - 0.5) * 140,
