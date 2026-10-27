@@ -1,0 +1,412 @@
+import { Entity } from '../entities/Entity';
+import { Player } from '../entities/Player';
+import { Adware, MalwareType } from '../entities/Adware';
+import { Projectile } from '../entities/Projectile';
+import { PingProjectile } from '../entities/PingProjectile';
+import { QuarantineZone } from '../entities/QuarantineZone';
+
+export interface DestroyedEnemyInfo {
+  x: number;
+  y: number;
+  xpValue: number;
+  color: string;
+  malwareType: MalwareType;
+  enemyRef: Adware;
+}
+
+export interface DamagedEnemyInfo {
+  x: number;
+  y: number;
+  damage: number;
+  color: string;
+}
+
+export interface CombatEvents {
+  enemiesKilled: number;
+  destroyedEnemies: DestroyedEnemyInfo[];
+  damagedEnemies: DamagedEnemyInfo[];
+  playerHit: boolean;
+  shotsFired: number;
+  homingShotsFired: number;
+}
+
+/**
+ * Sistema de Combate Multi-Arma (v0.2.0).
+ * Gestiona:
+ * 1. Arma Base: 'Ráfaga de Firewall' (Disparo recto).
+ * 2. Arma 2: 'Ping Tracker' (Proyectil azul perseguidor / homing).
+ * 3. Arma 3: 'Zona de Cuarentena' (Área estática en el suelo con daño continuo DoT).
+ * 4. Nodos del Firewall Orbital.
+ */
+export class CombatSystem {
+  // 1. Arma Base: Ráfaga de Firewall (Disparo recto)
+  private fireTimer: number = 0;
+  public fireCooldown: number = 0.42;
+  public attackRange: number = 480;
+  public projectileSpeed: number = 560;
+  public projectileDamage: number = 25;
+  public multiShotCount: number = 1;
+
+  // 2. Nueva Arma: Ping Tracker (Proyectil azul perseguidor)
+  public pingTrackerLevel: number = 0;
+  private pingTimer: number = 0;
+  public pingCooldown: number = 0.95;
+  public pingDamage: number = 24;
+  public pingSpeed: number = 430;
+
+  // 3. Nueva Arma: Zona de Cuarentena (Área estática en el suelo con DoT)
+  public quarantineLevel: number = 0;
+  private quarantineTimer: number = 0;
+  public quarantineCooldown: number = 3.6;
+  public quarantineRadius: number = 82;
+  public quarantineDamage: number = 14;
+  public quarantineDuration: number = 4.6;
+
+  // 4. Módulo Defensivo: Firewall Orbital
+  public firewallCount: number = 0;
+  public firewallRadius: number = 78;
+  public firewallDamage: number = 18;
+  private firewallAngle: number = 0;
+  private firewallHitCooldowns: WeakMap<Adware, number> = new WeakMap();
+
+  public update(
+    dt: number,
+    player: Player,
+    enemies: Adware[],
+    projectiles: Projectile[],
+    pingProjectiles: PingProjectile[],
+    quarantineZones: QuarantineZone[]
+  ): CombatEvents {
+    this.fireTimer += dt;
+    this.pingTimer += dt;
+    this.quarantineTimer += dt;
+    this.firewallAngle += dt * 3.4;
+
+    const destroyedEnemies: DestroyedEnemyInfo[] = [];
+    const damagedEnemies: DamagedEnemyInfo[] = [];
+    let enemiesKilled = 0;
+    let playerHit = false;
+    let shotsFired = 0;
+    let homingShotsFired = 0;
+
+    const registerEnemyKillIfDead = (enemy: Adware) => {
+      if (!enemy.active) {
+        enemiesKilled++;
+        destroyedEnemies.push({
+          x: enemy.x,
+          y: enemy.y,
+          xpValue: enemy.xpValue,
+          color: enemy.color,
+          malwareType: enemy.malwareType,
+          enemyRef: enemy,
+        });
+      }
+    };
+
+    // --- ARMA 1: Ráfaga de Firewall (Disparo recto) ---
+    if (player.active && this.fireTimer >= this.fireCooldown) {
+      const targets = this.findNearestEnemies(player, enemies, this.multiShotCount);
+      if (targets.length > 0) {
+        this.fireTimer = 0;
+        shotsFired++;
+
+        for (let i = 0; i < this.multiShotCount; i++) {
+          const target = targets[i % targets.length];
+          const dx = target.x - player.x;
+          const dy = target.y - player.y;
+          const baseAngle = Math.atan2(dy, dx);
+
+          const spreadIndex = Math.floor(i / targets.length);
+          const spreadOffset =
+            targets.length < this.multiShotCount
+              ? (i - (this.multiShotCount - 1) / 2) * 0.14
+              : spreadIndex * 0.12;
+
+          const finalAngle = baseAngle + spreadOffset;
+
+          projectiles.push(
+            new Projectile(
+              player.x,
+              player.y,
+              Math.cos(finalAngle),
+              Math.sin(finalAngle),
+              this.projectileSpeed,
+              this.projectileDamage
+            )
+          );
+        }
+      }
+    }
+
+    // --- ARMA 2: Ping Tracker (Proyectiles azules perseguidores) ---
+    if (player.active && this.pingTrackerLevel > 0 && this.pingTimer >= this.pingCooldown) {
+      const activeEnemies = enemies.filter((e) => e.active);
+      if (activeEnemies.length > 0) {
+        this.pingTimer = 0;
+        homingShotsFired++;
+
+        const projectilesToSpawn = 1 + Math.floor((this.pingTrackerLevel - 1) / 2);
+        for (let i = 0; i < projectilesToSpawn; i++) {
+          const target = activeEnemies[i % activeEnemies.length];
+          const angle =
+            Math.atan2(target.y - player.y, target.x - player.x) +
+            (i - (projectilesToSpawn - 1) / 2) * 0.35;
+
+          pingProjectiles.push(
+            new PingProjectile(
+              player.x,
+              player.y,
+              Math.cos(angle),
+              Math.sin(angle),
+              this.pingSpeed,
+              this.pingDamage
+            )
+          );
+        }
+      }
+    }
+
+    // --- ARMA 3: Zona de Cuarentena (Área estática en el suelo con DoT) ---
+    if (player.active && this.quarantineLevel > 0 && this.quarantineTimer >= this.quarantineCooldown) {
+      this.quarantineTimer = 0;
+
+      // Desplegar la zona en la posición de un enemigo cercano o en la posición actual del jugador
+      const nearest = this.findNearestEnemies(player, enemies, 1)[0];
+      const spawnX = nearest ? (player.x + nearest.x) * 0.5 : player.x;
+      const spawnY = nearest ? (player.y + nearest.y) * 0.5 : player.y;
+
+      quarantineZones.push(
+        new QuarantineZone(
+          spawnX,
+          spawnY,
+          this.quarantineRadius,
+          this.quarantineDamage,
+          this.quarantineDuration
+        )
+      );
+    }
+
+    // --- COLISIONES: Ráfaga de Firewall vs Enemigos ---
+    for (const proj of projectiles) {
+      if (!proj.active) continue;
+
+      for (const enemy of enemies) {
+        if (!enemy.active) continue;
+
+        if (CombatSystem.checkAABBCollision(proj, enemy)) {
+          proj.active = false;
+
+          const dx = enemy.x - player.x;
+          const dy = enemy.y - player.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          enemy.takeDamage(proj.damage, (dx / dist) * 6, (dy / dist) * 6);
+
+          damagedEnemies.push({
+            x: enemy.x,
+            y: enemy.y,
+            damage: proj.damage,
+            color: enemy.color,
+          });
+
+          registerEnemyKillIfDead(enemy);
+          break;
+        }
+      }
+    }
+
+    // --- COLISIONES: Ping Tracker vs Enemigos ---
+    for (const ping of pingProjectiles) {
+      if (!ping.active) continue;
+
+      for (const enemy of enemies) {
+        if (!enemy.active) continue;
+
+        if (CombatSystem.checkAABBCollision(ping, enemy)) {
+          ping.active = false;
+
+          const dx = enemy.x - player.x;
+          const dy = enemy.y - player.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          enemy.takeDamage(ping.damage, (dx / dist) * 8, (dy / dist) * 8);
+
+          damagedEnemies.push({
+            x: enemy.x,
+            y: enemy.y,
+            damage: ping.damage,
+            color: '#0088ff',
+          });
+
+          registerEnemyKillIfDead(enemy);
+          break;
+        }
+      }
+    }
+
+    // --- ACTUALIZACIÓN Y DAÑO CONTINUO: Zonas de Cuarentena ---
+    for (const zone of quarantineZones) {
+      if (!zone.active) continue;
+      const zoneHits = zone.update(dt, enemies);
+
+      for (const hit of zoneHits) {
+        if (!hit.enemy.active) continue;
+        hit.enemy.takeDamage(hit.damage, 0, 0);
+
+        damagedEnemies.push({
+          x: hit.enemy.x,
+          y: hit.enemy.y,
+          damage: hit.damage,
+          color: '#10b981',
+        });
+
+        registerEnemyKillIfDead(hit.enemy);
+      }
+    }
+
+    // --- COLISIONES: Firewall Orbital vs Enemigos ---
+    if (player.active && this.firewallCount > 0) {
+      const nodes = this.getFirewallNodePositions(player);
+      const nodeHalfSize = 9;
+
+      for (const enemy of enemies) {
+        if (!enemy.active) continue;
+
+        const currentCd = this.firewallHitCooldowns.get(enemy) ?? 0;
+        if (currentCd > 0) {
+          this.firewallHitCooldowns.set(enemy, currentCd - dt);
+          continue;
+        }
+
+        const enemyBounds = enemy.getBounds();
+        for (const node of nodes) {
+          const hit =
+            node.x - nodeHalfSize < enemyBounds.right &&
+            node.x + nodeHalfSize > enemyBounds.left &&
+            node.y - nodeHalfSize < enemyBounds.bottom &&
+            node.y + nodeHalfSize > enemyBounds.top;
+
+          if (hit) {
+            const dx = enemy.x - player.x;
+            const dy = enemy.y - player.y;
+            const dist = Math.hypot(dx, dy) || 1;
+            enemy.takeDamage(this.firewallDamage, (dx / dist) * 14, (dy / dist) * 14);
+            this.firewallHitCooldowns.set(enemy, 0.25);
+
+            damagedEnemies.push({
+              x: enemy.x,
+              y: enemy.y,
+              damage: this.firewallDamage,
+              color: '#ff8800',
+            });
+
+            registerEnemyKillIfDead(enemy);
+            break;
+          }
+        }
+      }
+    }
+
+    // --- COLISIONES: Enemigos vs Jugador ---
+    if (player.active) {
+      for (const enemy of enemies) {
+        if (!enemy.active) continue;
+
+        if (CombatSystem.checkAABBCollision(player, enemy)) {
+          const tookDamage = player.takeDamage(enemy.damage);
+          if (tookDamage) {
+            playerHit = true;
+          }
+
+          const dx = enemy.x - player.x;
+          const dy = enemy.y - player.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const pushFactor = 14 * Math.max(0.2, 1 - enemy.knockbackResistance);
+          enemy.x += (dx / dist) * pushFactor;
+          enemy.y += (dy / dist) * pushFactor;
+        }
+      }
+    }
+
+    return {
+      enemiesKilled,
+      destroyedEnemies,
+      damagedEnemies,
+      playerHit,
+      shotsFired,
+      homingShotsFired,
+    };
+  }
+
+  public getActiveWeaponsList(): string[] {
+    const list = ['Ráfaga Firewall'];
+    if (this.pingTrackerLevel > 0) {
+      list.push(`Ping Tracker v${this.pingTrackerLevel}`);
+    }
+    if (this.quarantineLevel > 0) {
+      list.push(`Zona Cuarentena v${this.quarantineLevel}`);
+    }
+    return list;
+  }
+
+  public getFirewallNodePositions(player: Player): { x: number; y: number }[] {
+    const positions: { x: number; y: number }[] = [];
+    for (let i = 0; i < this.firewallCount; i++) {
+      const angle = this.firewallAngle + (i * Math.PI * 2) / this.firewallCount;
+      positions.push({
+        x: player.x + Math.cos(angle) * this.firewallRadius,
+        y: player.y + Math.sin(angle) * this.firewallRadius,
+      });
+    }
+    return positions;
+  }
+
+  public drawFirewall(ctx: CanvasRenderingContext2D, player: Player): void {
+    if (this.firewallCount <= 0 || !player.active) return;
+
+    const nodes = this.getFirewallNodePositions(player);
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 136, 0, 0.22)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, this.firewallRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    for (const node of nodes) {
+      ctx.fillStyle = '#ff8800';
+      ctx.shadowColor = '#ff5500';
+      ctx.shadowBlur = 14;
+      ctx.fillRect(node.x - 8, node.y - 8, 16, 16);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(node.x - 3, node.y - 3, 6, 6);
+    }
+    ctx.restore();
+  }
+
+  private findNearestEnemies(player: Player, enemies: Adware[], count: number): Adware[] {
+    const candidates: { enemy: Adware; dist: number }[] = [];
+
+    for (const enemy of enemies) {
+      if (!enemy.active) continue;
+      const dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+      if (dist <= this.attackRange) {
+        candidates.push({ enemy, dist });
+      }
+    }
+
+    candidates.sort((a, b) => a.dist - b.dist);
+    return candidates.slice(0, count).map((c) => c.enemy);
+  }
+
+  public static checkAABBCollision(a: Entity, b: Entity): boolean {
+    const boxA = a.getBounds();
+    const boxB = b.getBounds();
+
+    return (
+      boxA.left < boxB.right &&
+      boxA.right > boxB.left &&
+      boxA.top < boxB.bottom &&
+      boxA.bottom > boxB.top
+    );
+  }
+}

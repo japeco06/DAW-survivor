@@ -1,0 +1,74 @@
+# CYBER SURVIVOR // ROADMAP & CHANGELOG
+
+Esquema visual de la evolución del proyecto. Este archivo se actualiza automáticamente en cada iteración de desarrollo.
+
+```text
+CYBER SURVIVOR ( Kernel Defense Protocol )
+├── v0.1.0 — Lanzamiento Base (Fases 1 a 5 completadas)
+│   ├── [Fase 1] Setup Base y Core Loop (Vite + TS + Canvas, WASD, Spawner de Adware)
+│   ├── [Fase 2] Sistema de Combate (Auto-disparo, Hitboxes AABB, HP e invulnerabilidad)
+│   ├── [Fase 3] Progresión In-Game (Drops de XP magnéticos, Level Up y Parches de Mejora)
+│   ├── [Fase 4] Escalado y Variedad (Troyanos rápidos, Gusanos divisibles y Jefes Ransomware)
+│   └── [Fase 5] Polish & Game Feel (Partículas binarias, Screen Shake, Consola CRT y Menús)
+│
+├── v0.2.0 — Audio Sintetizado, Arsenal Avanzado y Metaprogresión
+│   ├── [1. Changelog & Versionado] ROADMAP.md y etiqueta en esquina inferior derecha
+│   ├── [2. Sintetizador Web Audio API] Disparo retro 8-bit y explosión de estática digital
+│   ├── [3. Nuevas Armas In-Game] 'Ráfaga de Firewall', 'Ping Tracker' (Homing) y 'Zona de Cuarentena' (DoT)
+│   └── [4. Tienda y Personajes] Criptomonedas doradas y desbloqueo del 'Agente Root' (+20% velocidad)
+│
+├── v0.3.0 — Progresión Profunda, Escuadrón de Agentes, Pausa y Evento Mega-Jefe
+│   ├── [Fase 1] Sistema de Experiencia y Tarjeta 'Overclock de Memoria' (+35% multiplicador XP)
+│   ├── [Fase 2] Nuevos Personajes en Tienda: 'Agente Proxy' (200 HP) y 'Agente Kernel' (Magnetismo masivo)
+│   ├── [Sistema de Pausa] Pausa táctica con tecla 'P' ('Reanudar' y 'Salir al Menú Principal')
+│   └── [Fase 3] Primera versión del Mega-Jefe 'Ransomware Master'
+│
+├── v0.3.5 — Rediseño Táctico del Mega-Jefe: Máquina de Estados, Laberinto y Cobertura
+│   ├── [Arquitectura OOP] Máquina de Estados Finita (FSM) para ataques del Mega-Jefe
+│   ├── [1. Obstáculos Físicos] 'Bloques Encriptados' con colisión sólida AABB
+│   ├── [2. Ataques Móviles] Láseres de barrido y 'Ola de DDoS' con aperturas
+│   └── [3. Gusanos Rastreadores y Llaves] Cobertura tras muros y generación táctica de llaves
+│
+├── v0.4.0 — Variedad de Mega-Jefes con Herencia OOP (`BaseBoss`)
+│   ├── [Refactorización OOP] Clase abstracta `BaseBoss` con vida, muros y estados comunes
+│   └── [3 Nuevos Jefes] 'El Bañista', 'El Copiota' y 'El Dormilón'
+│
+├── v0.4.1 — Pool Completo de 4 Mega-Jefes, Bucle Infinito y Ajustes de Precisión
+│   ├── [1. Rotación de 4 Mega-Jefes] Pool activo de 4 jefes y ciclo infinito tras 5 jefes normales
+│   └── [2. Métricas de Láseres] Telegrafiado 1.0s, pasillos de 250px y velocidad de 75px/s
+│
+├── v0.4.2 — Láseres Estrictamente Paralelos y Distribución Orgánica de Minas
+│   ├── [1. Láseres Paralelos] Ráfagas 100% horizontales o 100% verticales en `Ransomware Master`
+│   └── [2. Campo de Minas] Velocidad inicial y drag individualizados para las 'Chuletas de Examen'
+│
+└── v0.5.0 — Rediseño 'El Borracho' y Expansión de Kits de Ataque Especiales (ACTUAL)
+    ├── [1. Rediseño del Jefe 3: De 'El Dormilón' a 'El Borracho']
+    │   ├── Apariencia mantenida: Sudadera rosa con capucha y gafas
+    │   ├── Ataque Especial 1 ('Lluvia de Cervezas'): Jarras de cerveza (🍺) con física de rebote caótico en los bordes
+    │   └── NUEVO Ataque Especial 2 ('Lanzamiento de Pesas'): Mancuernas grandes y pesadas que se mueven lento pero ATRAVIESAN los 'Bloques Encriptados', forzando a salir de cobertura
+    └── [2. Expansión del Jefe 1 ('El Bañista')]
+        ├── Ataque Especial 1 ('Ola del Tridente'): Muro de agua curvo con hueco seguro aleatorio
+        └── NUEVO Ataque Especial 2 ('Pistola de Agua'): Ráfaga rápida y continua de proyectiles azules concentrados hacia la posición actual del jugador, exigiendo movimiento perpendicular
+```
+
+---
+
+## Historial Detallado de Versiones
+
+### [v0.5.0] - 2026-10-26
+- **Ampliado (`BaseBoss.ts`)**: Soporte en la máquina de estados para un segundo ataque especial (`SPECIAL_ATTACK_2` / `triggerSecondarySpecialAttack`) integrado en la rotación de estados de cada jefe.
+- **Rediseñado (`DrunkardBoss` - "El Borracho" en `SpecialBosses.ts`)**:
+  - Sustituye temáticamente a `El Dormilón` conservando intacta su apariencia (sudadera rosa y gafas).
+  - **Ataque Especial 1 (`Lluvia de Cervezas` - `BouncingBeerMug`)**: Lanza jarras de cerveza (`🍺`) que rebotan violentamente contra los bordes de la pantalla con ángulos impredecibles.
+  - **Nuevo Ataque Especial 2 (`Lanzamiento de Pesas` - `HeavyDumbbellProjectile`)**: Lanza mancuernas gigantes y pesadas a menor velocidad que ignoran/atraviesan los `EncryptedBlock` (muros), obligando al jugador a abandonar su cobertura.
+- **Mejorado (`BatherBoss` - "El Bañista" en `SpecialBosses.ts`)**:
+  - **Nuevo Ataque Especial 2 (`Pistola de Agua` - `WaterStreamProjectile`)**: Intercalado con la `Ola del Tridente`, dispara un chorro continuo de alta cadencia (18 proyectiles azules de agua durante `1.4s`) apuntando dinámicamente a la posición actual del jugador para forzarle a correr en perpendicular.
+
+### [v0.4.2] - 2026-10-26
+- Láseres estrictamente paralelos en `RansomwareMaster` y distribución escalonada de minas en `CheaterBoss`.
+
+### [v0.4.1] - 2026-10-26
+- Pool de 4 Mega-Jefes, ciclo infinito y métricas exactas de láseres (`1s`, `250px`, `75px/s`).
+
+### [v0.4.0] - 2026-10-26
+- Clase base `BaseBoss` y subclases de jefes especiales.
