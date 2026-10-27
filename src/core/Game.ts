@@ -56,7 +56,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.8.0';
+const GAME_VERSION = 'v0.9.0';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -166,6 +166,7 @@ export class Game {
           '1': 'STANDARD',
           '2': 'ROOT',
           '3': 'PROXY',
+          '4': 'MORCILLITA',
         };
         if (key === 'q') {
           this.activeMenuTab = 'SHOP';
@@ -819,6 +820,44 @@ export class Game {
       this.canvas.width,
       this.canvas.height
     );
+
+    if (this.player.companion && this.player.active) {
+      const compEvents = this.player.companion.update(
+        dt,
+        this.player,
+        this.upgradeSystem.level,
+        this.enemies
+      );
+      combatEvents.enemiesKilled += compEvents.killedEnemies.length;
+      combatEvents.damagedEnemies.push(...compEvents.damagedEnemies);
+      for (const killed of compEvents.killedEnemies) {
+        combatEvents.destroyedEnemies.push({
+          x: killed.x,
+          y: killed.y,
+          xpValue: killed.xpValue,
+          color: killed.color,
+          malwareType: killed.malwareType,
+          enemyRef: killed,
+        });
+      }
+
+      if (compEvents.screenShakeIntensity > 0) {
+        this.particleSystem.triggerShake(compEvents.screenShakeIntensity, 0.22);
+      }
+      if (compEvents.milestoneMessage) {
+        this.sound.playCoinPickup();
+        this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#ec4899', 42, true);
+        this.particleSystem.spawnFloatingText(
+          this.player.x,
+          this.player.y - 36,
+          compEvents.milestoneMessage,
+          '#f472b6',
+          1.45
+        );
+        this.addTerminalLog(`>> ${compEvents.milestoneMessage} <<`);
+      }
+    }
+
     this.killCount += combatEvents.enemiesKilled;
     this.highScoreKills = Math.max(this.highScoreKills, this.killCount);
 
@@ -1029,7 +1068,7 @@ export class Game {
           0.9
         );
 
-        const leveledUp = this.upgradeSystem.addXp(gainedXp);
+        const leveledUp = this.upgradeSystem.addXp(gainedXp, this.player);
         if (leveledUp) {
           this.addTerminalLog(`SYSTEM UPGRADE READY: Agent reached v${this.upgradeSystem.level}.0`);
         }
@@ -1180,6 +1219,9 @@ export class Game {
 
       if (!this.megaBoss) {
         this.combatSystem.drawFirewall(this.ctx, this.player);
+        if (this.player.companion && this.player.active) {
+          this.player.companion.draw(this.ctx, this.player, this.upgradeSystem.level);
+        }
       }
 
       for (const enemy of this.enemies) {
@@ -1675,10 +1717,22 @@ export class Game {
         this.ctx.lineWidth = 2;
         this.ctx.strokeRect(previewX - 9, previewY - 9, 18, 18);
 
+        if (rect.id === 'MORCILLITA') {
+          // Miniatura del cuadrado acompañante marrón junto al chasis rosa
+          this.ctx.fillStyle = '#92400e';
+          this.ctx.strokeStyle = '#fbbf24';
+          this.ctx.lineWidth = 1.5;
+          this.ctx.fillRect(previewX + 10, previewY - 18, 11, 11);
+          this.ctx.strokeRect(previewX + 10, previewY - 18, 11, 11);
+        }
+
         this.ctx.shadowBlur = 0;
         this.ctx.textAlign = 'left';
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = 'bold 15px "Courier New", monospace';
+        this.ctx.font =
+          profile.name.length > 20
+            ? 'bold 13px "Courier New", monospace'
+            : 'bold 15px "Courier New", monospace';
         this.ctx.fillText(`[${i + 1}] ${profile.name}`, rect.x + 56, rect.y + 28);
 
         this.ctx.fillStyle = '#38bdf8';
@@ -1969,11 +2023,19 @@ export class Game {
 
   private drawScannerRange(): void {
     this.ctx.save();
-    this.ctx.strokeStyle = 'rgba(0, 240, 255, 0.08)';
+    this.ctx.strokeStyle = this.player.isSummoner
+      ? 'rgba(236, 72, 153, 0.14)'
+      : 'rgba(0, 240, 255, 0.08)';
     this.ctx.lineWidth = 1;
     this.ctx.setLineDash([6, 6]);
     this.ctx.beginPath();
-    this.ctx.arc(this.player.x, this.player.y, this.combatSystem.attackRange, 0, Math.PI * 2);
+    this.ctx.arc(
+      this.player.x,
+      this.player.y,
+      this.player.isSummoner ? 200 : this.combatSystem.attackRange,
+      0,
+      Math.PI * 2
+    );
     this.ctx.stroke();
 
     if (this.player.pickupRadius > 150) {
@@ -2095,7 +2157,7 @@ export class Game {
 
     const weaponsStatus = this.megaBoss
       ? `OFFLINE [${this.megaBoss.getCurrentStateLabel()}]`
-      : this.combatSystem.getActiveWeaponsList().join(' + ');
+      : this.combatSystem.getActiveWeaponsList(this.player).join(' + ');
 
     this.ctx.fillStyle = this.megaBoss ? '#ff0055' : 'rgba(0, 240, 255, 0.85)';
     this.ctx.font = '13px "Courier New", monospace';

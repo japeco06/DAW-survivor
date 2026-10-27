@@ -23,6 +23,7 @@ export class Adware extends Entity {
   public damage: number = 12;
   public xpValue: number = 20;
   public knockbackResistance: number = 0; // 0 = retroceso normal, 1 = inmune
+  public networkFreezeTimer: number = 0; // Congelación de Red (Fibra Óptica Lvl 10: -80% velocidad)
   protected hitFlashTimer: number = 0;
 
   constructor(
@@ -46,14 +47,18 @@ export class Adware extends Entity {
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);
     }
+    const slowFactor = this.networkFreezeTimer > 0 ? 0.2 : 1.0;
+    if (this.networkFreezeTimer > 0) {
+      this.networkFreezeTimer = Math.max(0, this.networkFreezeTimer - dt);
+    }
 
     const dx = player.x - this.x;
     const dy = player.y - this.y;
     const distance = Math.hypot(dx, dy);
 
     if (distance > 0) {
-      this.x += (dx / distance) * this.speed * dt;
-      this.y += (dy / distance) * this.speed * dt;
+      this.x += (dx / distance) * this.speed * slowFactor * dt;
+      this.y += (dy / distance) * this.speed * slowFactor * dt;
     }
   }
 

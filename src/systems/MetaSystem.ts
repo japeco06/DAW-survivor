@@ -1,6 +1,6 @@
 import { HatItem, HATS_DATABASE, getHatById, rollGachaHat, RARITY_CONFIG } from './HatSystem';
 
-export type CharacterId = 'STANDARD' | 'ROOT' | 'PROXY';
+export type CharacterId = 'STANDARD' | 'ROOT' | 'PROXY' | 'MORCILLITA';
 
 export interface CharacterProfile {
   id: CharacterId;
@@ -36,12 +36,12 @@ export interface GachaPullEntry {
 
 export class MetaSystem {
   public coins: number = 0;
-  public unlockedCharacters: Set<CharacterId> = new Set(['STANDARD']);
+  public unlockedCharacters: Set<CharacterId> = new Set(['STANDARD', 'MORCILLITA']);
   public selectedCharacter: CharacterId = 'STANDARD';
   public unlockedHats: Set<string> = new Set();
   public equippedHatId: string | null = null;
 
-  public readonly characterOrder: CharacterId[] = ['STANDARD', 'ROOT', 'PROXY'];
+  public readonly characterOrder: CharacterId[] = ['STANDARD', 'ROOT', 'PROXY', 'MORCILLITA'];
 
   public readonly characters: Record<CharacterId, CharacterProfile> = {
     STANDARD: {
@@ -79,6 +79,18 @@ export class MetaSystem {
       hpMultiplier: 2.0,
       pickupRadiusMultiplier: 1.0,
       cost: 15,
+    },
+    MORCILLITA: {
+      id: 'MORCILLITA',
+      name: 'AGENTE MORCILLITA (SUMMONER)',
+      subtitle: 'CHASSIS ROSA // MASCOTA EVOLUTIVA LVL 20',
+      description: 'Sin disparo básico propio. Su ataque depende 100% de una mascota acompañante marrón con 3 ramas evolutivas.',
+      color: '#ec4899',
+      borderColor: '#fbcfe8',
+      speedMultiplier: 1.05,
+      hpMultiplier: 1.0,
+      pickupRadiusMultiplier: 1.0,
+      cost: 0,
     },
   };
 
@@ -269,7 +281,7 @@ export class MetaSystem {
         const validUnlocked = parsed.unlockedCharacters.filter(
           (id): id is CharacterId => Boolean(this.characters[id as CharacterId])
         );
-        this.unlockedCharacters = new Set(['STANDARD', ...validUnlocked]);
+        this.unlockedCharacters = new Set(['STANDARD', 'MORCILLITA', ...validUnlocked]);
       }
       if (
         parsed.selectedCharacter &&

@@ -97,15 +97,34 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [Fase 2] Límite de 4 Armas (4 Slots): Si el jugador ya tiene 4 armas distintas equipadas, las cartas de armas nuevas se bloquean y solo se ofrecen mejoras de armas activas o pasivas
 │   └── [Fase 3] 3 Nuevas Armas en el Pool: 'Drones Antivirus' (orbital), 'Cortafuegos' (onda expansiva en área) y 'Rayo SQL Injection' (láser penetrante)
 │
-└── v0.8.0 — Eventos Dinámicos y Obstáculos: Cajas de Hardware, Minero de Criptos y 'El Enjambre' (ACTUAL)
-    ├── [Fase 1] Obstáculos ('Cajas de Hardware' - `HardwareBox.ts`): Cajas estáticas destructibles que sueltan recompensas aleatorias (monedas, orbes de XP o +25 HP de curación)
-    ├── [Fase 2] 'El Minero de Criptos' (`CryptoMiner.ts` - Loot Goblin): Enemigo raro que no ataca, huye constantemente y se des-spawnea tras 11s; si muere a tiempo suelta entre 30 y 40 Criptomonedas de golpe
-    └── [Fase 3] Evento 'El Enjambre' (Plaga): Filtro rojo suave y alarma visual; detiene el spawn normal durante 15s y genera 50 enemigos amarillos con muy poca vida y daño
+├── v0.8.0 — Eventos Dinámicos y Obstáculos: Cajas de Hardware, Minero de Criptos y 'El Enjambre'
+│   ├── [Fase 1] Obstáculos ('Cajas de Hardware' - `HardwareBox.ts`): Cajas estáticas destructibles que sueltan recompensas aleatorias (monedas, orbes de XP o +25 HP de curación)
+│   ├── [Fase 2] 'El Minero de Criptos' (`CryptoMiner.ts` - Loot Goblin): Enemigo raro que no ataca, huye constantemente y se des-spawnea tras 11s; si muere a tiempo suelta entre 30 y 40 Criptomonedas de golpe
+│   └── [Fase 3] Evento 'El Enjambre' (Plaga): Filtro rojo suave y alarma visual; detiene el spawn normal durante 15s y genera 50 enemigos amarillos con muy poca vida y daño
+│
+└── v0.9.0 — Agente Morcillita (Summoner), Sistema de Compañero y Ramas Evolutivas Lvl 20 (ACTUAL)
+    ├── [Fase 1] Menú KERNEL HUB: Cuarto personaje '[4] AGENTE MORCILLITA (SUMMONER)' de chasis rosa sin disparo básico propio
+    ├── [Fase 2] Mecánica Base (Nivel 1 - `CompanionPet.ts`): Mascota cuadrado marrón que patrulla en un radio de 200px y daña por contacto continuo
+    ├── [Fase 3] Bifurcación Obligatoria (Nivel 2): 3 cartas únicas de evolución ('Fuerza Bruta', 'La Botnet', 'Cable Trampa') bloqueando las otras dos al elegir
+    └── [Fase 4] Escalado Extremo (Niveles 5, 10 y 20):
+        ├── Rama 1 ('Fuerza Bruta'): Lvl 5 Gigante + Temblor | Lvl 10 'Masa Crítica' (cráter de daño) | Lvl 20 'Onda de Choque' (explosión AoE al matar)
+        ├── Rama 2 ('La Botnet'): Lvl 5 'Mente Colmena' (5 cuadrados defensivos) | Lvl 10 'Ataque DDoS' (clones efímeros) | Lvl 20 'Botnet Global' (15 pirañas por toda la pantalla)
+        └── Rama 3 ('Cable Trampa'): Lvl 5 Triángulo láser | Lvl 10 'Fibra Óptica' (Congelación de Red -80% vel) | Lvl 20 'Red de Malla' (4 cuadrados + jugador = estrella láser gigante)
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.9.0] - 2026-10-27
+- **Añadido (`MetaSystem.ts`, `Player.ts`, `Game.ts` - Fase 1: Agente Morcillita / Summoner)**:
+  - Nuevo cuarto recuadro en el KERNEL HUB: **`[4] AGENTE MORCILLITA (SUMMONER)`** con chasis rosa (`#ec4899`). Carece de disparo básico propio y delega el 100% de su ataque base en su mascota acompañante evolutiva.
+- **Añadido (`CompanionPet.ts`, `UpgradeSystem.ts`, `Adware.ts` - Fases 2, 3 y 4: Sistema de Compañero y Evoluciones Lvl 20)**:
+  - **Nivel 1**: Genera un `CompanionPet` (cuadrado marrón pequeño) que patrulla libremente en un radio de `200px` alrededor del jugador, busca al enemigo más cercano en ese radio e inflige daño continuo por contacto.
+  - **Nivel 2 (La Bifurcación)**: Ofrece obligatoriamente las 3 cartas únicas de evolución y bloquea las otras dos para el resto de la partida tras elegir una:
+    - **Rama 1 (`Fuerza Bruta`)**: Nivel 2 (`+50%` tamaño y empuje), Nivel 5 (Tamaño gigante y temblor de pantalla al golpear), Nivel 10 (`Masa Crítica`: deja un cráter temporal en el suelo que daña enemigos), Nivel 20 (`Onda de Choque`: cada baja emite una onda expansiva circular en área).
+    - **Rama 2 (`La Botnet` / Enjambre)**: Nivel 2 (3 cuadrados pequeños y rápidos), Nivel 5 (`Mente Colmena`: 5 cuadrados rápidos priorizando defensa cercana), Nivel 10 (`Ataque DDoS`: probabilidad al golpear de generar un clon efímero que ataca una vez y desaparece), Nivel 20 (`Botnet Global`: 15 cuadrados barriendo toda la pantalla como pirañas).
+    - **Rama 3 (`Cable Trampa`)**: Nivel 2 (grueso láser entre el Agente rosa y el cuadrado marrón que daña al contacto), Nivel 5 (segundo cuadrado marrón formando un triángulo láser con el jugador), Nivel 10 (`Fibra Óptica`: el láser aplica *Congelación de Red*, ralentizando un `80%` a los enemigos), Nivel 20 (`Red de Malla`: 4 cuadrados marrones + el jugador = 5 vértices formando una estrella/pentagrama láser gigante).
 
 ### [v0.8.0] - 2026-10-27
 - **Añadido (`HardwareBox.ts`, `Spawner.ts`, `Game.ts` - Fase 1: Cajas de Hardware)**:

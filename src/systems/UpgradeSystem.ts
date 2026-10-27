@@ -12,6 +12,9 @@ export interface UpgradeOption {
   isMaxed?: boolean;
   isWeapon?: boolean;
   isMemoryOverclock?: boolean;
+  isCompanionBranchCard?: boolean;
+  isBasicShotOnly?: boolean;
+  isCompanionStatCard?: boolean;
   apply: (player: Player, combat: CombatSystem) => void;
 }
 
@@ -29,6 +32,7 @@ export class UpgradeSystem {
   public pendingLevelUps: number = 0;
 
   private upgrades: UpgradeOption[] = [];
+  private companionBranchCards: UpgradeOption[] = [];
   public currentChoices: UpgradeOption[] = [];
 
   constructor() {
@@ -178,6 +182,7 @@ export class UpgradeSystem {
         color: '#00f0ff',
         level: 0,
         maxLevel: 6,
+        isBasicShotOnly: true,
         apply: (_player, combat) => {
           combat.fireCooldown = Math.max(0.1, combat.fireCooldown * 0.82);
           combat.projectileSpeed += 45;
@@ -192,6 +197,7 @@ export class UpgradeSystem {
         color: '#c084fc',
         level: 0,
         maxLevel: 5,
+        isBasicShotOnly: true,
         apply: (_player, combat) => {
           combat.multiShotCount += 1;
         },
@@ -205,9 +211,26 @@ export class UpgradeSystem {
         color: '#facc15',
         level: 0,
         maxLevel: 5,
+        isBasicShotOnly: true,
         apply: (_player, combat) => {
           combat.projectileDamage += 15;
           combat.attackRange += 60;
+        },
+      },
+      {
+        id: 'companion_overdrive',
+        name: 'SINAPSIS DE MASCOTA',
+        category: 'MASCOTA // +DAÑO COMPAÑERO',
+        description:
+          'Aumenta directamente el daño de tu Mascota Acompañante (+10 DMG de contacto/láser) en su rama evolutiva.',
+        color: '#ec4899',
+        level: 0,
+        maxLevel: 8,
+        isCompanionStatCard: true,
+        apply: (player) => {
+          if (player.companion) {
+            player.companion.upgradeBonusDamage(10);
+          }
         },
       },
       {
@@ -239,9 +262,69 @@ export class UpgradeSystem {
         },
       },
     ];
+
+    this.companionBranchCards = [
+      {
+        id: 'companion_branch_brute',
+        name: 'FUERZA BRUTA',
+        category: 'EVOLUCIÓN NV.2 // RAMA 1',
+        description:
+          'El cuadrado marrón crece un +50% y empuja a los enemigos. [Nv.5: Gigante + Temblor | Nv.10: Masa Crítica | Nv.20: Onda de Choque]',
+        color: '#f97316',
+        level: 0,
+        maxLevel: 1,
+        isCompanionBranchCard: true,
+        apply: (player) => {
+          if (player.companion) {
+            player.companion.selectBranch('BRUTE', player, this.level);
+          }
+          for (const card of this.companionBranchCards) {
+            card.isMaxed = true;
+          }
+        },
+      },
+      {
+        id: 'companion_branch_botnet',
+        name: 'LA BOTNET (ENJAMBRE)',
+        category: 'EVOLUCIÓN NV.2 // RAMA 2',
+        description:
+          'El cuadrado se divide en 3 cuadrados pequeños muy rápidos. [Nv.5: Mente Colmena (5) | Nv.10: Ataque DDoS | Nv.20: Botnet Global (15)]',
+        color: '#eab308',
+        level: 0,
+        maxLevel: 1,
+        isCompanionBranchCard: true,
+        apply: (player) => {
+          if (player.companion) {
+            player.companion.selectBranch('BOTNET', player, this.level);
+          }
+          for (const card of this.companionBranchCards) {
+            card.isMaxed = true;
+          }
+        },
+      },
+      {
+        id: 'companion_branch_tripwire',
+        name: 'CABLE TRAMPA',
+        category: 'EVOLUCIÓN NV.2 // RAMA 3',
+        description:
+          'Un grueso láser une al Agente rosa y al cuadrado marrón dañando al contacto. [Nv.5: Triángulo | Nv.10: Fibra Óptica -80% Vel | Nv.20: Red de Malla]',
+        color: '#ec4899',
+        level: 0,
+        maxLevel: 1,
+        isCompanionBranchCard: true,
+        apply: (player) => {
+          if (player.companion) {
+            player.companion.selectBranch('TRIPWIRE', player, this.level);
+          }
+          for (const card of this.companionBranchCards) {
+            card.isMaxed = true;
+          }
+        },
+      },
+    ];
   }
 
-  public addXp(amount: number): boolean {
+  public addXp(amount: number, player?: Player): boolean {
     this.currentXp += amount;
 
     while (this.currentXp >= this.xpToNextLevel) {
@@ -252,7 +335,7 @@ export class UpgradeSystem {
     }
 
     if (this.pendingLevelUps > 0 && this.currentChoices.length === 0) {
-      this.rollChoices();
+      this.rollChoices(player);
       return true;
     }
 
@@ -260,15 +343,28 @@ export class UpgradeSystem {
   }
 
   /**
-   * Genera 3 tarjetas de mejora. En la primera subida de nivel garantiza que aparezca
-   * 'Overclock de Memoria' junto con una de las armas nuevas para facilitar su prueba inmediata.
+   * Genera 3 tarjetas de mejora.
+   * Si se juega con el Agente Morcillita y aún no ha elegido rama en Nivel 2,
+   * ofrece obligatoriamente las 3 cartas únicas de bifurcación evolutiva.
    */
-  public rollChoices(): UpgradeOption[] {
+  public rollChoices(player?: Player): UpgradeOption[] {
+    if (
+      player?.isSummoner &&
+      player.companion &&
+      player.companion.branch === 'NONE' &&
+      this.level >= 2
+    ) {
+      this.currentChoices = [...this.companionBranchCards];
+      return this.currentChoices;
+    }
+
     const equippedWeaponsCount = this.getEquippedWeaponsCount();
     const weaponSlotsFull = equippedWeaponsCount >= MAX_WEAPON_SLOTS;
 
     const available = this.upgrades.filter((u) => {
       if (u.isMaxed || u.level >= u.maxLevel) return false;
+      if (player?.isSummoner && u.isBasicShotOnly) return false;
+      if (!player?.isSummoner && u.isCompanionStatCard) return false;
       // Si el jugador ya tiene 4 armas equipadas, bloquear la aparición de armas nuevas (level === 0)
       if (weaponSlotsFull && u.isWeapon && u.level === 0) return false;
       return true;
@@ -312,7 +408,7 @@ export class UpgradeSystem {
     this.currentChoices = [];
 
     if (this.pendingLevelUps > 0) {
-      this.rollChoices();
+      this.rollChoices(player);
     }
 
     return true;

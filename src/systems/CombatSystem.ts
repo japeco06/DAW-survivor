@@ -314,8 +314,8 @@ export class CombatSystem {
     const effectiveFireCooldown = this.fireCooldown / Math.max(0.5, player.fireRateMultiplier);
     const effectivePingCooldown = this.pingCooldown / Math.max(0.5, player.fireRateMultiplier);
 
-    // --- ARMA 1: Ráfaga de Firewall (Disparo recto) ---
-    if (player.active && this.fireTimer >= effectiveFireCooldown) {
+    // --- ARMA 1: Ráfaga de Firewall (Disparo recto — deshabilitado en Agente Morcillita) ---
+    if (!player.isSummoner && player.active && this.fireTimer >= effectiveFireCooldown) {
       const targets = this.findNearestEnemies(player, enemies, this.multiShotCount);
       if (targets.length > 0) {
         this.fireTimer = 0;
@@ -704,8 +704,13 @@ export class CombatSystem {
     };
   }
 
-  public getActiveWeaponsList(): string[] {
-    const list = ['Ráfaga Firewall'];
+  public getActiveWeaponsList(player?: Player): string[] {
+    const list: string[] = [];
+    if (player?.isSummoner && player.companion) {
+      list.push(player.companion.getBranchDisplayName(1));
+    } else {
+      list.push('Ráfaga Firewall');
+    }
     if (this.pingTrackerLevel > 0) {
       list.push(`Ping Tracker v${this.pingTrackerLevel}`);
     }

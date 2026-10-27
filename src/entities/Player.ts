@@ -2,6 +2,7 @@ import { Entity } from './Entity';
 import { Input } from '../core/Input';
 import { CharacterProfile, MetaSystem } from '../systems/MetaSystem';
 import { HatItem } from '../systems/HatSystem';
+import { CompanionPet } from './CompanionPet';
 
 export class Player extends Entity {
   public maxHp: number = 100;
@@ -15,6 +16,8 @@ export class Player extends Entity {
   public equippedHat: HatItem | null = null;
   public borderColor: string = '#ffffff';
   public profileName: string = 'AGENTE ESTÁNDAR';
+  public isSummoner: boolean = false;
+  public companion: CompanionPet | null = null;
 
   private invulnerabilityTimer: number = 0;
   private readonly invulnerabilityDuration: number = 0.45;
@@ -41,6 +44,10 @@ export class Player extends Entity {
       this.pickupRadius = Math.round(basePickupRadius * profile.pickupRadiusMultiplier);
       this.borderColor = profile.borderColor;
       this.profileName = profile.name;
+      if (profile.id === 'MORCILLITA') {
+        this.isSummoner = true;
+        this.companion = new CompanionPet(x, y);
+      }
     }
 
     if (hat) {
