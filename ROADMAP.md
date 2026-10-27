@@ -55,14 +55,24 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [2. Gusanos Rastreadores (`BaseBoss`)] Oleada ampliada de 3 a 6 proyectiles morados rastreadores por ráfaga
 │   └── [3. Lanzamiento de Pesas ('El Borracho')] +1 pesa por ráfaga (4 en total) y rebote contra los bordes del Canvas manteniendo perforación de muros
 │
-└── v0.5.2 — Balanceo de Economía (Drop Raro de Criptomonedas) y Curva de XP Suavizada (ACTUAL)
-    ├── [1. Balanceo de Economía] Probabilidad de drop de Criptomonedas reducida drásticamente (25% -> 6% en enemigos base) para fomentar el farmeo entre partidas
-    └── [2. Escalado de Experiencia Suavizado] Multiplicador por nivel reducido (1.35x + 20 -> 1.15x + 12) para evitar estancamiento en niveles medios y altos
+├── v0.5.2 — Balanceo de Economía (Drop Raro de Criptomonedas) y Curva de XP Suavizada
+│   ├── [1. Balanceo de Economía] Probabilidad de drop de Criptomonedas reducida drásticamente (25% -> 6% en enemigos base) para fomentar el farmeo entre partidas
+│   └── [2. Escalado de Experiencia Suavizado] Multiplicador por nivel reducido (1.35x + 20 -> 1.15x + 12) para evitar estancamiento en niveles medios y altos
+│
+└── v0.5.3 — Ajuste de Ritmo Inicial (Pacing): XP Base Mayor y Mini-Jefes Frecuentes (ACTUAL)
+    ├── [1. Balanceo de Experiencia Temprana] XP base inicial aumentada (80 -> 150 XP) manteniendo intacto el escalado suave (1.15x + 12) para niveles altos
+    └── [2. Frecuencia de Mini-Jefes] Temporizador de aparición de jefes normales reducido (45s -> 22s), acelerando la llegada de los Mega-Jefes
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.5.3] - 2026-10-27
+- **Balanceado (`UpgradeSystem.ts` - Experiencia Temprana / Early Game)**:
+  - Aumentada la cantidad base de experiencia inicial (`xpToNextLevel`) de `80` a `150` XP para frenar las subidas de nivel ultrarrápidas al inicio de la partida, manteniendo intacta la fórmula de escalado suave (`* 1.15 + 12`) para niveles avanzados.
+- **Acelerado (`Spawner.ts` - Frecuencia de Mini-Jefes)**:
+  - Reducido el intervalo de aparición de los mini-jefes (`RansomwareBoss`) de `45s` a `22s` (tanto desde el inicio de la partida como tras derrotar a un Mega-Jefe), acelerando el ciclo hacia los eventos de Mega-Jefe.
 
 ### [v0.5.2] - 2026-10-27
 - **Balanceado (`Game.ts` - Economía de Criptomonedas)**:

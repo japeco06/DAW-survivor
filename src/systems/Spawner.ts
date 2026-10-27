@@ -6,7 +6,8 @@ import { RansomwareBoss } from '../entities/RansomwareBoss';
 export class Spawner {
   private timer: number = 0;
   private spawnMargin: number = 50;
-  private nextBossTime: number = 45;
+  private readonly bossSpawnInterval: number = 22;
+  private nextBossTime: number = 22;
   private bossCount: number = 0;
 
   public currentThreatLevel: number = 1;
@@ -19,7 +20,7 @@ export class Spawner {
    */
   public syncAfterMegaBoss(elapsedTime: number): void {
     this.timer = 0;
-    this.nextBossTime = elapsedTime + 45;
+    this.nextBossTime = elapsedTime + this.bossSpawnInterval;
   }
 
   public update(
@@ -47,7 +48,7 @@ export class Spawner {
 
     if (elapsedTime >= this.nextBossTime) {
       this.bossCount++;
-      this.nextBossTime = elapsedTime + 45;
+      this.nextBossTime = elapsedTime + this.bossSpawnInterval;
       const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
       const boss = new RansomwareBoss(pos.x, pos.y, this.bossCount);
       enemies.push(boss);

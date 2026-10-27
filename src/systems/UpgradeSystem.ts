@@ -22,7 +22,7 @@ export interface UpgradeOption {
 export class UpgradeSystem {
   public level: number = 1;
   public currentXp: number = 0;
-  public xpToNextLevel: number = 80;
+  public xpToNextLevel: number = 150;
   public pendingLevelUps: number = 0;
 
   private upgrades: UpgradeOption[] = [];
