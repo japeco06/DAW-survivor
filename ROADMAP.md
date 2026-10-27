@@ -88,14 +88,30 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [1. Opciones de Compra] Dos botones en el Gacha: 'Tirada x1' (20 Criptomonedas) y 'Tirada x10' (200 Criptomonedas, mostrando cuadrícula con los 10 resultados)
 │   └── [2. Reembolso por Repetidos] Si el sombrero obtenido ya está en el inventario, devuelve automáticamente +10 Criptomonedas al saldo y muestra 'Repetido: +10 Monedas'
 │
-└── v0.7.2 — Límite de Enemigos Amarillos y Escalado a 5 Niveles de Vampirismo (ACTUAL)
-    ├── [1. Límite de Enemigos Amarillos (`Spawner.ts`)] Máximo estricto de 5 enemigos amarillos (`Trojan`) vivos al mismo tiempo en el mapa
-    └── [2. Escalado de 'Robo de Ancho de Banda' (`UpgradeSystem.ts`)] 5 niveles progresivos (3% -> 4.5% -> 6% -> 7.5% -> 10%) con bloqueo automático ('Maxed') al alcanzar el nivel 5
+├── v0.7.2 — Límite de Enemigos Amarillos y Escalado a 5 Niveles de Vampirismo
+│   ├── [1. Límite de Enemigos Amarillos (`Spawner.ts`)] Máximo estricto de 5 enemigos amarillos (`Trojan`) vivos al mismo tiempo en el mapa
+│   └── [2. Escalado de 'Robo de Ancho de Banda' (`UpgradeSystem.ts`)] 5 niveles progresivos (3% -> 4.5% -> 6% -> 7.5% -> 10%) con bloqueo automático ('Maxed') al alcanzar el nivel 5
+│
+└── v0.7.3 — Nuevas Armas ('Drones Antivirus', 'Cortafuegos', 'Rayo SQL Injection'), Límite de 4 Slots y Balanceo (ACTUAL)
+    ├── [Fase 1] Balanceo de Enemigos: Límite estricto de máximo 5 enemigos morados (`Worm`) vivos y aumento de frecuencia constante de enemigos rojos (`Adware`)
+    ├── [Fase 2] Límite de 4 Armas (4 Slots): Si el jugador ya tiene 4 armas distintas equipadas, las cartas de armas nuevas se bloquean y solo se ofrecen mejoras de armas activas o pasivas
+    └── [Fase 3] 3 Nuevas Armas en el Pool: 'Drones Antivirus' (orbital), 'Cortafuegos' (onda expansiva en área) y 'Rayo SQL Injection' (láser penetrante)
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.7.3] - 2026-10-27
+- **Balanceado (`Spawner.ts`, `Game.ts` - Fase 1)**:
+  - Añadido un límite estricto (`maxActiveWorms = 5`) para que nunca haya más de 5 enemigos morados (`Worm`) vivos simultáneamente en el mapa.
+  - Aumentado el ritmo y densidad constante de aparición de los enemigos rojos base (`Adware`).
+- **Añadido (`UpgradeSystem.ts` - Fase 2: Límite de 4 Armas)**:
+  - El Agente puede portar un máximo de **4 armas distintas** (incluyendo el disparo básico inicial). Al llenar los 4 slots, el sistema deja de ofrecer armas nuevas y solo muestra subidas de nivel de las armas ya equipadas o mejoras pasivas.
+- **Añadido (`CombatSystem.ts`, `UpgradeSystem.ts` - Fase 3: 3 Nuevas Armas)**:
+  - **`Drones Antivirus` (Arma Orbital)**: Drones que orbitan en círculos alrededor del Agente dañando al contacto (subir de nivel aumenta el número de drones, el daño y la velocidad de órbita).
+  - **`Cortafuegos` (Ataque en Área — `FirewallPulseRing`)**: Emite periódicamente un anillo de energía expansivo alrededor del Agente que daña a todos los enemigos dentro del radio (subir de nivel aumenta el daño, el radio y reduce el cooldown).
+  - **`Rayo SQL Injection` (Ataque Penetrante — `SqlInjectionBeam`)**: Dispara un haz láser grueso en línea recta que atraviesa a todos los enemigos en su trayectoria sin destruirse (subir de nivel aumenta el daño, el grosor del láser y reduce el cooldown).
 
 ### [v0.7.2] - 2026-10-27
 - **Balanceado (`Spawner.ts` - Límite de Enemigos Amarillos)**:

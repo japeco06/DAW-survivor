@@ -32,6 +32,167 @@ export interface CombatEvents {
   vampirismHeals: number;
 }
 
+export class FirewallPulseRing {
+  public x: number;
+  public y: number;
+  public radius: number = 18;
+  public maxRadius: number;
+  public damage: number;
+  public active: boolean = true;
+  private expansionSpeed: number = 340;
+  private hitEnemies: Set<Adware> = new Set();
+
+  constructor(x: number, y: number, maxRadius: number, damage: number) {
+    this.x = x;
+    this.y = y;
+    this.maxRadius = maxRadius;
+    this.damage = damage;
+  }
+
+  public update(
+    dt: number,
+    player: Player,
+    enemies: Adware[]
+  ): { enemy: Adware; damage: number }[] {
+    this.x = player.x;
+    this.y = player.y;
+    this.radius += this.expansionSpeed * dt;
+
+    const hits: { enemy: Adware; damage: number }[] = [];
+    for (const enemy of enemies) {
+      if (!enemy.active || this.hitEnemies.has(enemy)) continue;
+      const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+      if (dist <= this.radius + enemy.size * 0.5) {
+        this.hitEnemies.add(enemy);
+        hits.push({ enemy, damage: this.damage });
+      }
+    }
+
+    if (this.radius >= this.maxRadius) {
+      this.active = false;
+    }
+
+    return hits;
+  }
+
+  public draw(ctx: CanvasRenderingContext2D): void {
+    const progress = Math.min(1, this.radius / this.maxRadius);
+    const alpha = Math.max(0.1, 1 - progress * 0.75);
+
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 115, 0, ${alpha * 0.16})`;
+    ctx.strokeStyle = `rgba(255, 136, 0, ${alpha})`;
+    ctx.shadowColor = '#ff6600';
+    ctx.shadowBlur = 18;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(254, 240, 138, ${alpha})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, Math.max(4, this.radius - 5), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+export class SqlInjectionBeam {
+  public x: number;
+  public y: number;
+  public vx: number;
+  public vy: number;
+  public angle: number;
+  public thickness: number;
+  public length: number = 68;
+  public damage: number;
+  public active: boolean = true;
+  private lifeTime: number = 2.4;
+  private hitEnemies: Set<Adware> = new Set();
+
+  constructor(
+    x: number,
+    y: number,
+    angle: number,
+    speed: number,
+    damage: number,
+    thickness: number
+  ) {
+    this.x = x;
+    this.y = y;
+    this.angle = angle;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.damage = damage;
+    this.thickness = thickness;
+  }
+
+  public update(
+    dt: number,
+    enemies: Adware[],
+    canvasWidth: number,
+    canvasHeight: number
+  ): { enemy: Adware; damage: number; blocked: boolean }[] {
+    this.lifeTime -= dt;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    const margin = 100;
+    if (
+      this.lifeTime <= 0 ||
+      this.x < -margin ||
+      this.x > canvasWidth + margin ||
+      this.y < -margin ||
+      this.y > canvasHeight + margin
+    ) {
+      this.active = false;
+      return [];
+    }
+
+    const hits: { enemy: Adware; damage: number; blocked: boolean }[] = [];
+    const hitRadius = this.thickness * 0.55;
+
+    for (const enemy of enemies) {
+      if (!enemy.active || this.hitEnemies.has(enemy)) continue;
+      const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+      if (dist <= hitRadius + enemy.size * 0.5) {
+        this.hitEnemies.add(enemy);
+        const sourceX = this.x - this.vx * 0.04;
+        const sourceY = this.y - this.vy * 0.04;
+        if (enemy.isHitBlockedByShield(sourceX, sourceY)) {
+          hits.push({ enemy, damage: 0, blocked: true });
+        } else {
+          hits.push({ enemy, damage: this.damage, blocked: false });
+        }
+      }
+    }
+
+    return hits;
+  }
+
+  public draw(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+
+    ctx.fillStyle = '#a855f7';
+    ctx.shadowColor = '#d946ef';
+    ctx.shadowBlur = 18;
+    ctx.fillRect(-this.length / 2, -this.thickness / 2, this.length, this.thickness);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(
+      -this.length * 0.42,
+      -this.thickness * 0.25,
+      this.length * 0.84,
+      this.thickness * 0.5
+    );
+    ctx.restore();
+  }
+}
+
 /**
  * Sistema de Combate Multi-Arma (v0.2.0).
  * Gestiona:
@@ -64,14 +225,33 @@ export class CombatSystem {
   public quarantineDamage: number = 14;
   public quarantineDuration: number = 4.6;
 
-  // 4. Módulo Defensivo: Firewall Orbital
+  // 4. Arma Orbital: Drones Antivirus
+  public dronesLevel: number = 0;
   public firewallCount: number = 0;
-  public firewallRadius: number = 78;
+  public firewallRadius: number = 82;
   public firewallDamage: number = 18;
+  public firewallOrbitSpeed: number = 3.4;
   private firewallAngle: number = 0;
   private firewallHitCooldowns: WeakMap<Adware, number> = new WeakMap();
 
-  // 5. Proyectiles enemigos (disparados por el Troyano Tirador)
+  // 5. Nueva Arma: Cortafuegos (Ataque en Área Expansivo)
+  public firewallPulseLevel: number = 0;
+  private firewallPulseTimer: number = 0;
+  public firewallPulseCooldown: number = 3.2;
+  public firewallPulseDamage: number = 32;
+  public firewallPulseMaxRadius: number = 175;
+  public firewallPulses: FirewallPulseRing[] = [];
+
+  // 6. Nueva Arma: Rayo SQL Injection (Láser Penetrante)
+  public sqlBeamLevel: number = 0;
+  private sqlBeamTimer: number = 0;
+  public sqlBeamCooldown: number = 2.5;
+  public sqlBeamDamage: number = 38;
+  public sqlBeamThickness: number = 18;
+  public sqlBeamSpeed: number = 720;
+  public sqlBeams: SqlInjectionBeam[] = [];
+
+  // 7. Proyectiles enemigos (disparados por el Troyano Tirador)
   public enemyProjectiles: EnemyProjectile[] = [];
 
   public update(
@@ -87,7 +267,9 @@ export class CombatSystem {
     this.fireTimer += dt;
     this.pingTimer += dt;
     this.quarantineTimer += dt;
-    this.firewallAngle += dt * 3.4;
+    this.firewallPulseTimer += dt;
+    this.sqlBeamTimer += dt;
+    this.firewallAngle += dt * this.firewallOrbitSpeed;
 
     const destroyedEnemies: DestroyedEnemyInfo[] = [];
     const damagedEnemies: DamagedEnemyInfo[] = [];
@@ -217,6 +399,44 @@ export class CombatSystem {
       );
     }
 
+    // --- ARMA 4: Cortafuegos (Anillo de energía expansivo alrededor del Agente) ---
+    const effectivePulseCooldown =
+      this.firewallPulseCooldown / Math.max(0.5, player.fireRateMultiplier);
+    if (
+      player.active &&
+      this.firewallPulseLevel > 0 &&
+      this.firewallPulseTimer >= effectivePulseCooldown
+    ) {
+      this.firewallPulseTimer = 0;
+      const pulseHit = computePlayerHitDamage(this.firewallPulseDamage);
+      this.firewallPulses.push(
+        new FirewallPulseRing(player.x, player.y, this.firewallPulseMaxRadius, pulseHit.dmg)
+      );
+    }
+
+    // --- ARMA 5: Rayo SQL Injection (Láser grueso penetrante en línea recta) ---
+    const effectiveSqlCooldown =
+      this.sqlBeamCooldown / Math.max(0.5, player.fireRateMultiplier);
+    if (player.active && this.sqlBeamLevel > 0 && this.sqlBeamTimer >= effectiveSqlCooldown) {
+      const nearest = this.findNearestEnemies(player, enemies, 1)[0];
+      const angle = nearest
+        ? Math.atan2(nearest.y - player.y, nearest.x - player.x)
+        : this.firewallAngle;
+      this.sqlBeamTimer = 0;
+      shotsFired++;
+      const beamHit = computePlayerHitDamage(this.sqlBeamDamage);
+      this.sqlBeams.push(
+        new SqlInjectionBeam(
+          player.x,
+          player.y,
+          angle,
+          this.sqlBeamSpeed,
+          beamHit.dmg,
+          this.sqlBeamThickness
+        )
+      );
+    }
+
     // --- COLISIONES: Ráfaga de Firewall vs Enemigos ---
     for (const proj of projectiles) {
       if (!proj.active) continue;
@@ -319,7 +539,64 @@ export class CombatSystem {
       }
     }
 
-    // --- COLISIONES: Firewall Orbital vs Enemigos ---
+    // --- ACTUALIZACIÓN Y DAÑO: Cortafuegos (Anillos Expansivos) ---
+    for (const pulse of this.firewallPulses) {
+      if (!pulse.active) continue;
+      const pulseHits = pulse.update(dt, player, enemies);
+      for (const hit of pulseHits) {
+        if (!hit.enemy.active) continue;
+        const dx = hit.enemy.x - player.x;
+        const dy = hit.enemy.y - player.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        hit.enemy.takeDamage(hit.damage, (dx / dist) * 18, (dy / dist) * 18);
+        tryTriggerVampirism();
+
+        damagedEnemies.push({
+          x: hit.enemy.x,
+          y: hit.enemy.y,
+          damage: hit.damage,
+          color: '#ff8800',
+        });
+
+        registerEnemyKillIfDead(hit.enemy);
+      }
+    }
+    this.firewallPulses = this.firewallPulses.filter((p) => p.active);
+
+    // --- ACTUALIZACIÓN Y DAÑO PENETRANTE: Rayo SQL Injection ---
+    for (const beam of this.sqlBeams) {
+      if (!beam.active) continue;
+      const beamHits = beam.update(dt, enemies, canvasWidth, canvasHeight);
+      for (const hit of beamHits) {
+        if (!hit.enemy.active) continue;
+        if (hit.blocked) {
+          damagedEnemies.push({
+            x: hit.enemy.x,
+            y: hit.enemy.y,
+            damage: 0,
+            color: '#38bdf8',
+          });
+          continue;
+        }
+        const dx = hit.enemy.x - player.x;
+        const dy = hit.enemy.y - player.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        hit.enemy.takeDamage(hit.damage, (dx / dist) * 10, (dy / dist) * 10);
+        tryTriggerVampirism();
+
+        damagedEnemies.push({
+          x: hit.enemy.x,
+          y: hit.enemy.y,
+          damage: hit.damage,
+          color: '#d946ef',
+        });
+
+        registerEnemyKillIfDead(hit.enemy);
+      }
+    }
+    this.sqlBeams = this.sqlBeams.filter((b) => b.active);
+
+    // --- COLISIONES: Drones Antivirus (Arma Orbital) vs Enemigos ---
     if (player.active && this.firewallCount > 0) {
       const nodes = this.getFirewallNodePositions(player);
       const nodeHalfSize = 9;
@@ -423,6 +700,15 @@ export class CombatSystem {
     if (this.quarantineLevel > 0) {
       list.push(`Zona Cuarentena v${this.quarantineLevel}`);
     }
+    if (this.dronesLevel > 0) {
+      list.push(`Drones Antivirus v${this.dronesLevel}`);
+    }
+    if (this.firewallPulseLevel > 0) {
+      list.push(`Cortafuegos v${this.firewallPulseLevel}`);
+    }
+    if (this.sqlBeamLevel > 0) {
+      list.push(`Rayo SQL v${this.sqlBeamLevel}`);
+    }
     return list;
   }
 
@@ -439,6 +725,18 @@ export class CombatSystem {
   }
 
   public drawFirewall(ctx: CanvasRenderingContext2D, player: Player): void {
+    for (const pulse of this.firewallPulses) {
+      if (pulse.active) {
+        pulse.draw(ctx);
+      }
+    }
+
+    for (const beam of this.sqlBeams) {
+      if (beam.active) {
+        beam.draw(ctx);
+      }
+    }
+
     for (const eProj of this.enemyProjectiles) {
       if (eProj.active) {
         eProj.draw(ctx);
@@ -450,20 +748,26 @@ export class CombatSystem {
     const nodes = this.getFirewallNodePositions(player);
 
     ctx.save();
-    ctx.strokeStyle = 'rgba(255, 136, 0, 0.22)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(player.x, player.y, this.firewallRadius, 0, Math.PI * 2);
     ctx.stroke();
 
     for (const node of nodes) {
-      ctx.fillStyle = '#ff8800';
-      ctx.shadowColor = '#ff5500';
+      ctx.fillStyle = '#00f0ff';
+      ctx.shadowColor = '#38bdf8';
       ctx.shadowBlur = 14;
-      ctx.fillRect(node.x - 8, node.y - 8, 16, 16);
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, 9, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(node.x - 6, node.y - 6, 12, 12);
 
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(node.x - 3, node.y - 3, 6, 6);
+      ctx.fillRect(node.x - 2, node.y - 2, 4, 4);
     }
     ctx.restore();
   }

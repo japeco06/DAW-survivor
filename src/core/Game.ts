@@ -55,7 +55,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.7.2';
+const GAME_VERSION = 'v0.7.3';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -485,6 +485,8 @@ export class Game {
     this.pingProjectiles = [];
     this.quarantineZones = [];
     this.combatSystem.enemyProjectiles = [];
+    this.combatSystem.firewallPulses = [];
+    this.combatSystem.sqlBeams = [];
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.decryptionKeys = [];
@@ -521,6 +523,8 @@ export class Game {
     this.pingProjectiles = [];
     this.quarantineZones = [];
     this.combatSystem.enemyProjectiles = [];
+    this.combatSystem.firewallPulses = [];
+    this.combatSystem.sqlBeams = [];
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.decryptionKeys = [];
@@ -557,6 +561,8 @@ export class Game {
     this.pingProjectiles = [];
     this.quarantineZones = [];
     this.combatSystem.enemyProjectiles = [];
+    this.combatSystem.firewallPulses = [];
+    this.combatSystem.sqlBeams = [];
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.decryptionKeys = [];
@@ -871,12 +877,19 @@ export class Game {
       }
 
       if (drop.enemyRef instanceof Worm && !drop.enemyRef.isSplitChild) {
+        const activeWormCount = this.enemies.filter(
+          (e) => e.active && e instanceof Worm
+        ).length;
         const hpMult = this.spawner.getGlobalHpMultiplier(
           this.elapsedTime,
           this.upgradeSystem.level
         );
-        this.enemies.push(new Worm(drop.x - 14, drop.y - 14, hpMult, true));
-        this.enemies.push(new Worm(drop.x + 14, drop.y + 14, hpMult, true));
+        if (activeWormCount < 5) {
+          this.enemies.push(new Worm(drop.x - 14, drop.y - 14, hpMult, true));
+        }
+        if (activeWormCount + 1 < 5) {
+          this.enemies.push(new Worm(drop.x + 14, drop.y + 14, hpMult, true));
+        }
       }
     }
 

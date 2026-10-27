@@ -20,6 +20,8 @@ export interface UpgradeOption {
  * Al llenarse la barra de XP, pausa el juego y ofrece 3 Tarjetas de Mejora (armas y pasivas),
  * incluyendo la nueva tarjeta pasiva 'Overclock de Memoria' que multiplica permanentemente la XP.
  */
+export const MAX_WEAPON_SLOTS = 4;
+
 export class UpgradeSystem {
   public level: number = 1;
   public currentXp: number = 0;
@@ -31,6 +33,11 @@ export class UpgradeSystem {
 
   constructor() {
     this.initUpgrades();
+  }
+
+  public getEquippedWeaponsCount(): number {
+    // 1 (disparo básico inicial 'Ráfaga de Firewall') + armas adicionales desbloqueadas
+    return 1 + this.upgrades.filter((u) => u.isWeapon && u.level > 0).length;
   }
 
   private initUpgrades(): void {
@@ -112,6 +119,57 @@ export class UpgradeSystem {
         },
       },
       {
+        id: 'antivirus_drones',
+        name: 'DRONES ANTIVIRUS',
+        category: 'ARMA // ORBITAL',
+        description:
+          'Despliega drones que orbitan en círculos alrededor del Agente dañando al contacto (+1 dron, +daño y +velocidad de órbita por nivel).',
+        color: '#00f0ff',
+        level: 0,
+        maxLevel: 5,
+        isWeapon: true,
+        apply: (_player, combat) => {
+          combat.dronesLevel += 1;
+          combat.firewallCount += 1;
+          combat.firewallDamage += 8;
+          combat.firewallOrbitSpeed = Number((combat.firewallOrbitSpeed * 1.16).toFixed(2));
+        },
+      },
+      {
+        id: 'firewall_pulse',
+        name: 'CORTAFUEGOS',
+        category: 'ARMA // ONDA EXPANSIVA',
+        description:
+          'Emite periódicamente un anillo de energía expansivo alrededor del Agente que daña a todos los enemigos en el radio (+daño, +radio y -cooldown).',
+        color: '#ff8800',
+        level: 0,
+        maxLevel: 5,
+        isWeapon: true,
+        apply: (_player, combat) => {
+          combat.firewallPulseLevel += 1;
+          combat.firewallPulseDamage += 14;
+          combat.firewallPulseMaxRadius += 28;
+          combat.firewallPulseCooldown = Math.max(1.4, combat.firewallPulseCooldown * 0.86);
+        },
+      },
+      {
+        id: 'sql_injection_beam',
+        name: 'RAYO SQL INJECTION',
+        category: 'ARMA // LÁSER PENETRANTE',
+        description:
+          'Dispara un haz láser grueso en línea recta que atraviesa a todos los enemigos en su trayectoria sin destruirse (+daño, +grosor y -cooldown).',
+        color: '#d946ef',
+        level: 0,
+        maxLevel: 5,
+        isWeapon: true,
+        apply: (_player, combat) => {
+          combat.sqlBeamLevel += 1;
+          combat.sqlBeamDamage += 18;
+          combat.sqlBeamThickness += 5;
+          combat.sqlBeamCooldown = Math.max(1.0, combat.sqlBeamCooldown * 0.85);
+        },
+      },
+      {
         id: 'overclocking',
         name: 'OVERCLOCKING.exe',
         category: 'PASIVA // CADENCIA',
@@ -128,28 +186,14 @@ export class UpgradeSystem {
       {
         id: 'multithreading',
         name: 'MULTITHREADING.dll',
-        category: 'ARMA // MULTIDISPARO',
+        category: 'PASIVA // MULTIDISPARO BASE',
         description:
-          'Añade +1 proyectil simultáneo a tu Ráfaga de Firewall para cubrir múltiples ángulos.',
-        color: '#d946ef',
+          'Añade +1 proyectil simultáneo a tu Ráfaga de Firewall inicial para cubrir múltiples ángulos.',
+        color: '#c084fc',
         level: 0,
         maxLevel: 5,
         apply: (_player, combat) => {
           combat.multiShotCount += 1;
-        },
-      },
-      {
-        id: 'firewall',
-        name: 'FIREWALL_ORBIT.sys',
-        category: 'ARMA // PERÍMETRO ORBITAL',
-        description:
-          'Despliega un nodo ígneo orbital que gira alrededor del Agente y quema el Malware al contacto.',
-        color: '#ff8800',
-        level: 0,
-        maxLevel: 6,
-        apply: (_player, combat) => {
-          combat.firewallCount += 1;
-          combat.firewallDamage += 6;
         },
       },
       {
@@ -220,7 +264,16 @@ export class UpgradeSystem {
    * 'Overclock de Memoria' junto con una de las armas nuevas para facilitar su prueba inmediata.
    */
   public rollChoices(): UpgradeOption[] {
-    const available = this.upgrades.filter((u) => !u.isMaxed && u.level < u.maxLevel);
+    const equippedWeaponsCount = this.getEquippedWeaponsCount();
+    const weaponSlotsFull = equippedWeaponsCount >= MAX_WEAPON_SLOTS;
+
+    const available = this.upgrades.filter((u) => {
+      if (u.isMaxed || u.level >= u.maxLevel) return false;
+      // Si el jugador ya tiene 4 armas equipadas, bloquear la aparición de armas nuevas (level === 0)
+      if (weaponSlotsFull && u.isWeapon && u.level === 0) return false;
+      return true;
+    });
+
     const shuffled = [...available].sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, 3);
 
@@ -230,14 +283,16 @@ export class UpgradeSystem {
       selected[0] = memOverclock;
     }
 
-    // Asegurar también que al menos una de las armas nuevas salga temprano
-    const newWeapons = available.filter((u) => u.isWeapon && u.level === 0);
-    if (
-      newWeapons.length > 0 &&
-      !selected.some((u) => u.isWeapon) &&
-      selected.length > 1
-    ) {
-      selected[1] = newWeapons[Math.floor(Math.random() * newWeapons.length)];
+    // Si aún quedan huecos de armas (< 4), facilitar que al menos una de las armas salga temprano
+    if (!weaponSlotsFull) {
+      const newWeapons = available.filter((u) => u.isWeapon && u.level === 0);
+      if (
+        newWeapons.length > 0 &&
+        !selected.some((u) => u.isWeapon) &&
+        selected.length > 1
+      ) {
+        selected[1] = newWeapons[Math.floor(Math.random() * newWeapons.length)];
+      }
     }
 
     this.currentChoices = selected;
