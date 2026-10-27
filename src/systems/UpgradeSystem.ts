@@ -9,6 +9,7 @@ export interface UpgradeOption {
   color: string;
   level: number;
   maxLevel: number;
+  isMaxed?: boolean;
   isWeapon?: boolean;
   isMemoryOverclock?: boolean;
   apply: (player: Player, combat: CombatSystem) => void;
@@ -66,12 +67,15 @@ export class UpgradeSystem {
         name: 'ROBO DE ANCHO DE BANDA',
         category: 'PASIVA // VAMPIRISMO',
         description:
-          'Cada proyectil del Agente que impacte y dañe a un enemigo tiene un 3% de probabilidad de curar automáticamente +1 HP.',
+          'Drena +1 HP al impactar con proyectiles. Escalado (5 niveles): 3% / 4.5% / 6% / 7.5% / 10%.',
         color: '#f43f5e',
         level: 0,
-        maxLevel: 1,
-        apply: (player) => {
-          player.vampirismChance = 0.03;
+        maxLevel: 5,
+        isMaxed: false,
+        apply: function (player) {
+          const vampirismRates = [0.03, 0.045, 0.06, 0.075, 0.1];
+          const idx = Math.max(0, Math.min(vampirismRates.length - 1, this.level - 1));
+          player.vampirismChance = vampirismRates[idx];
         },
       },
       {
@@ -216,7 +220,7 @@ export class UpgradeSystem {
    * 'Overclock de Memoria' junto con una de las armas nuevas para facilitar su prueba inmediata.
    */
   public rollChoices(): UpgradeOption[] {
-    const available = this.upgrades.filter((u) => u.level < u.maxLevel);
+    const available = this.upgrades.filter((u) => !u.isMaxed && u.level < u.maxLevel);
     const shuffled = [...available].sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, 3);
 
@@ -245,6 +249,9 @@ export class UpgradeSystem {
     if (!choice) return false;
 
     choice.level++;
+    if (choice.level >= choice.maxLevel) {
+      choice.isMaxed = true;
+    }
     choice.apply(player, combat);
     this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1);
     this.currentChoices = [];

@@ -14,6 +14,7 @@ export class Spawner {
 
   private readonly maxActiveArmoredWorms: number = 3;
   private readonly maxActiveTrojanShooters: number = 5;
+  private readonly maxActiveTrojans: number = 5;
 
   public currentThreatLevel: number = 1;
   public activeBossAlertTimer: number = 0;
@@ -93,6 +94,9 @@ export class Spawner {
     const activeShooterCount = enemies.filter(
       (e) => e.active && e instanceof TrojanShooter
     ).length;
+    const activeTrojanCount = enemies.filter(
+      (e) => e.active && e instanceof Trojan
+    ).length;
 
     // Máximo 3 Gusanos Blindados vivos simultáneamente en pantalla
     if (
@@ -117,8 +121,9 @@ export class Spawner {
       return new Worm(pos.x, pos.y, hpMultiplier, false);
     }
 
+    // Máximo 5 enemigos amarillos (Trojan) vivos simultáneamente en pantalla
     const trojanChance = elapsedTime >= 12 ? Math.min(0.4, 0.18 + elapsedTime * 0.003) : 0;
-    if (roll < 0.34 + trojanChance) {
+    if (roll < 0.34 + trojanChance && activeTrojanCount < this.maxActiveTrojans) {
       return new Trojan(pos.x, pos.y, hpMultiplier);
     }
 

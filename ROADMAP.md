@@ -84,14 +84,25 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [Fase 2] Pestaña Gacha en el Menú Principal: Botón 'Tirar del Cable' con Criptomonedas, revelación animada y persistencia en `localStorage`
 │   └── [Fase 3] Inventario Paginado y Equipamiento: Selección de 1 sombrero activo y aplicación automática de multiplicadores de estadísticas al iniciar partida
 │
-└── v0.7.1 — Economía Gacha: Tirada x1 / x10 y Reembolso por Repetidos (ACTUAL)
-    ├── [1. Opciones de Compra] Dos botones en el Gacha: 'Tirada x1' (20 Criptomonedas) y 'Tirada x10' (200 Criptomonedas, mostrando cuadrícula con los 10 resultados)
-    └── [2. Reembolso por Repetidos] Si el sombrero obtenido ya está en el inventario, devuelve automáticamente +10 Criptomonedas al saldo y muestra 'Repetido: +10 Monedas'
+├── v0.7.1 — Economía Gacha: Tirada x1 / x10 y Reembolso por Repetidos
+│   ├── [1. Opciones de Compra] Dos botones en el Gacha: 'Tirada x1' (20 Criptomonedas) y 'Tirada x10' (200 Criptomonedas, mostrando cuadrícula con los 10 resultados)
+│   └── [2. Reembolso por Repetidos] Si el sombrero obtenido ya está en el inventario, devuelve automáticamente +10 Criptomonedas al saldo y muestra 'Repetido: +10 Monedas'
+│
+└── v0.7.2 — Límite de Enemigos Amarillos y Escalado a 5 Niveles de Vampirismo (ACTUAL)
+    ├── [1. Límite de Enemigos Amarillos (`Spawner.ts`)] Máximo estricto de 5 enemigos amarillos (`Trojan`) vivos al mismo tiempo en el mapa
+    └── [2. Escalado de 'Robo de Ancho de Banda' (`UpgradeSystem.ts`)] 5 niveles progresivos (3% -> 4.5% -> 6% -> 7.5% -> 10%) con bloqueo automático ('Maxed') al alcanzar el nivel 5
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.7.2] - 2026-10-27
+- **Balanceado (`Spawner.ts` - Límite de Enemigos Amarillos)**:
+  - Añadido un límite estricto (`maxActiveTrojans = 5`) para que nunca haya más de 5 enemigos amarillos (`Trojan`) vivos simultáneamente en el mapa.
+- **Mejorado (`UpgradeSystem.ts` - Escalado de `'Robo de Ancho de Banda'`)**:
+  - Ampliada la tarjeta pasiva de vampirismo a **5 niveles máximos** con probabilidad progresiva de curar `+1 HP` por impacto: **Nivel 1 (`3%`), Nivel 2 (`4.5%`), Nivel 3 (`6%`), Nivel 4 (`7.5%`), Nivel 5 (`10%`)**.
+  - Al llegar al nivel 5, la mejora queda marcada como `isMaxed = true` (Al máximo) y deja de ofrecerse en futuras subidas de nivel.
 
 ### [v0.7.1] - 2026-10-27
 - **Mejorado (`MetaSystem.ts`, `Game.ts` - Tirada x1 / x10 y Reembolso por Repetidos)**:
