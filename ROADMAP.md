@@ -70,15 +70,25 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   │   └── 'Gusano Blindado' (`ArmoredWorm.ts`): Enemigo lento con escudo frontal direccional que bloquea el 100% del daño (0 daño), exigiendo flanquearlo por los laterales o la espalda
 │   └── [Fase 3] Escalado de Vida Global (`Spawner.ts`): Multiplicador dinámico de HP máximo para todos los enemigos según el tiempo de supervivencia y el nivel del jugador
 │
-└── v0.6.1 — Parche de Balanceo Crítico: Escalado de Vida No Lineal, Límites de Spawn y Nerf de Giro (ACTUAL)
-    ├── [1. Escalado de Vida No Lineal (`Spawner.ts`)] Crecimiento suave en los primeros niveles (early game) y escalado potencial agresivo solo en late game (nivel > 6)
-    ├── [2. Ajustes al 'Gusano Blindado'] Límite estricto de máximo 3 vivos simultáneamente y reducción drástica de su velocidad de rotación (`1.32` -> `0.42 rad/s`)
-    └── [3. Ajustes al 'Troyano Tirador'] Límite estricto de máximo 5 vivos simultáneamente en pantalla para evitar saturación de proyectiles
+├── v0.6.1 — Parche de Balanceo Crítico: Escalado de Vida No Lineal, Límites de Spawn y Nerf de Giro
+│   ├── [1. Escalado de Vida No Lineal (`Spawner.ts`)] Crecimiento suave en los primeros niveles (early game) y escalado potencial agresivo solo en late game (nivel > 6)
+│   ├── [2. Ajustes al 'Gusano Blindado'] Límite estricto de máximo 3 vivos simultáneamente y reducción drástica de su velocidad de rotación (`1.32` -> `0.42 rad/s`)
+│   └── [3. Ajustes al 'Troyano Tirador'] Límite estricto de máximo 5 vivos simultáneamente en pantalla para evitar saturación de proyectiles
+│
+└── v0.6.2 — Reloj en Formato MM:SS y Tarjeta Pasiva 'Robo de Ancho de Banda' (Vampirismo) (ACTUAL)
+    ├── [1. Formato de Tiempo (Reloj MM:SS)] Contador de supervivencia en el HUD y pantalla final convertido a formato estándar `MM:SS`
+    └── [2. Nueva Tarjeta 'Robo de Ancho de Banda'] Pasiva de vampirismo: cada proyectil del jugador que impacte y dañe a un enemigo tiene un 3% de probabilidad de curar +1 HP (hasta el máximo de vida)
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.6.2] - 2026-10-27
+- **Mejorado (`Game.ts` - Reloj del HUD en formato `MM:SS`)**:
+  - Convertido el temporizador de tiempo de supervivencia del HUD a formato estándar de minutos y segundos (`MM:SS`).
+- **Añadido (`UpgradeSystem.ts`, `CombatSystem.ts`, `Player.ts` - Tarjeta Pasiva `'Robo de Ancho de Banda'`)**:
+  - Nueva mejora pasiva de vampirismo: al activarla, cada proyectil del jugador que impacte e inflija daño real a un enemigo tiene un `3%` de probabilidad de curar automáticamente `+1 HP` sin sobrepasar la vida máxima (`maxHp`).
 
 ### [v0.6.1] - 2026-10-27
 - **Rebalanceado (`Spawner.ts` - Escalado de Vida No Lineal)**:

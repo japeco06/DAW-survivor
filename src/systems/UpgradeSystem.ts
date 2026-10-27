@@ -62,6 +62,19 @@ export class UpgradeSystem {
         },
       },
       {
+        id: 'bandwidth_leech',
+        name: 'ROBO DE ANCHO DE BANDA',
+        category: 'PASIVA // VAMPIRISMO',
+        description:
+          'Cada proyectil del Agente que impacte y dañe a un enemigo tiene un 3% de probabilidad de curar automáticamente +1 HP.',
+        color: '#f43f5e',
+        level: 0,
+        maxLevel: 1,
+        apply: (player) => {
+          player.vampirismChance = 0.03;
+        },
+      },
+      {
         id: 'ping_tracker',
         name: 'PING_TRACKER.exe',
         category: 'ARMA // HOMING',

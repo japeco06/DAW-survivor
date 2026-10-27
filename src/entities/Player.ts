@@ -12,6 +12,7 @@ export class Player extends Entity {
   public hp: number = 100;
   public pickupRadius: number = 115;
   public xpMultiplier: number = 1.0; // Multiplicador permanente de XP ('Overclock de Memoria')
+  public vampirismChance: number = 0; // Probabilidad de curar +1 HP al impactar con proyectiles ('Robo de Ancho de Banda')
   public borderColor: string = '#ffffff';
   public profileName: string = 'AGENTE ESTÁNDAR';
 

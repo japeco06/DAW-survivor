@@ -29,6 +29,7 @@ export interface CombatEvents {
   playerHit: boolean;
   shotsFired: number;
   homingShotsFired: number;
+  vampirismHeals: number;
 }
 
 /**
@@ -94,6 +95,17 @@ export class CombatSystem {
     let playerHit = false;
     let shotsFired = 0;
     let homingShotsFired = 0;
+    let vampirismHeals = 0;
+
+    const tryTriggerVampirism = () => {
+      if (player.vampirismChance > 0 && Math.random() < player.vampirismChance) {
+        const prevHp = player.hp;
+        player.heal(1);
+        if (player.hp > prevHp) {
+          vampirismHeals++;
+        }
+      }
+    };
 
     const registerEnemyKillIfDead = (enemy: Adware) => {
       if (!enemy.active) {
@@ -218,6 +230,7 @@ export class CombatSystem {
           const dy = enemy.y - player.y;
           const dist = Math.hypot(dx, dy) || 1;
           enemy.takeDamage(proj.damage, (dx / dist) * 6, (dy / dist) * 6);
+          tryTriggerVampirism();
 
           damagedEnemies.push({
             x: enemy.x,
@@ -258,6 +271,7 @@ export class CombatSystem {
           const dy = enemy.y - player.y;
           const dist = Math.hypot(dx, dy) || 1;
           enemy.takeDamage(ping.damage, (dx / dist) * 8, (dy / dist) * 8);
+          tryTriggerVampirism();
 
           damagedEnemies.push({
             x: enemy.x,
@@ -384,6 +398,7 @@ export class CombatSystem {
       playerHit,
       shotsFired,
       homingShotsFired,
+      vampirismHeals,
     };
   }
 

@@ -47,7 +47,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.6.1';
+const GAME_VERSION = 'v0.6.2';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -685,6 +685,15 @@ export class Game {
     }
     if (combatEvents.homingShotsFired > 0) {
       this.sound.playShoot(true);
+    }
+    if (combatEvents.vampirismHeals > 0) {
+      this.particleSystem.spawnFloatingText(
+        this.player.x,
+        this.player.y - 24,
+        `+${combatEvents.vampirismHeals} HP`,
+        '#00ff66',
+        0.85
+      );
     }
 
     for (const hit of combatEvents.damagedEnemies) {
@@ -1406,12 +1415,19 @@ export class Game {
     this.ctx.restore();
   }
 
+  private formatTimeMMSS(totalSeconds: number): string {
+    const secs = Math.max(0, Math.floor(totalSeconds));
+    const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+    const ss = String(secs % 60).padStart(2, '0');
+    return `${mm}:${ss}`;
+  }
+
   private drawHUD(): void {
     this.ctx.save();
     this.ctx.fillStyle = '#00ff66';
     this.ctx.font = 'bold 14px "Courier New", monospace';
     this.ctx.fillText(
-      `[${this.player.profileName} v${this.upgradeSystem.level}.0] | HP: ${this.player.hp}/${this.player.maxHp} | XP_MULT: x${this.player.xpMultiplier.toFixed(2)} | BOSSES: ${this.normalBossesKilledCount}/${NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS} | TIME: ${this.elapsedTime.toFixed(1)}s`,
+      `[${this.player.profileName} v${this.upgradeSystem.level}.0] | HP: ${this.player.hp}/${this.player.maxHp} | XP_MULT: x${this.player.xpMultiplier.toFixed(2)} | BOSSES: ${this.normalBossesKilledCount}/${NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS} | TIME: ${this.formatTimeMMSS(this.elapsedTime)}`,
       16,
       30
     );
@@ -1672,7 +1688,7 @@ export class Game {
       cy - 30
     );
     this.ctx.fillText(
-      `Malware Purgado: ${this.killCount} (Récord: ${this.highScoreKills})  |  Tiempo: ${this.elapsedTime.toFixed(1)}s`,
+      `Malware Purgado: ${this.killCount} (Récord: ${this.highScoreKills})  |  Tiempo: ${this.formatTimeMMSS(this.elapsedTime)}`,
       cx,
       cy + 2
     );
