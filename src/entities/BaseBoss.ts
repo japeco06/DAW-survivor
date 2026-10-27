@@ -409,11 +409,11 @@ class TrackerWormsState implements BossAttackState {
 
   public enter(boss: BaseBoss, player: Player): void {
     this.timer = 0;
-    const count = 3;
+    const count = 6;
     const baseAngle = Math.atan2(player.y - boss.y, player.x - boss.x);
 
     for (let i = 0; i < count; i++) {
-      const spread = (i - (count - 1) / 2) * 0.48;
+      const spread = (i - (count - 1) / 2) * 0.34;
       boss.trackerWorms.push(new TrackerWorm(boss.x, boss.y + 34, baseAngle + spread));
     }
   }

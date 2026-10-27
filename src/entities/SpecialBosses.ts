@@ -324,9 +324,9 @@ class CheatSheetMine {
   private dragRate: number;
   public width: number = 22;
   public height: number = 28;
-  public triggerRadius: number = 58;
-  public explosionRadius: number = 78;
-  private lifeTime: number = 8.5;
+  public triggerRadius: number = 50;
+  public explosionRadius: number = 68;
+  private lifeTime: number = 6.5;
   private state: 'FLYING' | 'ARMED' | 'DETONATING' = 'FLYING';
   private detonationTimer: number = 0;
   public active: boolean = true;
@@ -652,6 +652,7 @@ class HeavyDumbbellProjectile {
   private vx: number;
   private vy: number;
   public radius: number = 24;
+  private lifeTime: number = 7.5;
   private rotation: number = 0;
   public active: boolean = true;
 
@@ -663,20 +664,27 @@ class HeavyDumbbellProjectile {
   }
 
   public update(dt: number, player: Player, canvasWidth: number, canvasHeight: number): boolean {
-    // Se mueve más lento pero NO colisiona con los Bloques Encriptados (los atraviesa por completo)
+    this.lifeTime -= dt;
+    if (this.lifeTime <= 0) {
+      this.active = false;
+      return false;
+    }
+
+    // Se mueve más lento, rebota en los bordes del Canvas y ATRAVIESA los Bloques Encriptados
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.rotation += dt * 4.2;
 
-    const margin = 80;
-    if (
-      this.x < -margin ||
-      this.x > canvasWidth + margin ||
-      this.y < -margin ||
-      this.y > canvasHeight + margin
-    ) {
-      this.active = false;
-      return false;
+    const margin = this.radius;
+    if (this.x <= margin || this.x >= canvasWidth - margin) {
+      this.vx = -this.vx;
+      this.x = Math.max(margin, Math.min(canvasWidth - margin, this.x));
+      this.applyBounceJitter();
+    }
+    if (this.y <= margin || this.y >= canvasHeight - margin) {
+      this.vy = -this.vy;
+      this.y = Math.max(margin, Math.min(canvasHeight - margin, this.y));
+      this.applyBounceJitter();
     }
 
     const dist = Math.hypot(player.x - this.x, player.y - this.y);
@@ -686,6 +694,14 @@ class HeavyDumbbellProjectile {
     }
 
     return false;
+  }
+
+  private applyBounceJitter(): void {
+    const speed = Math.hypot(this.vx, this.vy) * 1.03;
+    const currentAngle = Math.atan2(this.vy, this.vx);
+    const jitter = (Math.random() - 0.5) * 0.28;
+    this.vx = Math.cos(currentAngle + jitter) * Math.min(240, speed);
+    this.vy = Math.sin(currentAngle + jitter) * Math.min(240, speed);
   }
 
   public draw(ctx: CanvasRenderingContext2D): void {
@@ -746,9 +762,9 @@ export class DrunkardBoss extends BaseBoss {
   }
 
   public override triggerSecondarySpecialAttack(player: Player): void {
-    // Lanza 3 mancuernas grandes y pesadas hacia la zona del jugador que atraviesan cualquier muro
+    // Lanza 4 mancuernas grandes y pesadas hacia la zona del jugador que atraviesan cualquier muro y rebotan en bordes
     const baseAngle = Math.atan2(player.y - this.y, player.x - this.x);
-    const spreads = [-0.32, 0, 0.32];
+    const spreads = [-0.42, -0.14, 0.14, 0.42];
     for (const offset of spreads) {
       this.dumbbells.push(new HeavyDumbbellProjectile(this.x, this.y + 24, baseAngle + offset, 150));
     }

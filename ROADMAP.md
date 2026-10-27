@@ -41,19 +41,34 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [1. Láseres Paralelos] Ráfagas 100% horizontales o 100% verticales en `Ransomware Master`
 │   └── [2. Campo de Minas] Velocidad inicial y drag individualizados para las 'Chuletas de Examen'
 │
-└── v0.5.0 — Rediseño 'El Borracho' y Expansión de Kits de Ataque Especiales (ACTUAL)
-    ├── [1. Rediseño del Jefe 3: De 'El Dormilón' a 'El Borracho']
-    │   ├── Apariencia mantenida: Sudadera rosa con capucha y gafas
-    │   ├── Ataque Especial 1 ('Lluvia de Cervezas'): Jarras de cerveza (🍺) con física de rebote caótico en los bordes
-    │   └── NUEVO Ataque Especial 2 ('Lanzamiento de Pesas'): Mancuernas grandes y pesadas que se mueven lento pero ATRAVIESAN los 'Bloques Encriptados', forzando a salir de cobertura
-    └── [2. Expansión del Jefe 1 ('El Bañista')]
-        ├── Ataque Especial 1 ('Ola del Tridente'): Muro de agua curvo con hueco seguro aleatorio
-        └── NUEVO Ataque Especial 2 ('Pistola de Agua'): Ráfaga rápida y continua de proyectiles azules concentrados hacia la posición actual del jugador, exigiendo movimiento perpendicular
+├── v0.5.0 — Rediseño 'El Borracho' y Expansión de Kits de Ataque Especiales
+│   ├── [1. Rediseño del Jefe 3: De 'El Dormilón' a 'El Borracho']
+│   │   ├── Apariencia mantenida: Sudadera rosa con capucha y gafas
+│   │   ├── Ataque Especial 1 ('Lluvia de Cervezas'): Jarras de cerveza (🍺) con física de rebote caótico en los bordes
+│   │   └── NUEVO Ataque Especial 2 ('Lanzamiento de Pesas'): Mancuernas grandes y pesadas que se mueven lento pero ATRAVIESAN los 'Bloques Encriptados', forzando a salir de cobertura
+│   └── [2. Expansión del Jefe 1 ('El Bañista')]
+│       ├── Ataque Especial 1 ('Ola del Tridente'): Muro de agua curvo con hueco seguro aleatorio
+│       └── NUEVO Ataque Especial 2 ('Pistola de Agua'): Ráfaga rápida y continua de proyectiles azules concentrados hacia la posición actual del jugador, exigiendo movimiento perpendicular
+│
+└── v0.5.1 — Parche de Balanceo: Chuletas, Gusanos Rastreadores y Pesas Rebotadoras (ACTUAL)
+    ├── [1. Balanceo de 'Chuletas' ('El Copiota')] Menor tiempo de vida (6.5s) y reducción leve del radio de activación/explosión
+    ├── [2. Gusanos Rastreadores (`BaseBoss`)] Oleada ampliada de 3 a 6 proyectiles morados rastreadores por ráfaga
+    └── [3. Lanzamiento de Pesas ('El Borracho')] +1 pesa por ráfaga (4 en total) y rebote contra los bordes del Canvas manteniendo perforación de muros
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.5.1] - 2026-10-27
+- **Balanceado (`CheatSheetMine` - Jefe `El Copiota` en `SpecialBosses.ts`)**:
+  - Reducido el tiempo de vida (`lifeTime`) de las chuletas de `8.5s` a `6.5s`.
+  - Reducido levemente el radio de activación (`58px` → `50px`) y el radio de explosión (`78px` → `68px`).
+- **Aumentado (`TrackerWormsState` en `BaseBoss.ts`)**:
+  - Incrementada la ráfaga de gusanos morados rastreadores de `3` a `6` proyectiles por oleada.
+- **Mejorado (`HeavyDumbbellProjectile` / `DrunkardBoss` en `SpecialBosses.ts`)**:
+  - Aumentada en `+1` la cantidad de mancuernas lanzadas por ataque (`3` → `4` pesas).
+  - Añadida física de rebote contra los límites del Canvas igual que las jarras de cerveza, conservando intacta su propiedad de atravesar los `EncryptedBlock` centrales.
 
 ### [v0.5.0] - 2026-10-26
 - **Ampliado (`BaseBoss.ts`)**: Soporte en la máquina de estados para un segundo ataque especial (`SPECIAL_ATTACK_2` / `triggerSecondarySpecialAttack`) integrado en la rotación de estados de cada jefe.
