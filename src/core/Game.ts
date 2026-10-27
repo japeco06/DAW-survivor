@@ -4,6 +4,7 @@ import { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { Adware } from '../entities/Adware';
 import { Worm } from '../entities/Worm';
+import { CryptoMiner } from '../entities/CryptoMiner';
 import { RansomwareBoss } from '../entities/RansomwareBoss';
 import { BaseBoss } from '../entities/BaseBoss';
 import { createRandomMegaBoss } from '../entities/SpecialBosses';
@@ -55,7 +56,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.7.3';
+const GAME_VERSION = 'v0.8.0';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -784,6 +785,15 @@ export class Game {
       this.addTerminalLog(`CRITICAL ALERT: ${this.spawner.lastBossSpawnedName} breached firewall!`);
       this.particleSystem.triggerShake(9, 0.45);
     }
+    if (this.spawner.swarmTriggeredJustNow) {
+      this.sound.playExplosion(true);
+      this.particleSystem.triggerShake(12, 0.65);
+      this.addTerminalLog('!! ALERTA DE PLAGA: EL ENJAMBRE (50 ENEMIGOS - 15s) !!');
+    }
+    if (this.spawner.minerSpawnedJustNow) {
+      this.sound.playCoinPickup();
+      this.addTerminalLog('!! MINERO DE CRIPTOS DETECTADO: ¡CÁZALO ANTES DE QUE ESCAPE! !!');
+    }
 
     for (const proj of this.projectiles) {
       proj.update(dt, this.canvas.width, this.canvas.height);
@@ -793,6 +803,10 @@ export class Game {
     }
     for (const enemy of this.enemies) {
       enemy.update(dt, this.player);
+      if (enemy instanceof CryptoMiner && enemy.escaped) {
+        this.particleSystem.spawnFloatingText(enemy.x, enemy.y, '¡MINERO ESCAPÓ!', '#94a3b8', 1.0);
+        this.addTerminalLog('> Crypto Miner escaped from the sector.');
+      }
     }
 
     const combatEvents = this.combatSystem.update(
@@ -836,16 +850,107 @@ export class Game {
     let triggerMegaBossNow = false;
 
     for (const drop of combatEvents.destroyedEnemies) {
+      // Si el Minero de Criptos simplemente desapareció por agotarse su tiempo de huida, no da botín
+      if (
+        drop.malwareType === 'CRYPTO_MINER' &&
+        drop.enemyRef instanceof CryptoMiner &&
+        drop.enemyRef.escaped
+      ) {
+        this.particleSystem.spawnFloatingText(
+          drop.x,
+          drop.y,
+          '¡MINERO ESCAPÓ!',
+          '#94a3b8',
+          1.0
+        );
+        this.addTerminalLog('> Crypto Miner escaped from the sector.');
+        continue;
+      }
+
       const isBoss = drop.malwareType === 'RANSOMWARE';
-      this.sound.playExplosion(isBoss);
+      this.sound.playExplosion(isBoss || drop.malwareType === 'CRYPTO_MINER');
 
       this.particleSystem.spawnExplosion(
         drop.x,
         drop.y,
         drop.color,
-        isBoss ? 55 : 18,
-        isBoss
+        isBoss || drop.malwareType === 'CRYPTO_MINER' ? 55 : 18,
+        isBoss || drop.malwareType === 'CRYPTO_MINER'
       );
+
+      if (drop.malwareType === 'HARDWARE_BOX') {
+        const rewardRoll = Math.random();
+        if (rewardRoll < 0.35) {
+          for (let c = 0; c < 3; c++) {
+            this.cryptoCoins.push(
+              new CryptoCoin(
+                drop.x + (Math.random() - 0.5) * 28,
+                drop.y + (Math.random() - 0.5) * 28,
+                1
+              )
+            );
+          }
+          this.particleSystem.spawnFloatingText(
+            drop.x,
+            drop.y - 12,
+            'CAJA: +3 CRYPTO 🪙',
+            '#fbbf24',
+            1.05
+          );
+        } else if (rewardRoll < 0.72) {
+          for (let f = 0; f < 3; f++) {
+            this.codeFragments.push(
+              new CodeFragment(
+                drop.x + (Math.random() - 0.5) * 30,
+                drop.y + (Math.random() - 0.5) * 30,
+                35
+              )
+            );
+          }
+          this.particleSystem.spawnFloatingText(
+            drop.x,
+            drop.y - 12,
+            'CAJA: +PAQUETE XP',
+            '#00f0ff',
+            1.05
+          );
+        } else {
+          this.player.heal(25);
+          this.particleSystem.spawnFloatingText(
+            this.player.x,
+            this.player.y - 24,
+            'CAJA: +25 HP REPARACIÓN',
+            '#00ff66',
+            1.1
+          );
+        }
+        continue;
+      }
+
+      if (drop.malwareType === 'CRYPTO_MINER') {
+        const jackpotCoins = 30 + Math.floor(Math.random() * 11);
+        for (let c = 0; c < jackpotCoins; c++) {
+          this.cryptoCoins.push(
+            new CryptoCoin(
+              drop.x + (Math.random() - 0.5) * 110,
+              drop.y + (Math.random() - 0.5) * 110,
+              1
+            )
+          );
+        }
+        this.codeFragments.push(new CodeFragment(drop.x, drop.y, drop.xpValue));
+        this.sound.playCoinPickup();
+        this.particleSystem.triggerShake(10, 0.45);
+        this.particleSystem.spawnFloatingText(
+          drop.x,
+          drop.y - 16,
+          `¡BOTÍN MINERO! +${jackpotCoins} CRYPTO 🪙`,
+          '#fbbf24',
+          1.3
+        );
+        this.addTerminalLog(`>> CRYPTO MINER ELIMINATED! Dropped +${jackpotCoins} CryptoCoins! <<`);
+        continue;
+      }
 
       if (isBoss) {
         this.normalBossesKilledCount++;
@@ -1098,6 +1203,10 @@ export class Game {
 
     this.ctx.restore();
 
+    if (this.spawner.swarmActiveTimer > 0 && this.gameState !== 'MENU') {
+      this.drawSwarmPlagueOverlay();
+    }
+
     if (this.damageVignetteAlpha > 0) {
       this.drawDamageVignette();
     }
@@ -1212,6 +1321,28 @@ export class Game {
     this.ctx.shadowBlur = 8;
     this.ctx.font = 'bold 14px "Courier New", monospace';
     this.ctx.fillText(GAME_VERSION, this.canvas.width - 16, this.canvas.height - 14);
+    this.ctx.restore();
+  }
+
+  private drawSwarmPlagueOverlay(): void {
+    this.ctx.save();
+    // Filtro rojo suave sobre todo el Canvas durante los 15s de 'El Enjambre'
+    const pulseAlpha = 0.12 + Math.sin(performance.now() * 0.008) * 0.04;
+    this.ctx.fillStyle = `rgba(255, 15, 45, ${pulseAlpha})`;
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Alarma visual superior
+    const blink = Math.floor(performance.now() / 280) % 2 === 0;
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = blink ? '#ff1e42' : '#fde047';
+    this.ctx.shadowColor = '#ff0044';
+    this.ctx.shadowBlur = 16;
+    this.ctx.font = 'bold 20px "Courier New", monospace';
+    this.ctx.fillText(
+      `⚠️ ALERTA DE PLAGA: EL ENJAMBRE (${this.spawner.swarmActiveTimer.toFixed(1)}s) // ¡50 ENEMIGOS DETECTADOS! ⚠️`,
+      this.canvas.width / 2,
+      82
+    );
     this.ctx.restore();
   }
 

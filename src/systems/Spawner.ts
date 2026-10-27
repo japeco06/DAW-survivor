@@ -3,6 +3,8 @@ import { Trojan } from '../entities/Trojan';
 import { TrojanShooter } from '../entities/TrojanShooter';
 import { Worm } from '../entities/Worm';
 import { ArmoredWorm } from '../entities/ArmoredWorm';
+import { HardwareBox } from '../entities/HardwareBox';
+import { CryptoMiner } from '../entities/CryptoMiner';
 import { RansomwareBoss } from '../entities/RansomwareBoss';
 
 export class Spawner {
@@ -16,6 +18,15 @@ export class Spawner {
   private readonly maxActiveTrojanShooters: number = 5;
   private readonly maxActiveTrojans: number = 5;
   private readonly maxActiveWorms: number = 5;
+  private readonly maxActiveHardwareBoxes: number = 4;
+
+  private boxCheckTimer: number = 0;
+  private minerCheckTimer: number = 0;
+  private swarmCheckTimer: number = 0;
+
+  public swarmActiveTimer: number = 0;
+  public swarmTriggeredJustNow: boolean = false;
+  public minerSpawnedJustNow: boolean = false;
 
   public currentThreatLevel: number = 1;
   public activeBossAlertTimer: number = 0;
@@ -24,6 +35,29 @@ export class Spawner {
   public syncAfterMegaBoss(elapsedTime: number): void {
     this.timer = 0;
     this.nextBossTime = elapsedTime + this.bossSpawnInterval;
+  }
+
+  public triggerSwarmEvent(
+    enemies: Adware[],
+    canvasWidth: number,
+    canvasHeight: number
+  ): void {
+    this.swarmActiveTimer = 15.0;
+    this.swarmTriggeredJustNow = true;
+
+    // Generar inmediatamente 50 enemigos de la variante 'Amarilla' con muy poca vida y daño
+    for (let i = 0; i < 50; i++) {
+      const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
+      const jitterX = (Math.random() - 0.5) * 90;
+      const jitterY = (Math.random() - 0.5) * 90;
+      const swarmTrojan = new Trojan(pos.x + jitterX, pos.y + jitterY, 1);
+      swarmTrojan.maxHp = 8;
+      swarmTrojan.hp = 8;
+      swarmTrojan.damage = 4;
+      swarmTrojan.xpValue = 6;
+      swarmTrojan.speed = 165 + Math.random() * 35;
+      enemies.push(swarmTrojan);
+    }
   }
 
   /**
@@ -51,12 +85,63 @@ export class Spawner {
     canvasWidth: number,
     canvasHeight: number
   ): void {
+    this.swarmTriggeredJustNow = false;
+    this.minerSpawnedJustNow = false;
+
     if (this.activeBossAlertTimer > 0) {
       this.activeBossAlertTimer = Math.max(0, this.activeBossAlertTimer - dt);
     }
 
     this.currentThreatLevel = 1 + Math.floor(elapsedTime / 20);
     const hpMultiplier = this.getGlobalHpMultiplier(elapsedTime, playerLevel);
+
+    // 1. Obstáculos: Cajas de Hardware (probabilidad media-baja, superior a los eventos)
+    this.boxCheckTimer += dt;
+    if (this.boxCheckTimer >= 9.0) {
+      this.boxCheckTimer = 0;
+      const activeBoxes = enemies.filter(
+        (e) => e.active && e instanceof HardwareBox
+      ).length;
+      if (activeBoxes < this.maxActiveHardwareBoxes && Math.random() < 0.48) {
+        const bx = 110 + Math.random() * Math.max(120, canvasWidth - 220);
+        const by = 110 + Math.random() * Math.max(120, canvasHeight - 220);
+        enemies.push(new HardwareBox(bx, by, hpMultiplier));
+      }
+    }
+
+    // 2. El Minero de Criptos (Loot Goblin - probabilidad muy baja)
+    this.minerCheckTimer += dt;
+    if (elapsedTime >= 18 && this.minerCheckTimer >= 14.0) {
+      this.minerCheckTimer = 0;
+      const activeMiners = enemies.filter(
+        (e) => e.active && e instanceof CryptoMiner
+      ).length;
+      if (activeMiners === 0 && Math.random() < 0.14) {
+        const mx = 140 + Math.random() * Math.max(120, canvasWidth - 280);
+        const my = 140 + Math.random() * Math.max(120, canvasHeight - 280);
+        enemies.push(new CryptoMiner(mx, my, hpMultiplier));
+        this.minerSpawnedJustNow = true;
+      }
+    }
+
+    // 3. Evento 'El Enjambre' (Plaga): durante 15s detiene el spawn normal de enemigos
+    if (this.swarmActiveTimer > 0) {
+      this.swarmActiveTimer = Math.max(0, this.swarmActiveTimer - dt);
+      if (elapsedTime >= this.nextBossTime) {
+        this.nextBossTime = elapsedTime + 4;
+      }
+      return;
+    }
+
+    this.swarmCheckTimer += dt;
+    if (elapsedTime >= 25 && this.swarmCheckTimer >= 16.0) {
+      this.swarmCheckTimer = 0;
+      if (Math.random() < 0.12) {
+        this.triggerSwarmEvent(enemies, canvasWidth, canvasHeight);
+        return;
+      }
+    }
+
     const currentSpawnInterval = Math.max(0.14, 0.68 * Math.pow(0.9, elapsedTime / 12));
 
     this.timer += dt;

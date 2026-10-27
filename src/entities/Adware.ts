@@ -7,6 +7,8 @@ export type MalwareType =
   | 'TROJAN_SHOOTER'
   | 'WORM'
   | 'ARMORED_WORM'
+  | 'HARDWARE_BOX'
+  | 'CRYPTO_MINER'
   | 'RANSOMWARE';
 
 /**

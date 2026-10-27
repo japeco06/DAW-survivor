@@ -92,15 +92,28 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [1. Límite de Enemigos Amarillos (`Spawner.ts`)] Máximo estricto de 5 enemigos amarillos (`Trojan`) vivos al mismo tiempo en el mapa
 │   └── [2. Escalado de 'Robo de Ancho de Banda' (`UpgradeSystem.ts`)] 5 niveles progresivos (3% -> 4.5% -> 6% -> 7.5% -> 10%) con bloqueo automático ('Maxed') al alcanzar el nivel 5
 │
-└── v0.7.3 — Nuevas Armas ('Drones Antivirus', 'Cortafuegos', 'Rayo SQL Injection'), Límite de 4 Slots y Balanceo (ACTUAL)
-    ├── [Fase 1] Balanceo de Enemigos: Límite estricto de máximo 5 enemigos morados (`Worm`) vivos y aumento de frecuencia constante de enemigos rojos (`Adware`)
-    ├── [Fase 2] Límite de 4 Armas (4 Slots): Si el jugador ya tiene 4 armas distintas equipadas, las cartas de armas nuevas se bloquean y solo se ofrecen mejoras de armas activas o pasivas
-    └── [Fase 3] 3 Nuevas Armas en el Pool: 'Drones Antivirus' (orbital), 'Cortafuegos' (onda expansiva en área) y 'Rayo SQL Injection' (láser penetrante)
+├── v0.7.3 — Nuevas Armas ('Drones Antivirus', 'Cortafuegos', 'Rayo SQL Injection'), Límite de 4 Slots y Balanceo
+│   ├── [Fase 1] Balanceo de Enemigos: Límite estricto de máximo 5 enemigos morados (`Worm`) vivos y aumento de frecuencia constante de enemigos rojos (`Adware`)
+│   ├── [Fase 2] Límite de 4 Armas (4 Slots): Si el jugador ya tiene 4 armas distintas equipadas, las cartas de armas nuevas se bloquean y solo se ofrecen mejoras de armas activas o pasivas
+│   └── [Fase 3] 3 Nuevas Armas en el Pool: 'Drones Antivirus' (orbital), 'Cortafuegos' (onda expansiva en área) y 'Rayo SQL Injection' (láser penetrante)
+│
+└── v0.8.0 — Eventos Dinámicos y Obstáculos: Cajas de Hardware, Minero de Criptos y 'El Enjambre' (ACTUAL)
+    ├── [Fase 1] Obstáculos ('Cajas de Hardware' - `HardwareBox.ts`): Cajas estáticas destructibles que sueltan recompensas aleatorias (monedas, orbes de XP o +25 HP de curación)
+    ├── [Fase 2] 'El Minero de Criptos' (`CryptoMiner.ts` - Loot Goblin): Enemigo raro que no ataca, huye constantemente y se des-spawnea tras 11s; si muere a tiempo suelta entre 30 y 40 Criptomonedas de golpe
+    └── [Fase 3] Evento 'El Enjambre' (Plaga): Filtro rojo suave y alarma visual; detiene el spawn normal durante 15s y genera 50 enemigos amarillos con muy poca vida y daño
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.8.0] - 2026-10-27
+- **Añadido (`HardwareBox.ts`, `Spawner.ts`, `Game.ts` - Fase 1: Cajas de Hardware)**:
+  - Obstáculos estáticos destructibles que aparecen esporádicamente por el mapa y, al ser destruidos, otorgan una recompensa aleatoria (`+3 Criptomonedas`, `+3 Orbes de XP` o `+25 HP` de curación inmediata).
+- **Añadido (`CryptoMiner.ts`, `Spawner.ts`, `Game.ts` - Fase 2: El Minero de Criptos / Loot Goblin)**:
+  - Enemigo especial de aparición muy rara que no ataca al Agente y huye continuamente en dirección opuesta. Si sobrevive 11 segundos escapa y desaparece; si el jugador logra eliminarlo a tiempo, suelta un gran botín de **30 a 40 Criptomonedas** de golpe.
+- **Añadido (`Spawner.ts`, `Game.ts` - Fase 3: Evento `'El Enjambre'`)**:
+  - Evento aleatorio de baja probabilidad que aplica un filtro rojo suave al Canvas, activa una alarma visual y sonora, pausa el spawn normal durante **15 segundos** y genera de golpe **50 enemigos amarillos (`Trojan`)** con muy poca vida (`8 HP`) y daño reducido (`4 DMG`).
 
 ### [v0.7.3] - 2026-10-27
 - **Balanceado (`Spawner.ts`, `Game.ts` - Fase 1)**:

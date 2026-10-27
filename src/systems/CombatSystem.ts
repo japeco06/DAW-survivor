@@ -666,9 +666,21 @@ export class CombatSystem {
         if (!enemy.active) continue;
 
         if (CombatSystem.checkAABBCollision(player, enemy)) {
-          const tookDamage = player.takeDamage(enemy.damage);
-          if (tookDamage) {
-            playerHit = true;
+          if (enemy.damage > 0) {
+            const tookDamage = player.takeDamage(enemy.damage);
+            if (tookDamage) {
+              playerHit = true;
+            }
+          } else if (enemy.malwareType === 'HARDWARE_BOX') {
+            // Obstáculo estático: empuja ligeramente al jugador hacia afuera sin dañarlo
+            const dx = player.x - enemy.x;
+            const dy = player.y - enemy.y;
+            const dist = Math.hypot(dx, dy) || 1;
+            player.x += (dx / dist) * 6;
+            player.y += (dy / dist) * 6;
+            continue;
+          } else {
+            continue;
           }
 
           const dx = enemy.x - player.x;
