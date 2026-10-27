@@ -1,6 +1,8 @@
 import { Adware } from '../entities/Adware';
 import { Trojan } from '../entities/Trojan';
+import { TrojanShooter } from '../entities/TrojanShooter';
 import { Worm } from '../entities/Worm';
+import { ArmoredWorm } from '../entities/ArmoredWorm';
 import { RansomwareBoss } from '../entities/RansomwareBoss';
 
 export class Spawner {
@@ -14,18 +16,21 @@ export class Spawner {
   public activeBossAlertTimer: number = 0;
   public lastBossSpawnedName: string = '';
 
-  /**
-   * Reprograma limpiamente el temporizador de jefes normales tras finalizar un evento de Mega-Jefe,
-   * garantizando un ciclo infinito (5 jefes normales -> 1 Mega-Jefe -> 5 jefes normales...).
-   */
   public syncAfterMegaBoss(elapsedTime: number): void {
     this.timer = 0;
     this.nextBossTime = elapsedTime + this.bossSpawnInterval;
   }
 
+  public getGlobalHpMultiplier(elapsedTime: number, playerLevel: number): number {
+    const timeScaling = 1 + elapsedTime * 0.022 + Math.pow(elapsedTime / 60, 1.3) * 0.32;
+    const levelScaling = 1 + Math.max(0, playerLevel - 1) * 0.14;
+    return Number((timeScaling * levelScaling).toFixed(2));
+  }
+
   public update(
     dt: number,
     elapsedTime: number,
+    playerLevel: number,
     enemies: Adware[],
     canvasWidth: number,
     canvasHeight: number
@@ -35,7 +40,7 @@ export class Spawner {
     }
 
     this.currentThreatLevel = 1 + Math.floor(elapsedTime / 20);
-    const hpMultiplier = 1 + elapsedTime * 0.018;
+    const hpMultiplier = this.getGlobalHpMultiplier(elapsedTime, playerLevel);
     const currentSpawnInterval = Math.max(0.18, 0.85 * Math.pow(0.9, elapsedTime / 12));
 
     this.timer += dt;
@@ -67,12 +72,21 @@ export class Spawner {
     const pos = this.getRandomOutsidePosition(width, height);
     const roll = Math.random();
 
-    if (elapsedTime >= 30 && roll < 0.22) {
+    // Baja frecuencia de aparición para los 2 nuevos enemigos especiales
+    if (elapsedTime >= 18 && roll < 0.07) {
+      return new ArmoredWorm(pos.x, pos.y, hpMultiplier);
+    }
+
+    if (elapsedTime >= 14 && roll >= 0.07 && roll < 0.15) {
+      return new TrojanShooter(pos.x, pos.y, hpMultiplier);
+    }
+
+    if (elapsedTime >= 30 && roll >= 0.15 && roll < 0.34) {
       return new Worm(pos.x, pos.y, hpMultiplier, false);
     }
 
-    const trojanChance = elapsedTime >= 12 ? Math.min(0.45, 0.2 + elapsedTime * 0.003) : 0;
-    if (roll < trojanChance + (elapsedTime >= 30 ? 0.22 : 0)) {
+    const trojanChance = elapsedTime >= 12 ? Math.min(0.4, 0.18 + elapsedTime * 0.003) : 0;
+    if (roll < 0.34 + trojanChance) {
       return new Trojan(pos.x, pos.y, hpMultiplier);
     }
 

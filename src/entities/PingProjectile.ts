@@ -6,8 +6,8 @@ import { Adware } from './Adware';
  * Proyectil azul (#0088ff) que persigue automáticamente al enemigo activo más cercano (Homing).
  */
 export class PingProjectile extends Entity {
-  private vx: number;
-  private vy: number;
+  public vx: number;
+  public vy: number;
   public damage: number;
   private lifeTime: number = 3.2;
   private turnSpeed: number = 7.5; // Capacidad de giro para perseguir objetivos

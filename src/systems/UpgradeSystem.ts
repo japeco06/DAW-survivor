@@ -49,6 +49,19 @@ export class UpgradeSystem {
         },
       },
       {
+        id: 'electromagnet',
+        name: 'ELECTROIMÁN',
+        category: 'PASIVA // CAMPO MAGNÉTICO',
+        description:
+          'Amplía intensamente el campo electromagnético (+90px de radio) para atraer orbes de XP y Criptomonedas desde mucho más lejos.',
+        color: '#38bdf8',
+        level: 0,
+        maxLevel: 5,
+        apply: (player) => {
+          player.pickupRadius += 90;
+        },
+      },
+      {
         id: 'ping_tracker',
         name: 'PING_TRACKER.exe',
         category: 'ARMA // HOMING',

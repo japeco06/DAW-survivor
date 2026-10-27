@@ -1,6 +1,7 @@
 import { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { Adware, MalwareType } from '../entities/Adware';
+import { TrojanShooter, EnemyProjectile } from '../entities/TrojanShooter';
 import { Projectile } from '../entities/Projectile';
 import { PingProjectile } from '../entities/PingProjectile';
 import { QuarantineZone } from '../entities/QuarantineZone';
@@ -69,13 +70,18 @@ export class CombatSystem {
   private firewallAngle: number = 0;
   private firewallHitCooldowns: WeakMap<Adware, number> = new WeakMap();
 
+  // 5. Proyectiles enemigos (disparados por el Troyano Tirador)
+  public enemyProjectiles: EnemyProjectile[] = [];
+
   public update(
     dt: number,
     player: Player,
     enemies: Adware[],
     projectiles: Projectile[],
     pingProjectiles: PingProjectile[],
-    quarantineZones: QuarantineZone[]
+    quarantineZones: QuarantineZone[],
+    canvasWidth: number = 1920,
+    canvasHeight: number = 1080
   ): CombatEvents {
     this.fireTimer += dt;
     this.pingTimer += dt;
@@ -195,6 +201,18 @@ export class CombatSystem {
 
         if (CombatSystem.checkAABBCollision(proj, enemy)) {
           proj.active = false;
+          const sourceX = proj.x - proj.vx * 0.045;
+          const sourceY = proj.y - proj.vy * 0.045;
+
+          if (enemy.isHitBlockedByShield(sourceX, sourceY)) {
+            damagedEnemies.push({
+              x: enemy.x,
+              y: enemy.y,
+              damage: 0,
+              color: '#38bdf8',
+            });
+            break;
+          }
 
           const dx = enemy.x - player.x;
           const dy = enemy.y - player.y;
@@ -223,6 +241,18 @@ export class CombatSystem {
 
         if (CombatSystem.checkAABBCollision(ping, enemy)) {
           ping.active = false;
+          const sourceX = ping.x - ping.vx * 0.045;
+          const sourceY = ping.y - ping.vy * 0.045;
+
+          if (enemy.isHitBlockedByShield(sourceX, sourceY)) {
+            damagedEnemies.push({
+              x: enemy.x,
+              y: enemy.y,
+              damage: 0,
+              color: '#38bdf8',
+            });
+            break;
+          }
 
           const dx = enemy.x - player.x;
           const dy = enemy.y - player.y;
@@ -305,6 +335,27 @@ export class CombatSystem {
       }
     }
 
+    // --- PROYECTILES ENEMIGOS (Troyano Tirador) ---
+    for (const enemy of enemies) {
+      if (enemy.active && enemy instanceof TrojanShooter && enemy.pendingProjectiles.length > 0) {
+        this.enemyProjectiles.push(...enemy.pendingProjectiles);
+        enemy.pendingProjectiles = [];
+      }
+    }
+
+    for (const eProj of this.enemyProjectiles) {
+      if (!eProj.active) continue;
+      eProj.update(dt, canvasWidth, canvasHeight);
+
+      if (eProj.active && player.active && CombatSystem.checkAABBCollision(player, eProj)) {
+        eProj.active = false;
+        if (player.takeDamage(eProj.damage)) {
+          playerHit = true;
+        }
+      }
+    }
+    this.enemyProjectiles = this.enemyProjectiles.filter((p) => p.active);
+
     // --- COLISIONES: Enemigos vs Jugador ---
     if (player.active) {
       for (const enemy of enemies) {
@@ -360,6 +411,12 @@ export class CombatSystem {
   }
 
   public drawFirewall(ctx: CanvasRenderingContext2D, player: Player): void {
+    for (const eProj of this.enemyProjectiles) {
+      if (eProj.active) {
+        eProj.draw(ctx);
+      }
+    }
+
     if (this.firewallCount <= 0 || !player.active) return;
 
     const nodes = this.getFirewallNodePositions(player);

@@ -1,4 +1,4 @@
-export type CharacterId = 'STANDARD' | 'ROOT' | 'PROXY' | 'KERNEL';
+export type CharacterId = 'STANDARD' | 'ROOT' | 'PROXY';
 
 export interface CharacterProfile {
   id: CharacterId;
@@ -21,20 +21,12 @@ interface SavedMetaState {
 
 const STORAGE_KEY = 'cyber_survivor_meta_v020';
 
-/**
- * Sistema de Metaprogresión y Tienda (v0.3.0 - Fase 2).
- * Gestiona las Criptomonedas globales y los 4 Agentes desbloqueables:
- * - Agente Estándar (Verde)
- * - Agente Root (Azul oscuro: +20% velocidad)
- * - Agente Proxy (Morado: Doble de salud máxima, -15% velocidad)
- * - Agente Kernel (Blanco: Magnetismo enorme para atraer orbes de XP y monedas desde lejos)
- */
 export class MetaSystem {
   public coins: number = 0;
   public unlockedCharacters: Set<CharacterId> = new Set(['STANDARD']);
   public selectedCharacter: CharacterId = 'STANDARD';
 
-  public readonly characterOrder: CharacterId[] = ['STANDARD', 'ROOT', 'PROXY', 'KERNEL'];
+  public readonly characterOrder: CharacterId[] = ['STANDARD', 'ROOT', 'PROXY'];
 
   public readonly characters: Record<CharacterId, CharacterProfile> = {
     STANDARD: {
@@ -72,18 +64,6 @@ export class MetaSystem {
       hpMultiplier: 2.0,
       pickupRadiusMultiplier: 1.0,
       cost: 15,
-    },
-    KERNEL: {
-      id: 'KERNEL',
-      name: 'AGENTE KERNEL',
-      subtitle: 'CORE_MAGNET // MAGNETISMO ENORME',
-      description: 'Cuadrado blanco puro: posee un magnetismo masivo que atrae orbes de XP y monedas desde muy lejos.',
-      color: '#f8fafc',
-      borderColor: '#38bdf8',
-      speedMultiplier: 1.0,
-      hpMultiplier: 1.0,
-      pickupRadiusMultiplier: 2.85,
-      cost: 20,
     },
   };
 
@@ -142,7 +122,10 @@ export class MetaSystem {
         this.coins = Math.floor(parsed.coins);
       }
       if (Array.isArray(parsed.unlockedCharacters)) {
-        this.unlockedCharacters = new Set(['STANDARD', ...parsed.unlockedCharacters]);
+        const validUnlocked = parsed.unlockedCharacters.filter(
+          (id): id is CharacterId => Boolean(this.characters[id as CharacterId])
+        );
+        this.unlockedCharacters = new Set(['STANDARD', ...validUnlocked]);
       }
       if (
         parsed.selectedCharacter &&
@@ -150,6 +133,8 @@ export class MetaSystem {
         this.unlockedCharacters.has(parsed.selectedCharacter)
       ) {
         this.selectedCharacter = parsed.selectedCharacter;
+      } else {
+        this.selectedCharacter = 'STANDARD';
       }
     } catch {
       // Ignorar errores de almacenamiento restringido

@@ -5,8 +5,8 @@ import { Entity } from './Entity';
  * Se desplaza en línea recta hacia el objetivo calculado y se destruye al impactar o expirar.
  */
 export class Projectile extends Entity {
-  private vx: number;
-  private vy: number;
+  public vx: number;
+  public vy: number;
   public damage: number;
   private lifeTime: number = 2.2; // Segundos máximos de vida útil
 

@@ -47,7 +47,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.5.3';
+const GAME_VERSION = 'v0.6.0';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -152,7 +152,6 @@ export class Game {
           '1': 'STANDARD',
           '2': 'ROOT',
           '3': 'PROXY',
-          '4': 'KERNEL',
         };
         if (keyMap[key]) {
           const res = this.metaSystem.selectOrBuyCharacter(keyMap[key]);
@@ -366,6 +365,7 @@ export class Game {
     this.projectiles = [];
     this.pingProjectiles = [];
     this.quarantineZones = [];
+    this.combatSystem.enemyProjectiles = [];
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.decryptionKeys = [];
@@ -401,6 +401,7 @@ export class Game {
     this.projectiles = [];
     this.pingProjectiles = [];
     this.quarantineZones = [];
+    this.combatSystem.enemyProjectiles = [];
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.decryptionKeys = [];
@@ -436,6 +437,7 @@ export class Game {
     this.projectiles = [];
     this.pingProjectiles = [];
     this.quarantineZones = [];
+    this.combatSystem.enemyProjectiles = [];
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.decryptionKeys = [];
@@ -641,6 +643,7 @@ export class Game {
     this.spawner.update(
       dt,
       this.elapsedTime,
+      this.upgradeSystem.level,
       this.enemies,
       this.canvas.width,
       this.canvas.height
@@ -670,7 +673,9 @@ export class Game {
       this.enemies,
       this.projectiles,
       this.pingProjectiles,
-      this.quarantineZones
+      this.quarantineZones,
+      this.canvas.width,
+      this.canvas.height
     );
     this.killCount += combatEvents.enemiesKilled;
     this.highScoreKills = Math.max(this.highScoreKills, this.killCount);
@@ -684,7 +689,11 @@ export class Game {
 
     for (const hit of combatEvents.damagedEnemies) {
       this.particleSystem.spawnHitSparks(hit.x, hit.y, hit.color);
-      this.particleSystem.spawnFloatingText(hit.x, hit.y, `-${hit.damage}`, '#ffffff', 0.95);
+      if (hit.damage === 0) {
+        this.particleSystem.spawnFloatingText(hit.x, hit.y, '0 [SHIELD]', '#38bdf8', 0.85);
+      } else {
+        this.particleSystem.spawnFloatingText(hit.x, hit.y, `-${hit.damage}`, '#ffffff', 0.95);
+      }
     }
 
     let triggerMegaBossNow = false;
@@ -731,7 +740,10 @@ export class Game {
       }
 
       if (drop.enemyRef instanceof Worm && !drop.enemyRef.isSplitChild) {
-        const hpMult = 1 + this.elapsedTime * 0.015;
+        const hpMult = this.spawner.getGlobalHpMultiplier(
+          this.elapsedTime,
+          this.upgradeSystem.level
+        );
         this.enemies.push(new Worm(drop.x - 14, drop.y - 14, hpMult, true));
         this.enemies.push(new Worm(drop.x + 14, drop.y + 14, hpMult, true));
       }
@@ -1122,9 +1134,12 @@ export class Game {
     return this.metaSystem.characterOrder.map((id, idx) => {
       const col = idx % 2;
       const row = Math.floor(idx / 2);
+      const isLastSingleRowCard =
+        idx === this.metaSystem.characterOrder.length - 1 &&
+        this.metaSystem.characterOrder.length % 2 === 1;
       return {
         id,
-        x: startX + col * (cardW + gapX),
+        x: isLastSingleRowCard ? cx - cardW / 2 : startX + col * (cardW + gapX),
         y: startY + row * (cardH + gapY),
         width: cardW,
         height: cardH,
@@ -1186,7 +1201,7 @@ export class Game {
     this.ctx.fillStyle = '#00f0ff';
     this.ctx.font = '14px "Courier New", monospace';
     this.ctx.fillText(
-      'SELECCIONA O DESBLOQUEA UN AGENTE CON CRIPTOMONEDAS (Teclas [1][2][3][4] o Clic):',
+      'SELECCIONA O DESBLOQUEA UN AGENTE CON CRIPTOMONEDAS (Teclas [1][2][3] o Clic):',
       cx,
       py + 106
     );

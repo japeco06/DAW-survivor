@@ -59,14 +59,31 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [1. Balanceo de Economía] Probabilidad de drop de Criptomonedas reducida drásticamente (25% -> 6% en enemigos base) para fomentar el farmeo entre partidas
 │   └── [2. Escalado de Experiencia Suavizado] Multiplicador por nivel reducido (1.35x + 20 -> 1.15x + 12) para evitar estancamiento en niveles medios y altos
 │
-└── v0.5.3 — Ajuste de Ritmo Inicial (Pacing): XP Base Mayor y Mini-Jefes Frecuentes (ACTUAL)
-    ├── [1. Balanceo de Experiencia Temprana] XP base inicial aumentada (80 -> 150 XP) manteniendo intacto el escalado suave (1.15x + 12) para niveles altos
-    └── [2. Frecuencia de Mini-Jefes] Temporizador de aparición de jefes normales reducido (45s -> 22s), acelerando la llegada de los Mega-Jefes
+├── v0.5.3 — Ajuste de Ritmo Inicial (Pacing): XP Base Mayor y Mini-Jefes Frecuentes
+│   ├── [1. Balanceo de Experiencia Temprana] XP base inicial aumentada (80 -> 150 XP) manteniendo intacto el escalado suave (1.15x + 12) para niveles altos
+│   └── [2. Frecuencia de Mini-Jefes] Temporizador de aparición de jefes normales reducido (45s -> 22s), acelerando la llegada de los Mega-Jefes
+│
+└── v0.6.0 — Nuevos Enemigos ('Troyano Tirador' y 'Gusano Blindado'), Tarjeta 'Electroimán' y Escalado Global (ACTUAL)
+    ├── [Fase 1] Eliminación del 'Agente Kernel' de la tienda y creación de la Tarjeta Pasiva 'Electroimán' (+90px de radio magnético por nivel)
+    ├── [Fase 2] Nuevos Enemigos de Baja Frecuencia:
+    │   ├── 'Troyano Tirador' (`TrojanShooter.ts`): Mantiene distancia media-larga y dispara proyectiles dirigidos al jugador
+    │   └── 'Gusano Blindado' (`ArmoredWorm.ts`): Enemigo lento con escudo frontal direccional que bloquea el 100% del daño (0 daño), exigiendo flanquearlo por los laterales o la espalda
+    └── [Fase 3] Escalado de Vida Global (`Spawner.ts`): Multiplicador dinámico de HP máximo para todos los enemigos según el tiempo de supervivencia y el nivel del jugador
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.6.0] - 2026-10-27
+- **Limpiado y Añadido (`MetaSystem.ts`, `UpgradeSystem.ts` - Fase 1)**:
+  - Eliminado el personaje `Agente Kernel` de la tienda del Menú Principal y del sistema de selección.
+  - Creada la tarjeta de mejora pasiva **`Electroimán`** (`+90px` de radio magnético por nivel) para conservar y expandir la mecánica de atracción de orbes de XP y monedas.
+- **Nuevos Enemigos (`TrojanShooter.ts`, `ArmoredWorm.ts`, `CombatSystem.ts` - Fase 2)**:
+  - **`Troyano Tirador` (`TrojanShooter`)**: Unidad a distancia que se detiene a rango medio-largo (`230px - 330px`) y dispara proyectiles dirigidos (`EnemyProjectile`) hacia el jugador.
+  - **`Gusano Blindado` (`ArmoredWorm`)**: Enemigo lento con giro progresivo y un escudo energético frontal visible. Cualquier proyectil que impacte en su arco frontal inflige `0` de daño (`0 [SHIELD]`), obligando al jugador a rodearlo y dispararle por los laterales o la espalda.
+- **Escalado de Vida Global (`Spawner.ts` - Fase 3)**:
+  - Implementado `getGlobalHpMultiplier(elapsedTime, playerLevel)`, aumentando progresivamente la salud máxima (`maxHp`) de todos los enemigos normales conforme avanzan el tiempo de supervivencia y el nivel del jugador.
 
 ### [v0.5.3] - 2026-10-27
 - **Balanceado (`UpgradeSystem.ts` - Experiencia Temprana / Early Game)**:

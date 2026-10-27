@@ -1,7 +1,13 @@
 import { Entity } from './Entity';
 import { Player } from './Player';
 
-export type MalwareType = 'ADWARE' | 'TROJAN' | 'WORM' | 'RANSOMWARE';
+export type MalwareType =
+  | 'ADWARE'
+  | 'TROJAN'
+  | 'TROJAN_SHOOTER'
+  | 'WORM'
+  | 'ARMORED_WORM'
+  | 'RANSOMWARE';
 
 /**
  * Clase base para todo el Malware (Fase 4).
@@ -47,6 +53,13 @@ export class Adware extends Entity {
       this.x += (dx / distance) * this.speed * dt;
       this.y += (dy / distance) * this.speed * dt;
     }
+  }
+
+  /**
+   * Determina si un impacto proveniente de (sourceX, sourceY) es bloqueado por un escudo direccional.
+   */
+  public isHitBlockedByShield(_sourceX: number, _sourceY: number): boolean {
+    return false;
   }
 
   /**
