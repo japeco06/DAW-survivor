@@ -4,8 +4,8 @@ import { Player } from './Player';
 export class ArmoredWorm extends Adware {
   public facingAngle: number = 0;
   private initializedFacing: boolean = false;
-  private readonly turnRate: number = 1.32;
-  private readonly shieldHalfArc: number = Math.PI * 0.38;
+  private readonly turnRate: number = 0.42;
+  private readonly shieldHalfArc: number = Math.PI * 0.36;
   private shieldBlockFlashTimer: number = 0;
 
   constructor(x: number, y: number, hpMultiplier: number = 1) {

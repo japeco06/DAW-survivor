@@ -12,6 +12,9 @@ export class Spawner {
   private nextBossTime: number = 22;
   private bossCount: number = 0;
 
+  private readonly maxActiveArmoredWorms: number = 3;
+  private readonly maxActiveTrojanShooters: number = 5;
+
   public currentThreatLevel: number = 1;
   public activeBossAlertTimer: number = 0;
   public lastBossSpawnedName: string = '';
@@ -21,10 +24,21 @@ export class Spawner {
     this.nextBossTime = elapsedTime + this.bossSpawnInterval;
   }
 
+  /**
+   * Escalado de vida no lineal:
+   * - En los primeros niveles (1 a 6) el incremento es muy suave para no frenar el early game.
+   * - En niveles altos (late game, nivel > 6 y tiempo avanzado) se activa una curva exponencial/potencial agresiva.
+   */
   public getGlobalHpMultiplier(elapsedTime: number, playerLevel: number): number {
-    const timeScaling = 1 + elapsedTime * 0.022 + Math.pow(elapsedTime / 60, 1.3) * 0.32;
-    const levelScaling = 1 + Math.max(0, playerLevel - 1) * 0.14;
-    return Number((timeScaling * levelScaling).toFixed(2));
+    const earlyLevelBonus = Math.max(0, playerLevel - 1) * 0.035;
+    const lateLevelLevels = Math.max(0, playerLevel - 6);
+    const lateLevelBonus = Math.pow(lateLevelLevels, 1.85) * 0.12;
+
+    const earlyTimeBonus = Math.min(elapsedTime, 120) * 0.003;
+    const lateTimeMinutes = Math.max(0, (elapsedTime - 120) / 60);
+    const lateTimeBonus = Math.pow(lateTimeMinutes, 1.7) * 0.45;
+
+    return Number((1 + earlyLevelBonus + lateLevelBonus + earlyTimeBonus + lateTimeBonus).toFixed(2));
   }
 
   public update(
@@ -47,7 +61,7 @@ export class Spawner {
     while (this.timer >= currentSpawnInterval) {
       this.timer -= currentSpawnInterval;
       enemies.push(
-        this.spawnScaledMalware(elapsedTime, hpMultiplier, canvasWidth, canvasHeight)
+        this.spawnScaledMalware(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight)
       );
     }
 
@@ -66,18 +80,36 @@ export class Spawner {
   private spawnScaledMalware(
     elapsedTime: number,
     hpMultiplier: number,
+    enemies: Adware[],
     width: number,
     height: number
   ): Adware {
     const pos = this.getRandomOutsidePosition(width, height);
     const roll = Math.random();
 
-    // Baja frecuencia de aparición para los 2 nuevos enemigos especiales
-    if (elapsedTime >= 18 && roll < 0.07) {
+    const activeArmoredCount = enemies.filter(
+      (e) => e.active && e instanceof ArmoredWorm
+    ).length;
+    const activeShooterCount = enemies.filter(
+      (e) => e.active && e instanceof TrojanShooter
+    ).length;
+
+    // Máximo 3 Gusanos Blindados vivos simultáneamente en pantalla
+    if (
+      elapsedTime >= 18 &&
+      roll < 0.07 &&
+      activeArmoredCount < this.maxActiveArmoredWorms
+    ) {
       return new ArmoredWorm(pos.x, pos.y, hpMultiplier);
     }
 
-    if (elapsedTime >= 14 && roll >= 0.07 && roll < 0.15) {
+    // Máximo 5 Troyanos Tiradores vivos simultáneamente en pantalla
+    if (
+      elapsedTime >= 14 &&
+      roll >= 0.07 &&
+      roll < 0.15 &&
+      activeShooterCount < this.maxActiveTrojanShooters
+    ) {
       return new TrojanShooter(pos.x, pos.y, hpMultiplier);
     }
 

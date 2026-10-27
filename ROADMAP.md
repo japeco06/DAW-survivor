@@ -63,17 +63,31 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [1. Balanceo de Experiencia Temprana] XP base inicial aumentada (80 -> 150 XP) manteniendo intacto el escalado suave (1.15x + 12) para niveles altos
 │   └── [2. Frecuencia de Mini-Jefes] Temporizador de aparición de jefes normales reducido (45s -> 22s), acelerando la llegada de los Mega-Jefes
 │
-└── v0.6.0 — Nuevos Enemigos ('Troyano Tirador' y 'Gusano Blindado'), Tarjeta 'Electroimán' y Escalado Global (ACTUAL)
-    ├── [Fase 1] Eliminación del 'Agente Kernel' de la tienda y creación de la Tarjeta Pasiva 'Electroimán' (+90px de radio magnético por nivel)
-    ├── [Fase 2] Nuevos Enemigos de Baja Frecuencia:
-    │   ├── 'Troyano Tirador' (`TrojanShooter.ts`): Mantiene distancia media-larga y dispara proyectiles dirigidos al jugador
-    │   └── 'Gusano Blindado' (`ArmoredWorm.ts`): Enemigo lento con escudo frontal direccional que bloquea el 100% del daño (0 daño), exigiendo flanquearlo por los laterales o la espalda
-    └── [Fase 3] Escalado de Vida Global (`Spawner.ts`): Multiplicador dinámico de HP máximo para todos los enemigos según el tiempo de supervivencia y el nivel del jugador
+├── v0.6.0 — Nuevos Enemigos ('Troyano Tirador' y 'Gusano Blindado'), Tarjeta 'Electroimán' y Escalado Global
+│   ├── [Fase 1] Eliminación del 'Agente Kernel' de la tienda y creación de la Tarjeta Pasiva 'Electroimán' (+90px de radio magnético por nivel)
+│   ├── [Fase 2] Nuevos Enemigos de Baja Frecuencia:
+│   │   ├── 'Troyano Tirador' (`TrojanShooter.ts`): Mantiene distancia media-larga y dispara proyectiles dirigidos al jugador
+│   │   └── 'Gusano Blindado' (`ArmoredWorm.ts`): Enemigo lento con escudo frontal direccional que bloquea el 100% del daño (0 daño), exigiendo flanquearlo por los laterales o la espalda
+│   └── [Fase 3] Escalado de Vida Global (`Spawner.ts`): Multiplicador dinámico de HP máximo para todos los enemigos según el tiempo de supervivencia y el nivel del jugador
+│
+└── v0.6.1 — Parche de Balanceo Crítico: Escalado de Vida No Lineal, Límites de Spawn y Nerf de Giro (ACTUAL)
+    ├── [1. Escalado de Vida No Lineal (`Spawner.ts`)] Crecimiento suave en los primeros niveles (early game) y escalado potencial agresivo solo en late game (nivel > 6)
+    ├── [2. Ajustes al 'Gusano Blindado'] Límite estricto de máximo 3 vivos simultáneamente y reducción drástica de su velocidad de rotación (`1.32` -> `0.42 rad/s`)
+    └── [3. Ajustes al 'Troyano Tirador'] Límite estricto de máximo 5 vivos simultáneamente en pantalla para evitar saturación de proyectiles
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.6.1] - 2026-10-27
+- **Rebalanceado (`Spawner.ts` - Escalado de Vida No Lineal)**:
+  - Rediseñada la fórmula `getGlobalHpMultiplier(elapsedTime, playerLevel)` para que durante los primeros niveles (`1` a `6`) la vida de los enemigos aumente muy poco a poco (`+3.5%` por nivel), reservando el crecimiento exponencial/potencial agresivo exclusivamente para el *late game*.
+- **Balanceado (`ArmoredWorm.ts`, `Spawner.ts` - 'Gusano Blindado')**:
+  - Añadido un límite estricto en el spawner de **máximo 3 `Gusanos Blindados`** vivos al mismo tiempo.
+  - Reducida drásticamente su velocidad de rotación (`turnRate` de `1.32 rad/s` a **`0.42 rad/s`**) para que gire lentamente y permita al jugador rodearlo y dispararle por la espalda con fluidez.
+- **Balanceado (`Spawner.ts` - 'Troyano Tirador')**:
+  - Añadido un límite estricto en el spawner de **máximo 5 `Troyanos Tiradores`** vivos al mismo tiempo en el mapa.
 
 ### [v0.6.0] - 2026-10-27
 - **Limpiado y Añadido (`MetaSystem.ts`, `UpgradeSystem.ts` - Fase 1)**:
