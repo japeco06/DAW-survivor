@@ -1,3 +1,5 @@
+import { HatItem, HATS_DATABASE, getHatById, rollGachaHat, RARITY_CONFIG } from './HatSystem';
+
 export type CharacterId = 'STANDARD' | 'ROOT' | 'PROXY';
 
 export interface CharacterProfile {
@@ -17,14 +19,19 @@ interface SavedMetaState {
   coins: number;
   unlockedCharacters: CharacterId[];
   selectedCharacter: CharacterId;
+  unlockedHats?: string[];
+  equippedHatId?: string | null;
 }
 
-const STORAGE_KEY = 'cyber_survivor_meta_v020';
+export const STORAGE_KEY = 'cyber_survivor_meta_v020';
+export const GACHA_PULL_COST = 5;
 
 export class MetaSystem {
   public coins: number = 0;
   public unlockedCharacters: Set<CharacterId> = new Set(['STANDARD']);
   public selectedCharacter: CharacterId = 'STANDARD';
+  public unlockedHats: Set<string> = new Set();
+  public equippedHatId: string | null = null;
 
   public readonly characterOrder: CharacterId[] = ['STANDARD', 'ROOT', 'PROXY'];
 
@@ -113,6 +120,96 @@ export class MetaSystem {
     };
   }
 
+  public pullGacha(): {
+    success: boolean;
+    hat?: HatItem;
+    isNew?: boolean;
+    message: string;
+  } {
+    if (this.coins < GACHA_PULL_COST) {
+      return {
+        success: false,
+        message: `> ERROR: Necesitas ${GACHA_PULL_COST} Criptomonedas para Tirar del Cable (Tienes ${this.coins}).`,
+      };
+    }
+
+    this.coins -= GACHA_PULL_COST;
+    const hat = rollGachaHat();
+    const isNew = !this.unlockedHats.has(hat.id);
+    this.unlockedHats.add(hat.id);
+
+    if (!this.equippedHatId) {
+      this.equippedHatId = hat.id;
+    }
+
+    this.save();
+    const rarityLabel = RARITY_CONFIG[hat.rarity].label.split(' ')[0];
+    return {
+      success: true,
+      hat,
+      isNew,
+      message: `> ¡OBTENIDO [${rarityLabel}]: ${hat.icon} ${hat.name} (${hat.statsLabel})!`,
+    };
+  }
+
+  public equipHat(hatId: string): { success: boolean; message: string } {
+    if (!this.unlockedHats.has(hatId)) {
+      return {
+        success: false,
+        message: '> ERROR: Aún no has desbloqueado este sombrero en el Gacha.',
+      };
+    }
+
+    const hat = getHatById(hatId);
+    if (!hat) {
+      return { success: false, message: '> ERROR: Objeto no encontrado.' };
+    }
+
+    if (this.equippedHatId === hatId) {
+      this.equippedHatId = null;
+      this.save();
+      return {
+        success: true,
+        message: `> Sombrero desequipado: ${hat.name}.`,
+      };
+    }
+
+    this.equippedHatId = hatId;
+    this.save();
+    return {
+      success: true,
+      message: `> EQUIPADO: ${hat.icon} ${hat.name} [${hat.statsLabel}]`,
+    };
+  }
+
+  public getEquippedHat(): HatItem | null {
+    return getHatById(this.equippedHatId);
+  }
+
+  public getUnlockedHatsList(): HatItem[] {
+    const rarityOrder: Record<string, number> = {
+      MITICA: 0,
+      LEGENDARIA: 1,
+      EPICA: 2,
+      RARA: 3,
+      COMUN: 4,
+    };
+    return HATS_DATABASE.filter((h) => this.unlockedHats.has(h.id)).sort(
+      (a, b) => rarityOrder[a.rarity] - rarityOrder[b.rarity]
+    );
+  }
+
+  public static readEquippedHatFromStorage(): HatItem | null {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Partial<SavedMetaState>;
+      return getHatById(parsed.equippedHatId);
+    } catch {
+      return null;
+    }
+  }
+
   private load(): void {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -136,6 +233,15 @@ export class MetaSystem {
       } else {
         this.selectedCharacter = 'STANDARD';
       }
+      if (Array.isArray(parsed.unlockedHats)) {
+        const validHats = parsed.unlockedHats.filter((id) => Boolean(getHatById(id)));
+        this.unlockedHats = new Set(validHats);
+      }
+      if (parsed.equippedHatId && this.unlockedHats.has(parsed.equippedHatId)) {
+        this.equippedHatId = parsed.equippedHatId;
+      } else {
+        this.equippedHatId = null;
+      }
     } catch {
       // Ignorar errores de almacenamiento restringido
     }
@@ -147,6 +253,8 @@ export class MetaSystem {
         coins: this.coins,
         unlockedCharacters: Array.from(this.unlockedCharacters),
         selectedCharacter: this.selectedCharacter,
+        unlockedHats: Array.from(this.unlockedHats),
+        equippedHatId: this.equippedHatId,
       };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {

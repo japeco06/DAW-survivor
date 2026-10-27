@@ -121,8 +121,19 @@ export class CombatSystem {
       }
     };
 
+    const computePlayerHitDamage = (baseDamage: number): { dmg: number; isCrit: boolean } => {
+      const scaled = Math.round(baseDamage * player.damageMultiplier);
+      if (player.critChance > 0 && Math.random() < player.critChance) {
+        return { dmg: scaled * 2, isCrit: true };
+      }
+      return { dmg: scaled, isCrit: false };
+    };
+
+    const effectiveFireCooldown = this.fireCooldown / Math.max(0.5, player.fireRateMultiplier);
+    const effectivePingCooldown = this.pingCooldown / Math.max(0.5, player.fireRateMultiplier);
+
     // --- ARMA 1: Ráfaga de Firewall (Disparo recto) ---
-    if (player.active && this.fireTimer >= this.fireCooldown) {
+    if (player.active && this.fireTimer >= effectiveFireCooldown) {
       const targets = this.findNearestEnemies(player, enemies, this.multiShotCount);
       if (targets.length > 0) {
         this.fireTimer = 0;
@@ -141,6 +152,7 @@ export class CombatSystem {
               : spreadIndex * 0.12;
 
           const finalAngle = baseAngle + spreadOffset;
+          const hitCalc = computePlayerHitDamage(this.projectileDamage);
 
           projectiles.push(
             new Projectile(
@@ -149,7 +161,7 @@ export class CombatSystem {
               Math.cos(finalAngle),
               Math.sin(finalAngle),
               this.projectileSpeed,
-              this.projectileDamage
+              hitCalc.dmg
             )
           );
         }
@@ -157,7 +169,7 @@ export class CombatSystem {
     }
 
     // --- ARMA 2: Ping Tracker (Proyectiles azules perseguidores) ---
-    if (player.active && this.pingTrackerLevel > 0 && this.pingTimer >= this.pingCooldown) {
+    if (player.active && this.pingTrackerLevel > 0 && this.pingTimer >= effectivePingCooldown) {
       const activeEnemies = enemies.filter((e) => e.active);
       if (activeEnemies.length > 0) {
         this.pingTimer = 0;
@@ -169,6 +181,7 @@ export class CombatSystem {
           const angle =
             Math.atan2(target.y - player.y, target.x - player.x) +
             (i - (projectilesToSpawn - 1) / 2) * 0.35;
+          const hitCalc = computePlayerHitDamage(this.pingDamage);
 
           pingProjectiles.push(
             new PingProjectile(
@@ -177,7 +190,7 @@ export class CombatSystem {
               Math.cos(angle),
               Math.sin(angle),
               this.pingSpeed,
-              this.pingDamage
+              hitCalc.dmg
             )
           );
         }

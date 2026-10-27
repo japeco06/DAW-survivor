@@ -1,30 +1,36 @@
 import { Entity } from './Entity';
 import { Input } from '../core/Input';
-import { CharacterProfile } from '../systems/MetaSystem';
+import { CharacterProfile, MetaSystem } from '../systems/MetaSystem';
+import { HatItem } from '../systems/HatSystem';
 
-/**
- * Agente Antivirus controlado por el jugador (v0.3.0).
- * Soporta los 4 perfiles de personaje (Estándar, Root, Proxy y Kernel) y el multiplicador
- * permanente de experiencia ('Overclock de Memoria').
- */
 export class Player extends Entity {
   public maxHp: number = 100;
   public hp: number = 100;
   public pickupRadius: number = 115;
-  public xpMultiplier: number = 1.0; // Multiplicador permanente de XP ('Overclock de Memoria')
-  public vampirismChance: number = 0; // Probabilidad de curar +1 HP al impactar con proyectiles ('Robo de Ancho de Banda')
+  public xpMultiplier: number = 1.0;
+  public vampirismChance: number = 0;
+  public damageMultiplier: number = 1.0;
+  public fireRateMultiplier: number = 1.0;
+  public critChance: number = 0;
+  public equippedHat: HatItem | null = null;
   public borderColor: string = '#ffffff';
   public profileName: string = 'AGENTE ESTÁNDAR';
 
   private invulnerabilityTimer: number = 0;
   private readonly invulnerabilityDuration: number = 0.45;
 
-  constructor(x: number, y: number, profile?: CharacterProfile) {
+  constructor(x: number, y: number, profile?: CharacterProfile, hatOverride?: HatItem | null) {
     const baseSpeed = 260;
     const baseHp = 100;
     const basePickupRadius = 115;
 
-    const speed = profile ? Math.round(baseSpeed * profile.speedMultiplier) : baseSpeed;
+    const hat =
+      hatOverride !== undefined ? hatOverride : MetaSystem.readEquippedHatFromStorage();
+    const hatSpeedMult = 1 + (hat?.stats.speedMult ?? 0);
+
+    const speed = profile
+      ? Math.round(baseSpeed * profile.speedMultiplier * hatSpeedMult)
+      : Math.round(baseSpeed * hatSpeedMult);
     const color = profile ? profile.color : '#00ff66';
 
     super(x, y, 28, speed, color);
@@ -35,6 +41,16 @@ export class Player extends Entity {
       this.pickupRadius = Math.round(basePickupRadius * profile.pickupRadiusMultiplier);
       this.borderColor = profile.borderColor;
       this.profileName = profile.name;
+    }
+
+    if (hat) {
+      this.equippedHat = hat;
+      this.maxHp += hat.stats.maxHpBonus ?? 0;
+      this.hp = this.maxHp;
+      this.pickupRadius += hat.stats.magnetBonus ?? 0;
+      this.damageMultiplier = Number((1 + (hat.stats.damageMult ?? 0)).toFixed(2));
+      this.fireRateMultiplier = Number((1 + (hat.stats.fireRateMult ?? 0)).toFixed(2));
+      this.critChance = hat.stats.critChance ?? 0;
     }
   }
 
@@ -104,6 +120,14 @@ export class Player extends Entity {
       this.size - 8,
       this.size - 8
     );
+
+    if (this.equippedHat) {
+      ctx.shadowBlur = 0;
+      ctx.font = '18px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.equippedHat.icon, this.x, this.y - this.size / 2 - 11);
+    }
 
     this.drawHealthBar(ctx);
 

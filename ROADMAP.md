@@ -75,14 +75,27 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [2. Ajustes al 'Gusano Blindado'] Límite estricto de máximo 3 vivos simultáneamente y reducción drástica de su velocidad de rotación (`1.32` -> `0.42 rad/s`)
 │   └── [3. Ajustes al 'Troyano Tirador'] Límite estricto de máximo 5 vivos simultáneamente en pantalla para evitar saturación de proyectiles
 │
-└── v0.6.2 — Reloj en Formato MM:SS y Tarjeta Pasiva 'Robo de Ancho de Banda' (Vampirismo) (ACTUAL)
-    ├── [1. Formato de Tiempo (Reloj MM:SS)] Contador de supervivencia en el HUD y pantalla final convertido a formato estándar `MM:SS`
-    └── [2. Nueva Tarjeta 'Robo de Ancho de Banda'] Pasiva de vampirismo: cada proyectil del jugador que impacte y dañe a un enemigo tiene un 3% de probabilidad de curar +1 HP (hasta el máximo de vida)
+├── v0.6.2 — Reloj en Formato MM:SS y Tarjeta Pasiva 'Robo de Ancho de Banda' (Vampirismo)
+│   ├── [1. Formato de Tiempo (Reloj MM:SS)] Contador de supervivencia en el HUD y pantalla final convertido a formato estándar `MM:SS`
+│   └── [2. Nueva Tarjeta 'Robo de Ancho de Banda'] Pasiva de vampirismo: cada proyectil del jugador que impacte y dañe a un enemigo tiene un 3% de probabilidad de curar +1 HP (hasta el máximo de vida)
+│
+└── v0.7.0 — Sistema Gacha ('Tirar del Cable'), Inventario y 50 Sombreros/Máscaras (ACTUAL)
+    ├── [Fase 1] Base de Datos de 50 Sombreros/Máscaras en 5 rarezas: Común (40%), Rara (30%), Épica (20%), Legendaria (9%) y Mítica (1%, 10 iconos de la cultura pop)
+    ├── [Fase 2] Pestaña Gacha en el Menú Principal: Botón 'Tirar del Cable' con Criptomonedas, revelación animada y persistencia en `localStorage`
+    └── [Fase 3] Inventario Paginado y Equipamiento: Selección de 1 sombrero activo y aplicación automática de multiplicadores de estadísticas al iniciar partida
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.7.0] - 2026-10-27
+- **Añadido (`HatSystem.ts` - Fase 1)**:
+  - Base de datos completa con **50 sombreros y máscaras** distribuidos en 5 rarezas (`Común 40%`, `Rara 30%`, `Épica 20%`, `Legendaria 9%`, `Mítica 1%`), incluyendo los 10 objetos Míticos de la cultura pop (*Gorro de Teemo, Gafas de Bubbles, Gorra de Ash, Máscara de Darth Vader, Casco de Iron Man, Sombrero Seleccionador, Máscara de Vendetta, Sombrero de Indiana Jones, Máscara de Jason y Gafas de Heisenberg*).
+- **Añadido (`MetaSystem.ts`, `Game.ts` - Fase 2 y Fase 3)**:
+  - Interfaz de pestañas en el Menú Principal (`[Q] AGENTES`, `[G] GACHA // COFRES`, `[I] INVENTARIO`).
+  - Botón **`Tirar del Cable`** para abrir cofres Gacha con Criptomonedas, animación de revelación y guardado automático en `localStorage`.
+  - Inventario interactivo para equipar sombreros desbloqueados y aplicación directa de sus modificadores matemáticos (`daño`, `velocidad`, `cadencia`, `vidaMax`, `imán`, `crítico`) en el constructor de `Player.ts`.
 
 ### [v0.6.2] - 2026-10-27
 - **Mejorado (`Game.ts` - Reloj del HUD en formato `MM:SS`)**:

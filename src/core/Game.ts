@@ -18,9 +18,11 @@ import { Spawner } from '../systems/Spawner';
 import { CombatSystem } from '../systems/CombatSystem';
 import { UpgradeSystem } from '../systems/UpgradeSystem';
 import { ParticleSystem } from '../systems/ParticleSystem';
-import { MetaSystem, CharacterId } from '../systems/MetaSystem';
+import { MetaSystem, CharacterId, GACHA_PULL_COST } from '../systems/MetaSystem';
+import { HatItem, HATS_DATABASE, RARITY_CONFIG } from '../systems/HatSystem';
 
 type GameState = 'MENU' | 'PLAYING' | 'GAMEOVER';
+type MenuTab = 'SHOP' | 'GACHA' | 'INVENTORY';
 
 interface CardRect {
   index: number;
@@ -47,7 +49,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.6.2';
+const GAME_VERSION = 'v0.7.0';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -86,8 +88,14 @@ export class Game {
   private showHitboxes: boolean = false;
   private hoveredCardIndex: number = -1;
   private hoveredMenuChar: CharacterId | null = null;
+  private activeMenuTab: MenuTab = 'SHOP';
+  private lastGachaHat: HatItem | null = null;
+  private lastGachaIsNew: boolean = false;
+  private gachaRevealTimer: number = 0;
+  private inventoryPage: number = 0;
+  private hoveredHatId: string | null = null;
   private menuFeedbackMessage: string =
-    'Selecciona un Agente con [1][2][3][4] o haz clic en su tarjeta para desbloquearlo/equiparlo.';
+    'Explora Agentes, Gacha (Tirar del Cable) e Inventario de Sombreros.';
   private damageVignetteAlpha: number = 0;
   private terminalLogs: string[] = [
     '> KERNEL_ANTIVIRUS_DAEMON v0.5.0 initialized...',
@@ -153,7 +161,14 @@ export class Game {
           '2': 'ROOT',
           '3': 'PROXY',
         };
-        if (keyMap[key]) {
+        if (key === 'q') {
+          this.activeMenuTab = 'SHOP';
+        } else if (key === 'g') {
+          this.activeMenuTab = 'GACHA';
+        } else if (key === 'i') {
+          this.activeMenuTab = 'INVENTORY';
+          this.inventoryPage = 0;
+        } else if (this.activeMenuTab === 'SHOP' && keyMap[key]) {
           const res = this.metaSystem.selectOrBuyCharacter(keyMap[key]);
           this.menuFeedbackMessage = res.message;
           if (res.success) this.sound.playCoinPickup();
@@ -217,15 +232,31 @@ export class Game {
 
       if (this.gameState === 'MENU') {
         this.hoveredMenuChar = null;
-        for (const charRect of this.getMenuCharacterRects()) {
-          if (
-            mx >= charRect.x &&
-            mx <= charRect.x + charRect.width &&
-            my >= charRect.y &&
-            my <= charRect.y + charRect.height
-          ) {
-            this.hoveredMenuChar = charRect.id;
-            break;
+        this.hoveredHatId = null;
+
+        if (this.activeMenuTab === 'SHOP') {
+          for (const charRect of this.getMenuCharacterRects()) {
+            if (
+              mx >= charRect.x &&
+              mx <= charRect.x + charRect.width &&
+              my >= charRect.y &&
+              my <= charRect.y + charRect.height
+            ) {
+              this.hoveredMenuChar = charRect.id;
+              break;
+            }
+          }
+        } else if (this.activeMenuTab === 'INVENTORY') {
+          for (const slot of this.getInventoryHatRects()) {
+            if (
+              mx >= slot.x &&
+              mx <= slot.x + slot.width &&
+              my >= slot.y &&
+              my <= slot.y + slot.height
+            ) {
+              this.hoveredHatId = slot.hat.id;
+              break;
+            }
           }
         }
         return;
@@ -272,19 +303,101 @@ export class Game {
       const my = e.clientY - rect.top;
 
       if (this.gameState === 'MENU') {
-        for (const charRect of this.getMenuCharacterRects()) {
+        // Pestañas superiores del Menú Principal (AGENTES | GACHA | INVENTARIO)
+        for (const tabRect of this.getMenuTabRects()) {
           if (
-            mx >= charRect.x &&
-            mx <= charRect.x + charRect.width &&
-            my >= charRect.y &&
-            my <= charRect.y + charRect.height
+            mx >= tabRect.x &&
+            mx <= tabRect.x + tabRect.width &&
+            my >= tabRect.y &&
+            my <= tabRect.y + tabRect.height
           ) {
-            const res = this.metaSystem.selectOrBuyCharacter(charRect.id);
+            this.activeMenuTab = tabRect.tab;
+            if (tabRect.tab === 'INVENTORY') {
+              this.inventoryPage = 0;
+            }
+            this.sound.playShoot(false);
+            return;
+          }
+        }
+
+        if (this.activeMenuTab === 'SHOP') {
+          for (const charRect of this.getMenuCharacterRects()) {
+            if (
+              mx >= charRect.x &&
+              mx <= charRect.x + charRect.width &&
+              my >= charRect.y &&
+              my <= charRect.y + charRect.height
+            ) {
+              const res = this.metaSystem.selectOrBuyCharacter(charRect.id);
+              this.menuFeedbackMessage = res.message;
+              if (res.success) {
+                this.sound.playCoinPickup();
+              }
+              return;
+            }
+          }
+        } else if (this.activeMenuTab === 'GACHA') {
+          const pullBtn = this.getGachaPullButtonRect();
+          if (
+            mx >= pullBtn.x &&
+            mx <= pullBtn.x + pullBtn.width &&
+            my >= pullBtn.y &&
+            my <= pullBtn.y + pullBtn.height
+          ) {
+            const res = this.metaSystem.pullGacha();
             this.menuFeedbackMessage = res.message;
-            if (res.success) {
+            if (res.success && res.hat) {
+              this.lastGachaHat = res.hat;
+              this.lastGachaIsNew = Boolean(res.isNew);
+              this.gachaRevealTimer = 1.2;
               this.sound.playCoinPickup();
+              const rColor = RARITY_CONFIG[res.hat.rarity].color;
+              this.particleSystem.spawnExplosion(
+                this.canvas.width / 2,
+                this.canvas.height / 2 + 55,
+                rColor,
+                res.hat.rarity === 'MITICA' || res.hat.rarity === 'LEGENDARIA' ? 55 : 28,
+                true
+              );
+            } else {
+              this.sound.playExplosion(false);
             }
             return;
+          }
+        } else if (this.activeMenuTab === 'INVENTORY') {
+          for (const slot of this.getInventoryHatRects()) {
+            if (
+              mx >= slot.x &&
+              mx <= slot.x + slot.width &&
+              my >= slot.y &&
+              my <= slot.y + slot.height
+            ) {
+              const res = this.metaSystem.equipHat(slot.hat.id);
+              this.menuFeedbackMessage = res.message;
+              if (res.success) {
+                this.sound.playCoinPickup();
+              }
+              return;
+            }
+          }
+
+          for (const pageBtn of this.getInventoryPaginationRects()) {
+            if (
+              mx >= pageBtn.x &&
+              mx <= pageBtn.x + pageBtn.width &&
+              my >= pageBtn.y &&
+              my <= pageBtn.y + pageBtn.height
+            ) {
+              const totalUnlocked = this.metaSystem.getUnlockedHatsList().length;
+              const maxPage = Math.max(0, Math.ceil(totalUnlocked / 9) - 1);
+              if (pageBtn.dir === 'PREV') {
+                this.inventoryPage = Math.max(0, this.inventoryPage - 1);
+              } else {
+                this.inventoryPage = Math.min(maxPage, this.inventoryPage + 1);
+              }
+              this.sound.playShoot(false);
+              return;
+            }
           }
         }
 
@@ -530,6 +643,9 @@ export class Game {
 
   private update(dt: number): void {
     this.particleSystem.update(dt);
+    if (this.gachaRevealTimer > 0) {
+      this.gachaRevealTimer = Math.max(0, this.gachaRevealTimer - dt);
+    }
 
     if (this.damageVignetteAlpha > 0) {
       this.damageVignetteAlpha = Math.max(0, this.damageVignetteAlpha - dt * 1.8);
@@ -1130,15 +1246,61 @@ export class Game {
     this.ctx.restore();
   }
 
+  private getMenuTabRects(): {
+    tab: MenuTab;
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const py = cy - 305;
+    const tabW = 225;
+    const tabH = 34;
+    const gap = 14;
+    const totalW = tabW * 3 + gap * 2;
+    const startX = cx - totalW / 2;
+    const y = py + 98;
+
+    return [
+      {
+        tab: 'SHOP',
+        label: '[Q] AGENTES',
+        x: startX,
+        y,
+        width: tabW,
+        height: tabH,
+      },
+      {
+        tab: 'GACHA',
+        label: '[G] GACHA // COFRES',
+        x: startX + tabW + gap,
+        y,
+        width: tabW,
+        height: tabH,
+      },
+      {
+        tab: 'INVENTORY',
+        label: `[I] INVENTARIO (${this.metaSystem.unlockedHats.size}/${HATS_DATABASE.length})`,
+        x: startX + (tabW + gap) * 2,
+        y,
+        width: tabW,
+        height: tabH,
+      },
+    ];
+  }
+
   private getMenuCharacterRects(): MenuCharacterRect[] {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
     const cardW = 340;
-    const cardH = 148;
+    const cardH = 138;
     const gapX = 22;
-    const gapY = 16;
+    const gapY = 14;
     const startX = cx - cardW - gapX / 2;
-    const startY = cy - 115;
+    const startY = cy - 95;
 
     return this.metaSystem.characterOrder.map((id, idx) => {
       const col = idx % 2;
@@ -1156,14 +1318,96 @@ export class Game {
     });
   }
 
+  private getGachaPullButtonRect(): { x: number; y: number; width: number; height: number } {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const width = 440;
+    const height = 48;
+    return {
+      x: cx - width / 2,
+      y: cy - 62,
+      width,
+      height,
+    };
+  }
+
+  private getInventoryHatRects(): {
+    hat: HatItem;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const unlockedList = this.metaSystem.getUnlockedHatsList();
+    const pageItems = unlockedList.slice(this.inventoryPage * 9, (this.inventoryPage + 1) * 9);
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const cardW = 222;
+    const cardH = 78;
+    const gapX = 14;
+    const gapY = 12;
+    const totalW = cardW * 3 + gapX * 2;
+    const startX = cx - totalW / 2;
+    const startY = cy - 102;
+
+    return pageItems.map((hat, idx) => {
+      const col = idx % 3;
+      const row = Math.floor(idx / 3);
+      return {
+        hat,
+        x: startX + col * (cardW + gapX),
+        y: startY + row * (cardH + gapY),
+        width: cardW,
+        height: cardH,
+      };
+    });
+  }
+
+  private getInventoryPaginationRects(): {
+    dir: 'PREV' | 'NEXT';
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const totalUnlocked = this.metaSystem.getUnlockedHatsList().length;
+    if (totalUnlocked <= 9) return [];
+
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const y = cy + 165;
+    const btnW = 140;
+    const btnH = 28;
+
+    return [
+      {
+        dir: 'PREV',
+        label: '<< ANTERIOR',
+        x: cx - 170,
+        y,
+        width: btnW,
+        height: btnH,
+      },
+      {
+        dir: 'NEXT',
+        label: 'SIGUIENTE >>',
+        x: cx + 30,
+        y,
+        width: btnW,
+        height: btnH,
+      },
+    ];
+  }
+
   private getStartButtonRect(): { x: number; y: number; width: number; height: number } {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
     const width = 480;
-    const height = 46;
+    const height = 44;
     return {
       x: cx - width / 2,
-      y: cy + 232,
+      y: cy + 240,
       width,
       height,
     };
@@ -1178,7 +1422,7 @@ export class Game {
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const panelW = Math.min(760, this.canvas.width - 28);
-    const panelH = 590;
+    const panelH = 610;
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
 
@@ -1193,99 +1437,269 @@ export class Game {
     this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#00ff66';
-    this.ctx.font = 'bold 34px "Courier New", monospace';
-    this.ctx.fillText('CYBER SURVIVOR // KERNEL SHOP', cx, py + 44);
+    this.ctx.font = 'bold 30px "Courier New", monospace';
+    this.ctx.fillText('CYBER SURVIVOR // KERNEL HUB', cx, py + 38);
 
+    const equippedHat = this.metaSystem.getEquippedHat();
     this.ctx.fillStyle = '#fbbf24';
-    this.ctx.shadowColor = '#f59e0b';
-    this.ctx.shadowBlur = 10;
-    this.ctx.font = 'bold 18px "Courier New", monospace';
+    this.ctx.font = 'bold 15px "Courier New", monospace';
     this.ctx.fillText(
-      `[ CRIPTOMONEDAS DISPONIBLES: ${this.metaSystem.coins} 🪙 ]`,
+      `[ CRIPTOMONEDAS: ${this.metaSystem.coins} 🪙 ]   |   [ EQUIPADO: ${
+        equippedHat ? `${equippedHat.icon} ${equippedHat.name} (${equippedHat.statsLabel})` : 'Ninguno'
+      } ]`,
       cx,
-      py + 78
+      py + 68
     );
 
-    this.ctx.shadowBlur = 0;
-    this.ctx.fillStyle = '#00f0ff';
-    this.ctx.font = '14px "Courier New", monospace';
-    this.ctx.fillText(
-      'SELECCIONA O DESBLOQUEA UN AGENTE CON CRIPTOMONEDAS (Teclas [1][2][3] o Clic):',
-      cx,
-      py + 106
-    );
+    // Dibujar barra de pestañas (AGENTES | GACHA | INVENTARIO)
+    for (const tabRect of this.getMenuTabRects()) {
+      const isActive = this.activeMenuTab === tabRect.tab;
+      this.ctx.fillStyle = isActive ? 'rgba(0, 60, 38, 0.96)' : 'rgba(6, 18, 22, 0.9)';
+      this.ctx.strokeStyle = isActive ? '#00ff66' : '#38bdf8';
+      this.ctx.lineWidth = isActive ? 2.5 : 1.5;
+      this.ctx.fillRect(tabRect.x, tabRect.y, tabRect.width, tabRect.height);
+      this.ctx.strokeRect(tabRect.x, tabRect.y, tabRect.width, tabRect.height);
 
-    const charRects = this.getMenuCharacterRects();
-    for (let i = 0; i < charRects.length; i++) {
-      const rect = charRects[i];
-      const profile = this.metaSystem.characters[rect.id];
-      const unlocked = this.metaSystem.isUnlocked(rect.id);
-      const selected = this.metaSystem.selectedCharacter === rect.id;
-      const hovered = this.hoveredMenuChar === rect.id;
+      this.ctx.fillStyle = isActive ? '#00ff66' : '#bae6fd';
+      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.fillText(tabRect.label, tabRect.x + tabRect.width / 2, tabRect.y + 22);
+    }
 
-      this.ctx.save();
-      this.ctx.fillStyle = selected
-        ? 'rgba(0, 45, 30, 0.95)'
-        : hovered
-        ? 'rgba(12, 30, 45, 0.95)'
-        : 'rgba(6, 14, 18, 0.92)';
-      this.ctx.strokeStyle = selected
-        ? '#00ff66'
-        : unlocked
-        ? profile.borderColor
-        : '#fbbf24';
-      this.ctx.lineWidth = selected || hovered ? 2.5 : 1.5;
-      this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-      this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+    if (this.activeMenuTab === 'SHOP') {
+      const charRects = this.getMenuCharacterRects();
+      for (let i = 0; i < charRects.length; i++) {
+        const rect = charRects[i];
+        const profile = this.metaSystem.characters[rect.id];
+        const unlocked = this.metaSystem.isUnlocked(rect.id);
+        const selected = this.metaSystem.selectedCharacter === rect.id;
+        const hovered = this.hoveredMenuChar === rect.id;
 
-      const previewX = rect.x + 32;
-      const previewY = rect.y + 34;
-      this.ctx.fillStyle = profile.color;
-      this.ctx.shadowColor = profile.borderColor;
-      this.ctx.shadowBlur = 12;
-      this.ctx.fillRect(previewX - 13, previewY - 13, 26, 26);
-      this.ctx.strokeStyle = profile.borderColor;
-      this.ctx.lineWidth = 2;
-      this.ctx.strokeRect(previewX - 9, previewY - 9, 18, 18);
+        this.ctx.save();
+        this.ctx.fillStyle = selected
+          ? 'rgba(0, 45, 30, 0.95)'
+          : hovered
+          ? 'rgba(12, 30, 45, 0.95)'
+          : 'rgba(6, 14, 18, 0.92)';
+        this.ctx.strokeStyle = selected
+          ? '#00ff66'
+          : unlocked
+          ? profile.borderColor
+          : '#fbbf24';
+        this.ctx.lineWidth = selected || hovered ? 2.5 : 1.5;
+        this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+        this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+        const previewX = rect.x + 32;
+        const previewY = rect.y + 34;
+        this.ctx.fillStyle = profile.color;
+        this.ctx.shadowColor = profile.borderColor;
+        this.ctx.shadowBlur = 12;
+        this.ctx.fillRect(previewX - 13, previewY - 13, 26, 26);
+        this.ctx.strokeStyle = profile.borderColor;
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(previewX - 9, previewY - 9, 18, 18);
+
+        this.ctx.shadowBlur = 0;
+        this.ctx.textAlign = 'left';
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = 'bold 15px "Courier New", monospace';
+        this.ctx.fillText(`[${i + 1}] ${profile.name}`, rect.x + 56, rect.y + 28);
+
+        this.ctx.fillStyle = '#38bdf8';
+        this.ctx.font = 'bold 11px "Courier New", monospace';
+        this.ctx.fillText(profile.subtitle, rect.x + 56, rect.y + 45);
+
+        this.ctx.fillStyle = '#cbd5e1';
+        this.ctx.font = '12px "Courier New", monospace';
+        this.wrapText(profile.description, rect.x + 14, rect.y + 68, rect.width - 28, 15);
+
+        this.ctx.font = 'bold 12px "Courier New", monospace';
+        if (selected) {
+          this.ctx.fillStyle = '#00ff66';
+          this.ctx.fillText('✔ EQUIPADO Y LISTO', rect.x + 14, rect.y + rect.height - 12);
+        } else if (unlocked) {
+          this.ctx.fillStyle = '#00f0ff';
+          this.ctx.fillText(`> PULSA [${i + 1}] O CLIC PARA EQUIPAR`, rect.x + 14, rect.y + rect.height - 12);
+        } else {
+          const canAfford = this.metaSystem.coins >= profile.cost;
+          this.ctx.fillStyle = canAfford ? '#fbbf24' : '#ff1e42';
+          this.ctx.fillText(
+            `🔒 DESBLOQUEAR (${profile.cost} CRYPTO)`,
+            rect.x + 14,
+            rect.y + rect.height - 12
+          );
+        }
+
+        this.ctx.restore();
+      }
+    } else if (this.activeMenuTab === 'GACHA') {
+      this.ctx.fillStyle = '#cbd5e1';
+      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.fillText(
+        'PROBABILIDADES: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%',
+        cx,
+        cy - 80
+      );
+
+      const pullBtn = this.getGachaPullButtonRect();
+      const canAfford = this.metaSystem.coins >= GACHA_PULL_COST;
+      this.ctx.fillStyle = canAfford ? 'rgba(46, 16, 101, 0.95)' : 'rgba(30, 10, 18, 0.9)';
+      this.ctx.strokeStyle = canAfford ? '#c084fc' : '#ff1e42';
+      this.ctx.lineWidth = 2.5;
+      this.ctx.shadowColor = canAfford ? '#c084fc' : '#ff1e42';
+      this.ctx.shadowBlur = 14;
+      this.ctx.fillRect(pullBtn.x, pullBtn.y, pullBtn.width, pullBtn.height);
+      this.ctx.strokeRect(pullBtn.x, pullBtn.y, pullBtn.width, pullBtn.height);
 
       this.ctx.shadowBlur = 0;
-      this.ctx.textAlign = 'left';
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.font = 'bold 15px "Courier New", monospace';
-      this.ctx.fillText(`[${i + 1}] ${profile.name}`, rect.x + 56, rect.y + 28);
+      this.ctx.fillStyle = canAfford ? '#fde047' : '#fca5a5';
+      this.ctx.font = 'bold 16px "Courier New", monospace';
+      this.ctx.fillText(
+        `🔌 TIRAR DEL CABLE (COFRE GACHA: ${GACHA_PULL_COST} 🪙)`,
+        cx,
+        pullBtn.y + 30
+      );
 
-      this.ctx.fillStyle = '#38bdf8';
-      this.ctx.font = 'bold 11px "Courier New", monospace';
-      this.ctx.fillText(profile.subtitle, rect.x + 56, rect.y + 46);
+      const revealBoxW = 540;
+      const revealBoxH = 165;
+      const rx = cx - revealBoxW / 2;
+      const ry = cy + 6;
 
-      this.ctx.fillStyle = '#cbd5e1';
-      this.ctx.font = '12px "Courier New", monospace';
-      this.wrapText(profile.description, rect.x + 14, rect.y + 72, rect.width - 28, 16);
+      if (this.lastGachaHat) {
+        const rConf = RARITY_CONFIG[this.lastGachaHat.rarity];
+        const pulseScale = 1 + Math.sin(this.gachaRevealTimer * 14) * 0.03;
 
-      this.ctx.font = 'bold 12px "Courier New", monospace';
-      if (selected) {
-        this.ctx.fillStyle = '#00ff66';
-        this.ctx.fillText('✔ EQUIPADO Y LISTO', rect.x + 14, rect.y + rect.height - 14);
-      } else if (unlocked) {
-        this.ctx.fillStyle = '#00f0ff';
-        this.ctx.fillText(`> PULSA [${i + 1}] O CLIC PARA EQUIPAR`, rect.x + 14, rect.y + rect.height - 14);
-      } else {
-        const canAfford = this.metaSystem.coins >= profile.cost;
-        this.ctx.fillStyle = canAfford ? '#fbbf24' : '#ff1e42';
+        this.ctx.save();
+        this.ctx.translate(cx, ry + revealBoxH / 2);
+        this.ctx.scale(pulseScale, pulseScale);
+        this.ctx.translate(-cx, -(ry + revealBoxH / 2));
+
+        this.ctx.fillStyle = rConf.bgColor;
+        this.ctx.strokeStyle = rConf.color;
+        this.ctx.lineWidth = 3;
+        this.ctx.shadowColor = rConf.color;
+        this.ctx.shadowBlur = this.gachaRevealTimer > 0 ? 28 : 14;
+        this.ctx.fillRect(rx, ry, revealBoxW, revealBoxH);
+        this.ctx.strokeRect(rx, ry, revealBoxW, revealBoxH);
+
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = rConf.color;
+        this.ctx.font = 'bold 14px "Courier New", monospace';
         this.ctx.fillText(
-          `🔒 DESBLOQUEAR (${profile.cost} CRYPTO)`,
-          rect.x + 14,
-          rect.y + rect.height - 14
+          `★ RAREZA ${rConf.label} ${this.lastGachaIsNew ? '// ¡NUEVO DESBLOQUEO!' : '// YA EN INVENTARIO'} ★`,
+          cx,
+          ry + 30
+        );
+
+        this.ctx.font = '38px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+        this.ctx.fillText(this.lastGachaHat.icon, cx, ry + 74);
+
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = 'bold 20px "Courier New", monospace';
+        this.ctx.fillText(this.lastGachaHat.name, cx, ry + 114);
+
+        this.ctx.fillStyle = '#a3e635';
+        this.ctx.font = 'bold 14px "Courier New", monospace';
+        this.ctx.fillText(`MODIFICADORES: [ ${this.lastGachaHat.statsLabel} ]`, cx, ry + 144);
+        this.ctx.restore();
+      } else {
+        this.ctx.fillStyle = 'rgba(8, 20, 26, 0.9)';
+        this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.fillRect(rx, ry, revealBoxW, revealBoxH);
+        this.ctx.strokeRect(rx, ry, revealBoxW, revealBoxH);
+
+        this.ctx.fillStyle = '#94a3b8';
+        this.ctx.font = '14px "Courier New", monospace';
+        this.ctx.fillText(
+          'Pulsa "TIRAR DEL CABLE" para desencriptar 1 de los 50 Sombreros/Máscaras.',
+          cx,
+          ry + 72
+        );
+        this.ctx.fillStyle = '#f43f5e';
+        this.ctx.font = 'bold 13px "Courier New", monospace';
+        this.ctx.fillText(
+          '¡Incluye 10 Reliquias Míticas (1%) de la Cultura Pop!',
+          cx,
+          ry + 102
         );
       }
+    } else if (this.activeMenuTab === 'INVENTORY') {
+      const unlockedList = this.metaSystem.getUnlockedHatsList();
+      if (unlockedList.length === 0) {
+        this.ctx.fillStyle = '#94a3b8';
+        this.ctx.font = '15px "Courier New", monospace';
+        this.ctx.fillText(
+          'Tu inventario está vacío. Ve a la pestaña [G] GACHA para Tirar del Cable.',
+          cx,
+          cy + 20
+        );
+      } else {
+        const hatSlots = this.getInventoryHatRects();
+        for (const slot of hatSlots) {
+          const rConf = RARITY_CONFIG[slot.hat.rarity];
+          const isEquipped = this.metaSystem.equippedHatId === slot.hat.id;
+          const isHovered = this.hoveredHatId === slot.hat.id;
 
-      this.ctx.restore();
+          this.ctx.save();
+          this.ctx.fillStyle = isEquipped ? 'rgba(0, 50, 32, 0.95)' : rConf.bgColor;
+          this.ctx.strokeStyle = isEquipped ? '#00ff66' : isHovered ? '#ffffff' : rConf.color;
+          this.ctx.lineWidth = isEquipped || isHovered ? 2.5 : 1.5;
+          this.ctx.fillRect(slot.x, slot.y, slot.width, slot.height);
+          this.ctx.strokeRect(slot.x, slot.y, slot.width, slot.height);
+
+          this.ctx.textAlign = 'left';
+          this.ctx.font = '22px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+          this.ctx.fillText(slot.hat.icon, slot.x + 10, slot.y + 28);
+
+          this.ctx.fillStyle = '#ffffff';
+          this.ctx.font = 'bold 12px "Courier New", monospace';
+          const shortName =
+            slot.hat.name.length > 20 ? slot.hat.name.slice(0, 19) + '…' : slot.hat.name;
+          this.ctx.fillText(shortName, slot.x + 40, slot.y + 22);
+
+          this.ctx.fillStyle = rConf.color;
+          this.ctx.font = 'bold 10px "Courier New", monospace';
+          this.ctx.fillText(
+            isEquipped ? '✔ EQUIPADO' : rConf.label.split(' ')[0],
+            slot.x + 40,
+            slot.y + 38
+          );
+
+          this.ctx.fillStyle = '#a3e635';
+          this.ctx.font = '11px "Courier New", monospace';
+          this.ctx.fillText(slot.hat.statsLabel, slot.x + 10, slot.y + 62);
+          this.ctx.restore();
+        }
+
+        const totalPages = Math.max(1, Math.ceil(unlockedList.length / 9));
+        this.ctx.textAlign = 'center';
+        this.ctx.fillStyle = '#cbd5e1';
+        this.ctx.font = 'bold 12px "Courier New", monospace';
+        this.ctx.fillText(
+          `PÁGINA ${this.inventoryPage + 1}/${totalPages} (Haz clic en un sombrero para Equipar/Desequipar)`,
+          cx,
+          cy + 154
+        );
+
+        for (const pageBtn of this.getInventoryPaginationRects()) {
+          this.ctx.fillStyle = 'rgba(12, 30, 45, 0.95)';
+          this.ctx.strokeStyle = '#38bdf8';
+          this.ctx.lineWidth = 1.5;
+          this.ctx.fillRect(pageBtn.x, pageBtn.y, pageBtn.width, pageBtn.height);
+          this.ctx.strokeRect(pageBtn.x, pageBtn.y, pageBtn.width, pageBtn.height);
+
+          this.ctx.fillStyle = '#38bdf8';
+          this.ctx.font = 'bold 12px "Courier New", monospace';
+          this.ctx.fillText(pageBtn.label, pageBtn.x + pageBtn.width / 2, pageBtn.y + 18);
+        }
+      }
     }
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#a3e635';
     this.ctx.font = '13px "Courier New", monospace';
-    this.ctx.fillText(this.menuFeedbackMessage, cx, cy + 214);
+    this.ctx.fillText(this.menuFeedbackMessage, cx, cy + 220);
 
     const startBtn = this.getStartButtonRect();
     const blink = Math.floor(performance.now() / 450) % 2 === 0;
@@ -1300,7 +1714,7 @@ export class Game {
     this.ctx.fillText(
       '> PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR <',
       cx,
-      startBtn.y + 29
+      startBtn.y + 28
     );
 
     this.ctx.restore();
