@@ -24,7 +24,15 @@ interface SavedMetaState {
 }
 
 export const STORAGE_KEY = 'cyber_survivor_meta_v020';
-export const GACHA_PULL_COST = 5;
+export const GACHA_PULL_SINGLE_COST = 20;
+export const GACHA_PULL_TEN_COST = 200;
+export const GACHA_DUPLICATE_REFUND = 10;
+
+export interface GachaPullEntry {
+  hat: HatItem;
+  isNew: boolean;
+  refundedCoins: number;
+}
 
 export class MetaSystem {
   public coins: number = 0;
@@ -120,35 +128,74 @@ export class MetaSystem {
     };
   }
 
-  public pullGacha(): {
+  public pullGachaBatch(count: 1 | 10): {
     success: boolean;
-    hat?: HatItem;
-    isNew?: boolean;
+    results: GachaPullEntry[];
+    totalRefunded: number;
     message: string;
   } {
-    if (this.coins < GACHA_PULL_COST) {
+    const cost = count === 10 ? GACHA_PULL_TEN_COST : GACHA_PULL_SINGLE_COST;
+    if (this.coins < cost) {
       return {
         success: false,
-        message: `> ERROR: Necesitas ${GACHA_PULL_COST} Criptomonedas para Tirar del Cable (Tienes ${this.coins}).`,
+        results: [],
+        totalRefunded: 0,
+        message: `> ERROR: Necesitas ${cost} Criptomonedas para la Tirada x${count} (Tienes ${this.coins}).`,
       };
     }
 
-    this.coins -= GACHA_PULL_COST;
-    const hat = rollGachaHat();
-    const isNew = !this.unlockedHats.has(hat.id);
-    this.unlockedHats.add(hat.id);
+    this.coins -= cost;
+    const results: GachaPullEntry[] = [];
+    let totalRefunded = 0;
+    let newCount = 0;
 
-    if (!this.equippedHatId) {
-      this.equippedHatId = hat.id;
+    for (let i = 0; i < count; i++) {
+      const hat = rollGachaHat();
+      const alreadyOwned = this.unlockedHats.has(hat.id);
+
+      if (alreadyOwned) {
+        this.coins += GACHA_DUPLICATE_REFUND;
+        totalRefunded += GACHA_DUPLICATE_REFUND;
+        results.push({
+          hat,
+          isNew: false,
+          refundedCoins: GACHA_DUPLICATE_REFUND,
+        });
+      } else {
+        this.unlockedHats.add(hat.id);
+        newCount++;
+        if (!this.equippedHatId) {
+          this.equippedHatId = hat.id;
+        }
+        results.push({
+          hat,
+          isNew: true,
+          refundedCoins: 0,
+        });
+      }
     }
 
     this.save();
-    const rarityLabel = RARITY_CONFIG[hat.rarity].label.split(' ')[0];
+
+    if (count === 1) {
+      const entry = results[0];
+      const rarityLabel = RARITY_CONFIG[entry.hat.rarity].label.split(' ')[0];
+      const statusText = entry.isNew
+        ? '¡NUEVO!'
+        : `Repetido: +${GACHA_DUPLICATE_REFUND} Monedas`;
+      return {
+        success: true,
+        results,
+        totalRefunded,
+        message: `> [${rarityLabel}] ${entry.hat.icon} ${entry.hat.name} — ${statusText}`,
+      };
+    }
+
     return {
       success: true,
-      hat,
-      isNew,
-      message: `> ¡OBTENIDO [${rarityLabel}]: ${hat.icon} ${hat.name} (${hat.statsLabel})!`,
+      results,
+      totalRefunded,
+      message: `> TIRADA x10 COMPLETADA: ${newCount} Nuevos | ${10 - newCount} Repetidos (+${totalRefunded} Monedas reembolsadas)`,
     };
   }
 

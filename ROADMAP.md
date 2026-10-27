@@ -79,15 +79,24 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [1. Formato de Tiempo (Reloj MM:SS)] Contador de supervivencia en el HUD y pantalla final convertido a formato estándar `MM:SS`
 │   └── [2. Nueva Tarjeta 'Robo de Ancho de Banda'] Pasiva de vampirismo: cada proyectil del jugador que impacte y dañe a un enemigo tiene un 3% de probabilidad de curar +1 HP (hasta el máximo de vida)
 │
-└── v0.7.0 — Sistema Gacha ('Tirar del Cable'), Inventario y 50 Sombreros/Máscaras (ACTUAL)
-    ├── [Fase 1] Base de Datos de 50 Sombreros/Máscaras en 5 rarezas: Común (40%), Rara (30%), Épica (20%), Legendaria (9%) y Mítica (1%, 10 iconos de la cultura pop)
-    ├── [Fase 2] Pestaña Gacha en el Menú Principal: Botón 'Tirar del Cable' con Criptomonedas, revelación animada y persistencia en `localStorage`
-    └── [Fase 3] Inventario Paginado y Equipamiento: Selección de 1 sombrero activo y aplicación automática de multiplicadores de estadísticas al iniciar partida
+├── v0.7.0 — Sistema Gacha ('Tirar del Cable'), Inventario y 50 Sombreros/Máscaras
+│   ├── [Fase 1] Base de Datos de 50 Sombreros/Máscaras en 5 rarezas: Común (40%), Rara (30%), Épica (20%), Legendaria (9%) y Mítica (1%, 10 iconos de la cultura pop)
+│   ├── [Fase 2] Pestaña Gacha en el Menú Principal: Botón 'Tirar del Cable' con Criptomonedas, revelación animada y persistencia en `localStorage`
+│   └── [Fase 3] Inventario Paginado y Equipamiento: Selección de 1 sombrero activo y aplicación automática de multiplicadores de estadísticas al iniciar partida
+│
+└── v0.7.1 — Economía Gacha: Tirada x1 / x10 y Reembolso por Repetidos (ACTUAL)
+    ├── [1. Opciones de Compra] Dos botones en el Gacha: 'Tirada x1' (20 Criptomonedas) y 'Tirada x10' (200 Criptomonedas, mostrando cuadrícula con los 10 resultados)
+    └── [2. Reembolso por Repetidos] Si el sombrero obtenido ya está en el inventario, devuelve automáticamente +10 Criptomonedas al saldo y muestra 'Repetido: +10 Monedas'
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.7.1] - 2026-10-27
+- **Mejorado (`MetaSystem.ts`, `Game.ts` - Tirada x1 / x10 y Reembolso por Repetidos)**:
+  - Añadidos dos botones en el Gacha del Menú Principal: **`Tirada x1`** (`20` Criptomonedas) y **`Tirada x10`** (`200` Criptomonedas, ejecutando 10 tiradas seguidas y mostrando los 10 resultados en pantalla).
+  - Sistema automático de reembolso por duplicados: al obtener un sombrero cuyo `id` ya está registrado en el inventario del `localStorage`, no se duplica y suma automáticamente **`+10` Criptomonedas** al saldo del jugador, indicando claramente `'Repetido: +10 Monedas'`.
 
 ### [v0.7.0] - 2026-10-27
 - **Añadido (`HatSystem.ts` - Fase 1)**:

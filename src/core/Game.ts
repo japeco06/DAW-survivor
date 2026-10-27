@@ -18,7 +18,13 @@ import { Spawner } from '../systems/Spawner';
 import { CombatSystem } from '../systems/CombatSystem';
 import { UpgradeSystem } from '../systems/UpgradeSystem';
 import { ParticleSystem } from '../systems/ParticleSystem';
-import { MetaSystem, CharacterId, GACHA_PULL_COST } from '../systems/MetaSystem';
+import {
+  MetaSystem,
+  CharacterId,
+  GACHA_PULL_SINGLE_COST,
+  GACHA_PULL_TEN_COST,
+  GachaPullEntry,
+} from '../systems/MetaSystem';
 import { HatItem, HATS_DATABASE, RARITY_CONFIG } from '../systems/HatSystem';
 
 type GameState = 'MENU' | 'PLAYING' | 'GAMEOVER';
@@ -49,7 +55,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.7.0';
+const GAME_VERSION = 'v0.7.1';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -89,13 +95,12 @@ export class Game {
   private hoveredCardIndex: number = -1;
   private hoveredMenuChar: CharacterId | null = null;
   private activeMenuTab: MenuTab = 'SHOP';
-  private lastGachaHat: HatItem | null = null;
-  private lastGachaIsNew: boolean = false;
+  private lastGachaResults: GachaPullEntry[] = [];
   private gachaRevealTimer: number = 0;
   private inventoryPage: number = 0;
   private hoveredHatId: string | null = null;
   private menuFeedbackMessage: string =
-    'Explora Agentes, Gacha (Tirar del Cable) e Inventario de Sombreros.';
+    'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.';
   private damageVignetteAlpha: number = 0;
   private terminalLogs: string[] = [
     '> KERNEL_ANTIVIRUS_DAEMON v0.5.0 initialized...',
@@ -337,32 +342,33 @@ export class Game {
             }
           }
         } else if (this.activeMenuTab === 'GACHA') {
-          const pullBtn = this.getGachaPullButtonRect();
-          if (
-            mx >= pullBtn.x &&
-            mx <= pullBtn.x + pullBtn.width &&
-            my >= pullBtn.y &&
-            my <= pullBtn.y + pullBtn.height
-          ) {
-            const res = this.metaSystem.pullGacha();
-            this.menuFeedbackMessage = res.message;
-            if (res.success && res.hat) {
-              this.lastGachaHat = res.hat;
-              this.lastGachaIsNew = Boolean(res.isNew);
-              this.gachaRevealTimer = 1.2;
-              this.sound.playCoinPickup();
-              const rColor = RARITY_CONFIG[res.hat.rarity].color;
-              this.particleSystem.spawnExplosion(
-                this.canvas.width / 2,
-                this.canvas.height / 2 + 55,
-                rColor,
-                res.hat.rarity === 'MITICA' || res.hat.rarity === 'LEGENDARIA' ? 55 : 28,
-                true
-              );
-            } else {
-              this.sound.playExplosion(false);
+          for (const pullBtn of this.getGachaPullButtonRects()) {
+            if (
+              mx >= pullBtn.x &&
+              mx <= pullBtn.x + pullBtn.width &&
+              my >= pullBtn.y &&
+              my <= pullBtn.y + pullBtn.height
+            ) {
+              const res = this.metaSystem.pullGachaBatch(pullBtn.count);
+              this.menuFeedbackMessage = res.message;
+              if (res.success && res.results.length > 0) {
+                this.lastGachaResults = res.results;
+                this.gachaRevealTimer = 1.2;
+                this.sound.playCoinPickup();
+                const bestEntry = res.results[0];
+                const rColor = RARITY_CONFIG[bestEntry.hat.rarity].color;
+                this.particleSystem.spawnExplosion(
+                  this.canvas.width / 2,
+                  this.canvas.height / 2 + 55,
+                  rColor,
+                  pullBtn.count === 10 ? 60 : 30,
+                  true
+                );
+              } else {
+                this.sound.playExplosion(false);
+              }
+              return;
             }
-            return;
           }
         } else if (this.activeMenuTab === 'INVENTORY') {
           for (const slot of this.getInventoryHatRects()) {
@@ -1318,17 +1324,43 @@ export class Game {
     });
   }
 
-  private getGachaPullButtonRect(): { x: number; y: number; width: number; height: number } {
+  private getGachaPullButtonRects(): {
+    count: 1 | 10;
+    cost: number;
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
-    const width = 440;
-    const height = 48;
-    return {
-      x: cx - width / 2,
-      y: cy - 62,
-      width,
-      height,
-    };
+    const btnW = 310;
+    const btnH = 42;
+    const gap = 20;
+    const startX = cx - btnW - gap / 2;
+    const y = cy - 92;
+
+    return [
+      {
+        count: 1,
+        cost: GACHA_PULL_SINGLE_COST,
+        label: `🔌 TIRADA x1 (${GACHA_PULL_SINGLE_COST} 🪙)`,
+        x: startX,
+        y,
+        width: btnW,
+        height: btnH,
+      },
+      {
+        count: 10,
+        cost: GACHA_PULL_TEN_COST,
+        label: `⚡ TIRADA x10 (${GACHA_PULL_TEN_COST} 🪙)`,
+        x: startX + btnW + gap,
+        y,
+        width: btnW,
+        height: btnH,
+      },
+    ];
   }
 
   private getInventoryHatRects(): {
@@ -1534,40 +1566,46 @@ export class Game {
       }
     } else if (this.activeMenuTab === 'GACHA') {
       this.ctx.fillStyle = '#cbd5e1';
-      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.font = 'bold 12px "Courier New", monospace';
       this.ctx.fillText(
-        'PROBABILIDADES: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%',
+        'PROBABILIDADES: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%  (Repetido = +10 🪙)',
         cx,
-        cy - 80
+        cy - 106
       );
 
-      const pullBtn = this.getGachaPullButtonRect();
-      const canAfford = this.metaSystem.coins >= GACHA_PULL_COST;
-      this.ctx.fillStyle = canAfford ? 'rgba(46, 16, 101, 0.95)' : 'rgba(30, 10, 18, 0.9)';
-      this.ctx.strokeStyle = canAfford ? '#c084fc' : '#ff1e42';
-      this.ctx.lineWidth = 2.5;
-      this.ctx.shadowColor = canAfford ? '#c084fc' : '#ff1e42';
-      this.ctx.shadowBlur = 14;
-      this.ctx.fillRect(pullBtn.x, pullBtn.y, pullBtn.width, pullBtn.height);
-      this.ctx.strokeRect(pullBtn.x, pullBtn.y, pullBtn.width, pullBtn.height);
+      for (const pullBtn of this.getGachaPullButtonRects()) {
+        const canAfford = this.metaSystem.coins >= pullBtn.cost;
+        const isTen = pullBtn.count === 10;
+        this.ctx.fillStyle = canAfford
+          ? isTen
+            ? 'rgba(69, 26, 3, 0.95)'
+            : 'rgba(46, 16, 101, 0.95)'
+          : 'rgba(30, 10, 18, 0.9)';
+        this.ctx.strokeStyle = canAfford ? (isTen ? '#fbbf24' : '#c084fc') : '#ff1e42';
+        this.ctx.lineWidth = 2.5;
+        this.ctx.shadowColor = canAfford ? (isTen ? '#fbbf24' : '#c084fc') : '#ff1e42';
+        this.ctx.shadowBlur = 12;
+        this.ctx.fillRect(pullBtn.x, pullBtn.y, pullBtn.width, pullBtn.height);
+        this.ctx.strokeRect(pullBtn.x, pullBtn.y, pullBtn.width, pullBtn.height);
 
-      this.ctx.shadowBlur = 0;
-      this.ctx.fillStyle = canAfford ? '#fde047' : '#fca5a5';
-      this.ctx.font = 'bold 16px "Courier New", monospace';
-      this.ctx.fillText(
-        `🔌 TIRAR DEL CABLE (COFRE GACHA: ${GACHA_PULL_COST} 🪙)`,
-        cx,
-        pullBtn.y + 30
-      );
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = canAfford ? '#fde047' : '#fca5a5';
+        this.ctx.font = 'bold 15px "Courier New", monospace';
+        this.ctx.fillText(
+          pullBtn.label,
+          pullBtn.x + pullBtn.width / 2,
+          pullBtn.y + 26
+        );
+      }
 
-      const revealBoxW = 540;
-      const revealBoxH = 165;
-      const rx = cx - revealBoxW / 2;
-      const ry = cy + 6;
-
-      if (this.lastGachaHat) {
-        const rConf = RARITY_CONFIG[this.lastGachaHat.rarity];
-        const pulseScale = 1 + Math.sin(this.gachaRevealTimer * 14) * 0.03;
+      if (this.lastGachaResults.length === 1) {
+        const entry = this.lastGachaResults[0];
+        const rConf = RARITY_CONFIG[entry.hat.rarity];
+        const revealBoxW = 540;
+        const revealBoxH = 175;
+        const rx = cx - revealBoxW / 2;
+        const ry = cy - 34;
+        const pulseScale = 1 + Math.sin(this.gachaRevealTimer * 14) * 0.025;
 
         this.ctx.save();
         this.ctx.translate(cx, ry + revealBoxH / 2);
@@ -1578,31 +1616,96 @@ export class Game {
         this.ctx.strokeStyle = rConf.color;
         this.ctx.lineWidth = 3;
         this.ctx.shadowColor = rConf.color;
-        this.ctx.shadowBlur = this.gachaRevealTimer > 0 ? 28 : 14;
+        this.ctx.shadowBlur = this.gachaRevealTimer > 0 ? 26 : 12;
         this.ctx.fillRect(rx, ry, revealBoxW, revealBoxH);
         this.ctx.strokeRect(rx, ry, revealBoxW, revealBoxH);
 
         this.ctx.shadowBlur = 0;
         this.ctx.fillStyle = rConf.color;
         this.ctx.font = 'bold 14px "Courier New", monospace';
-        this.ctx.fillText(
-          `★ RAREZA ${rConf.label} ${this.lastGachaIsNew ? '// ¡NUEVO DESBLOQUEO!' : '// YA EN INVENTARIO'} ★`,
-          cx,
-          ry + 30
-        );
+        this.ctx.fillText(`★ RAREZA ${rConf.label} ★`, cx, ry + 26);
 
-        this.ctx.font = '38px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
-        this.ctx.fillText(this.lastGachaHat.icon, cx, ry + 74);
+        this.ctx.font = '36px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+        this.ctx.fillText(entry.hat.icon, cx, ry + 66);
 
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = 'bold 20px "Courier New", monospace';
-        this.ctx.fillText(this.lastGachaHat.name, cx, ry + 114);
+        this.ctx.font = 'bold 19px "Courier New", monospace';
+        this.ctx.fillText(entry.hat.name, cx, ry + 104);
+
+        this.ctx.fillStyle = entry.isNew ? '#00ff66' : '#fbbf24';
+        this.ctx.font = 'bold 14px "Courier New", monospace';
+        this.ctx.fillText(
+          entry.isNew ? '¡NUEVO DESBLOQUEO!' : 'Repetido: +10 Monedas 🪙',
+          cx,
+          ry + 130
+        );
 
         this.ctx.fillStyle = '#a3e635';
-        this.ctx.font = 'bold 14px "Courier New", monospace';
-        this.ctx.fillText(`MODIFICADORES: [ ${this.lastGachaHat.statsLabel} ]`, cx, ry + 144);
+        this.ctx.font = 'bold 13px "Courier New", monospace';
+        this.ctx.fillText(`MODIFICADORES: [ ${entry.hat.statsLabel} ]`, cx, ry + 156);
         this.ctx.restore();
+      } else if (this.lastGachaResults.length > 1) {
+        const cols = 5;
+        const cardW = 132;
+        const cardH = 104;
+        const gapX = 10;
+        const gapY = 10;
+        const totalW = cols * cardW + (cols - 1) * gapX;
+        const startX = cx - totalW / 2;
+        const startY = cy - 38;
+
+        for (let i = 0; i < this.lastGachaResults.length; i++) {
+          const entry = this.lastGachaResults[i];
+          const rConf = RARITY_CONFIG[entry.hat.rarity];
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const x = startX + col * (cardW + gapX);
+          const y = startY + row * (cardH + gapY);
+
+          this.ctx.save();
+          this.ctx.fillStyle = rConf.bgColor;
+          this.ctx.strokeStyle = rConf.color;
+          this.ctx.lineWidth = 2;
+          this.ctx.fillRect(x, y, cardW, cardH);
+          this.ctx.strokeRect(x, y, cardW, cardH);
+
+          this.ctx.textAlign = 'center';
+          this.ctx.font = '22px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+          this.ctx.fillText(entry.hat.icon, x + cardW / 2, y + 24);
+
+          this.ctx.fillStyle = '#ffffff';
+          this.ctx.font = 'bold 10px "Courier New", monospace';
+          const shortName =
+            entry.hat.name.length > 16 ? entry.hat.name.slice(0, 15) + '…' : entry.hat.name;
+          this.ctx.fillText(shortName, x + cardW / 2, y + 48);
+
+          this.ctx.fillStyle = rConf.color;
+          this.ctx.font = 'bold 9px "Courier New", monospace';
+          this.ctx.fillText(rConf.label.split(' ')[0], x + cardW / 2, y + 64);
+
+          this.ctx.fillStyle = entry.isNew ? '#00ff66' : '#fbbf24';
+          this.ctx.font = 'bold 9px "Courier New", monospace';
+          this.ctx.fillText(
+            entry.isNew ? '¡NUEVO!' : 'Repetido: +10 Monedas',
+            x + cardW / 2,
+            y + 82
+          );
+
+          this.ctx.fillStyle = '#cbd5e1';
+          this.ctx.font = '9px "Courier New", monospace';
+          const shortStats =
+            entry.hat.statsLabel.length > 18
+              ? entry.hat.statsLabel.slice(0, 17) + '…'
+              : entry.hat.statsLabel;
+          this.ctx.fillText(shortStats, x + cardW / 2, y + 96);
+          this.ctx.restore();
+        }
       } else {
+        const revealBoxW = 540;
+        const revealBoxH = 165;
+        const rx = cx - revealBoxW / 2;
+        const ry = cy - 28;
+
         this.ctx.fillStyle = 'rgba(8, 20, 26, 0.9)';
         this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
         this.ctx.lineWidth = 1.5;
@@ -1612,16 +1715,16 @@ export class Game {
         this.ctx.fillStyle = '#94a3b8';
         this.ctx.font = '14px "Courier New", monospace';
         this.ctx.fillText(
-          'Pulsa "TIRAR DEL CABLE" para desencriptar 1 de los 50 Sombreros/Máscaras.',
+          'Elige "Tirada x1" (20 🪙) o "Tirada x10" (200 🪙) para abrir cofres.',
           cx,
-          ry + 72
+          ry + 68
         );
-        this.ctx.fillStyle = '#f43f5e';
+        this.ctx.fillStyle = '#fbbf24';
         this.ctx.font = 'bold 13px "Courier New", monospace';
         this.ctx.fillText(
-          '¡Incluye 10 Reliquias Míticas (1%) de la Cultura Pop!',
+          'Si te sale un sombrero repetido, recibirás automáticamente +10 Monedas.',
           cx,
-          ry + 102
+          ry + 100
         );
       }
     } else if (this.activeMenuTab === 'INVENTORY') {
