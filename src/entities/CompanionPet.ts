@@ -14,63 +14,65 @@ interface CompanionUnit {
   hitCooldowns: WeakMap<Adware, number>;
 }
 
-class EphemeralBotClone {
+class MalwareShrapnelFragment {
   public x: number;
   public y: number;
-  public size: number = 11;
-  public speed: number = 490;
+  public vx: number;
+  public vy: number;
+  public angle: number;
+  public size: number = 9;
   public damage: number;
   public active: boolean = true;
-  private lifeTime: number = 1.6;
+  private lifeTime: number = 0.42;
+  private hitSet: Set<Adware> = new Set();
 
-  constructor(x: number, y: number, damage: number) {
+  constructor(x: number, y: number, angle: number, speed: number, damage: number) {
     this.x = x;
     this.y = y;
+    this.angle = angle;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
     this.damage = damage;
   }
 
-  public update(dt: number, enemies: Adware[]): { hitEnemy: Adware | null; dmg: number } {
+  public update(dt: number, enemies: Adware[]): { enemy: Adware; dmg: number }[] {
     this.lifeTime -= dt;
     if (this.lifeTime <= 0) {
       this.active = false;
-      return { hitEnemy: null, dmg: 0 };
+      return [];
     }
 
-    let nearest: Adware | null = null;
-    let minDist = Infinity;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    const hits: { enemy: Adware; dmg: number }[] = [];
     for (const e of enemies) {
-      if (!e.active) continue;
+      if (!e.active || this.hitSet.has(e)) continue;
       const d = Math.hypot(e.x - this.x, e.y - this.y);
-      if (d < minDist) {
-        minDist = d;
-        nearest = e;
+      if (d <= (this.size + e.size) * 0.55) {
+        this.hitSet.add(e);
+        hits.push({ enemy: e, dmg: this.damage });
       }
     }
 
-    if (nearest) {
-      const dx = nearest.x - this.x;
-      const dy = nearest.y - this.y;
-      const dist = Math.hypot(dx, dy) || 1;
-      this.x += (dx / dist) * this.speed * dt;
-      this.y += (dy / dist) * this.speed * dt;
-
-      if (dist <= (this.size + nearest.size) * 0.55) {
-        this.active = false;
-        return { hitEnemy: nearest, dmg: this.damage };
-      }
-    }
-
-    return { hitEnemy: null, dmg: 0 };
+    return hits;
   }
 
   public draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
-    ctx.fillStyle = '#fef08a';
-    ctx.strokeStyle = '#f59e0b';
-    ctx.shadowColor = '#fde047';
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+    ctx.fillStyle = '#fde047';
+    ctx.strokeStyle = '#f97316';
+    ctx.shadowColor = '#facc15';
     ctx.shadowBlur = 12;
-    ctx.fillRect(this.x - this.size / 2, this.y - this.size / 2, this.size, this.size);
-    ctx.strokeRect(this.x - this.size / 2, this.y - this.size / 2, this.size, this.size);
+    ctx.beginPath();
+    ctx.moveTo(this.size * 0.8, 0);
+    ctx.lineTo(-this.size * 0.6, -this.size * 0.45);
+    ctx.lineTo(-this.size * 0.6, this.size * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
     ctx.restore();
   }
 }
@@ -186,7 +188,7 @@ export class CompanionPet {
   public branch: CompanionBranch = 'NONE';
   public bonusDamageStat: number = 0;
   private units: CompanionUnit[] = [];
-  private clones: EphemeralBotClone[] = [];
+  private shrapnelFragments: MalwareShrapnelFragment[] = [];
   private craters: BruteCraterZone[] = [];
   private shockwaves: BruteShockwave[] = [];
   private tripwireTickCooldowns: WeakMap<Adware, number> = new WeakMap();
@@ -274,7 +276,7 @@ export class CompanionPet {
         milestoneMsg = 'EVOLUCIÓN LVL 20 [LA BOTNET]: ¡BOTNET GLOBAL (15 UNIDADES PIRAÑA)!';
       } else if (playerLevel >= 10 && this.lastMilestoneLevel < 10) {
         this.lastMilestoneLevel = 10;
-        milestoneMsg = 'EVOLUCIÓN LVL 10 [LA BOTNET]: ¡ATAQUE DDoS (CLONES EFÍMEROS)!';
+        milestoneMsg = 'EVOLUCIÓN LVL 10 [LA BOTNET]: ¡PROPAGACIÓN DE MALWARE (METRALLA DIGITAL)!';
       } else if (playerLevel >= 5 && this.lastMilestoneLevel < 5) {
         this.lastMilestoneLevel = 5;
         milestoneMsg = 'EVOLUCIÓN LVL 5 [LA BOTNET]: ¡MENTE COLMENA (5 UNIDADES DEFENSORAS)!';
@@ -331,13 +333,24 @@ export class CompanionPet {
         ? 260
         : 200;
 
+    const spawnMalwareShrapnelBurst = (originX: number, originY: number, shrapnelDmg: number) => {
+      const fragmentCount = 8;
+      for (let k = 0; k < fragmentCount; k++) {
+        const angle = (k * Math.PI * 2) / fragmentCount;
+        this.shrapnelFragments.push(
+          new MalwareShrapnelFragment(originX, originY, angle, 370, shrapnelDmg)
+        );
+      }
+    };
+
     const applyDamageToEnemy = (
       enemy: Adware,
       dmg: number,
       kbX: number,
       kbY: number,
       color: string,
-      fromBruteImpact: boolean = false
+      fromBruteImpact: boolean = false,
+      fromBotnetSquare: boolean = false
     ) => {
       if (!enemy.active) return;
       enemy.takeDamage(dmg, kbX, kbY);
@@ -349,8 +362,19 @@ export class CompanionPet {
           this.shockwaves.push(new BruteShockwave(enemy.x, enemy.y, Math.round(dmg * 1.45)));
           screenShakeIntensity = Math.max(screenShakeIntensity, 9);
         }
+        // Propagación de Malware (Botnet Lvl 10): al matar a un enemigo con un cuadrado, explota en metralla digital en área
+        if (fromBotnetSquare && this.branch === 'BOTNET' && playerLevel >= 10) {
+          spawnMalwareShrapnelBurst(
+            enemy.x,
+            enemy.y,
+            Math.max(12, Math.round(baseContactDamage * 0.9))
+          );
+        }
       }
     };
+
+    // Regla estricta de apuntado para La Botnet: ningún cuadrado puede elegir el mismo objetivo que otro
+    const claimedBotnetTargets = new Set<Adware>();
 
     // Actualizar cada cuadrado marrón acompañante
     for (let i = 0; i < this.units.length; i++) {
@@ -366,19 +390,21 @@ export class CompanionPet {
         unit.x += (targetX - unit.x) * Math.min(1, dt * 6);
         unit.y += (targetY - unit.y) * Math.min(1, dt * 6);
       } else {
-        // Buscar enemigo dentro del radio alrededor del jugador (o prioridad Mente Colmena Lvl 5)
+        // Buscar enemigo dentro del radio alrededor del jugador (objetivo único si es La Botnet)
         let target: Adware | null = null;
         let bestScore = Infinity;
 
         for (const e of enemies) {
           if (!e.active) continue;
+          if (this.branch === 'BOTNET' && claimedBotnetTargets.has(e)) continue;
+
           const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
           if (distToPlayer > searchRadius) continue;
 
           const distToUnit = Math.hypot(e.x - unit.x, e.y - unit.y);
           const score =
             this.branch === 'BOTNET' && playerLevel >= 5
-              ? distToPlayer * 0.7 + distToUnit * 0.3 + i * 12
+              ? distToPlayer * 0.7 + distToUnit * 0.3
               : distToUnit;
 
           if (score < bestScore) {
@@ -388,22 +414,29 @@ export class CompanionPet {
         }
 
         if (target) {
+          if (this.branch === 'BOTNET') {
+            claimedBotnetTargets.add(target);
+          }
           const dx = target.x - unit.x;
           const dy = target.y - unit.y;
           const dist = Math.hypot(dx, dy) || 1;
           unit.x += (dx / dist) * unit.speed * dt;
           unit.y += (dy / dist) * unit.speed * dt;
         } else {
-          // Patrulla libre alrededor del jugador en un radio de ~115-160px
-          const patrolR = this.branch === 'TRIPWIRE' ? 175 : 115 + (i % 3) * 24;
-          const desiredX =
-            player.x + Math.cos(unit.patrolAngle + (i * Math.PI * 2) / this.units.length) * patrolR;
-          const desiredY =
-            player.y + Math.sin(unit.patrolAngle + (i * Math.PI * 2) / this.units.length) * patrolR;
+          // Si sobran cuadrados sin objetivo único disponible, orbitan alrededor del jugador
+          const patrolR =
+            this.branch === 'TRIPWIRE'
+              ? 175
+              : this.branch === 'BOTNET'
+              ? 95 + (i % 3) * 18
+              : 115 + (i % 3) * 24;
+          const orbitAngle = unit.patrolAngle + (i * Math.PI * 2) / this.units.length;
+          const desiredX = player.x + Math.cos(orbitAngle) * patrolR;
+          const desiredY = player.y + Math.sin(orbitAngle) * patrolR;
           const dx = desiredX - unit.x;
           const dy = desiredY - unit.y;
           const dist = Math.hypot(dx, dy) || 1;
-          const moveStep = Math.min(dist, unit.speed * 0.85 * dt);
+          const moveStep = Math.min(dist, unit.speed * 0.9 * dt);
           unit.x += (dx / dist) * moveStep;
           unit.y += (dy / dist) * moveStep;
         }
@@ -432,7 +465,8 @@ export class CompanionPet {
             nx * pushForce,
             ny * pushForce,
             '#f59e0b',
-            this.branch === 'BRUTE'
+            this.branch === 'BRUTE',
+            this.branch === 'BOTNET'
           );
 
           // Fuerza Bruta Lvl 5: temblor de pantalla al golpear
@@ -452,31 +486,19 @@ export class CompanionPet {
               new BruteCraterZone(enemy.x, enemy.y, Math.max(10, Math.round(baseContactDamage * 0.4)))
             );
           }
-
-          // La Botnet Lvl 10 (Ataque DDoS): probabilidad de generar un clon efímero
-          if (
-            this.branch === 'BOTNET' &&
-            playerLevel >= 10 &&
-            this.clones.length < 12 &&
-            Math.random() < 0.35
-          ) {
-            this.clones.push(
-              new EphemeralBotClone(unit.x, unit.y, Math.round(baseContactDamage * 0.85))
-            );
-          }
         }
       }
     }
 
-    // Actualizar Clones Efímeros (Botnet Lvl 10)
-    for (const clone of this.clones) {
-      if (!clone.active) continue;
-      const res = clone.update(dt, enemies);
-      if (res.hitEnemy) {
-        applyDamageToEnemy(res.hitEnemy, res.dmg, 0, 0, '#fde047', false);
+    // Actualizar Fragmentos de Metralla Digital (Propagación de Malware - Botnet Lvl 10)
+    for (const frag of this.shrapnelFragments) {
+      if (!frag.active) continue;
+      const hits = frag.update(dt, enemies);
+      for (const h of hits) {
+        applyDamageToEnemy(h.enemy, h.dmg, 0, 0, '#fde047', false, false);
       }
     }
-    this.clones = this.clones.filter((c) => c.active);
+    this.shrapnelFragments = this.shrapnelFragments.filter((f) => f.active);
 
     // Actualizar Cráteres (Fuerza Bruta Lvl 10)
     for (const crater of this.craters) {
@@ -645,9 +667,9 @@ export class CompanionPet {
       ctx.restore();
     }
 
-    // Dibujar Clones Efímeros
-    for (const clone of this.clones) {
-      clone.draw(ctx);
+    // Dibujar Fragmentos de Metralla Digital (Propagación de Malware)
+    for (const frag of this.shrapnelFragments) {
+      frag.draw(ctx);
     }
 
     // Dibujar los cuadrados marrones acompañantes

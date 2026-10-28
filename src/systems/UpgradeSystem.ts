@@ -288,7 +288,7 @@ export class UpgradeSystem {
         name: 'LA BOTNET (ENJAMBRE)',
         category: 'EVOLUCIÓN NV.2 // RAMA 2',
         description:
-          'El cuadrado se divide en 3 cuadrados pequeños muy rápidos. [Nv.5: Mente Colmena (5) | Nv.10: Ataque DDoS | Nv.20: Botnet Global (15)]',
+          'El cuadrado se divide en 3 cuadrados rápidos con objetivos únicos. [Nv.5: Mente Colmena (5) | Nv.10: Propagación de Malware | Nv.20: Botnet Global (15)]',
         color: '#eab308',
         level: 0,
         maxLevel: 1,

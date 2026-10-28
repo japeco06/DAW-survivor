@@ -90,15 +90,37 @@ export class PingProjectile extends Entity {
     ctx.translate(this.x, this.y);
     ctx.rotate(angle);
 
-    // Estela / pulso azul eléctrico del Ping Tracker
+    const tipX = this.size * 0.95;
+    const tailX = -this.size * 0.75;
+    const notchX = -this.size * 0.35;
+    const wingY = this.size * 0.65;
+
+    // Silueta exterior triangular / punta de flecha direccionada hacia el vector de movimiento
     ctx.fillStyle = '#0088ff';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.5;
     ctx.shadowColor = '#0088ff';
     ctx.shadowBlur = 16;
-    ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
 
-    // Núcleo interior azul claro / blanco
-    ctx.fillStyle = '#bae6fd';
-    ctx.fillRect(-this.size / 4, -this.size / 4, this.size / 2, this.size / 2);
+    ctx.beginPath();
+    ctx.moveTo(tipX, 0);
+    ctx.lineTo(tailX, -wingY);
+    ctx.lineTo(notchX, 0);
+    ctx.lineTo(tailX, wingY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Núcleo interior brillante en forma de flecha
+    ctx.fillStyle = '#e0f2fe';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.moveTo(tipX * 0.6, 0);
+    ctx.lineTo(tailX * 0.5, -wingY * 0.45);
+    ctx.lineTo(notchX * 0.4, 0);
+    ctx.lineTo(tailX * 0.5, wingY * 0.45);
+    ctx.closePath();
+    ctx.fill();
 
     ctx.restore();
   }

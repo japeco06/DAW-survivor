@@ -18,6 +18,7 @@ export class Spawner {
   private readonly maxActiveTrojanShooters: number = 5;
   private readonly maxActiveTrojans: number = 5;
   private readonly maxActiveWorms: number = 5;
+  private readonly maxActiveRedAdware: number = 14;
   private readonly maxActiveHardwareBoxes: number = 4;
 
   private boxCheckTimer: number = 0;
@@ -142,7 +143,7 @@ export class Spawner {
       }
     }
 
-    const currentSpawnInterval = Math.max(0.14, 0.68 * Math.pow(0.9, elapsedTime / 12));
+    const currentSpawnInterval = Math.max(0.28, 0.92 * Math.pow(0.92, elapsedTime / 14));
 
     this.timer += dt;
     while (this.timer >= currentSpawnInterval) {
@@ -154,15 +155,8 @@ export class Spawner {
         canvasWidth,
         canvasHeight
       );
-      enemies.push(spawned);
-
-      // Aumentar la presencia constante de enemigos rojos (Adware base)
-      if (spawned.malwareType === 'ADWARE' && Math.random() < 0.35) {
-        const extraPos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
-        const extraAdware = new Adware(extraPos.x, extraPos.y);
-        extraAdware.maxHp = Math.round(25 * hpMultiplier);
-        extraAdware.hp = extraAdware.maxHp;
-        enemies.push(extraAdware);
+      if (spawned) {
+        enemies.push(spawned);
       }
     }
 
@@ -184,7 +178,7 @@ export class Spawner {
     enemies: Adware[],
     width: number,
     height: number
-  ): Adware {
+  ): Adware | null {
     const pos = this.getRandomOutsidePosition(width, height);
     const roll = Math.random();
 
@@ -199,6 +193,9 @@ export class Spawner {
     ).length;
     const activeWormCount = enemies.filter(
       (e) => e.active && e instanceof Worm
+    ).length;
+    const activeRedAdwareCount = enemies.filter(
+      (e) => e.active && e.malwareType === 'ADWARE'
     ).length;
 
     // Máximo 3 Gusanos Blindados vivos simultáneamente en pantalla
@@ -234,6 +231,11 @@ export class Spawner {
     const trojanChance = elapsedTime >= 12 ? Math.min(0.32, 0.15 + elapsedTime * 0.0025) : 0;
     if (roll >= 0.28 && roll < 0.28 + trojanChance && activeTrojanCount < this.maxActiveTrojans) {
       return new Trojan(pos.x, pos.y, hpMultiplier);
+    }
+
+    // Límite máximo en pantalla de enemigos 'rojos' (Adware base) para evitar saturación
+    if (activeRedAdwareCount >= this.maxActiveRedAdware) {
+      return null;
     }
 
     const adware = new Adware(pos.x, pos.y);

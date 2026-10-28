@@ -102,19 +102,35 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   ├── [Fase 2] 'El Minero de Criptos' (`CryptoMiner.ts` - Loot Goblin): Enemigo raro que no ataca, huye constantemente y se des-spawnea tras 11s; si muere a tiempo suelta entre 30 y 40 Criptomonedas de golpe
 │   └── [Fase 3] Evento 'El Enjambre' (Plaga): Filtro rojo suave y alarma visual; detiene el spawn normal durante 15s y genera 50 enemigos amarillos con muy poca vida y daño
 │
-└── v0.9.0 — Agente Morcillita (Summoner), Sistema de Compañero y Ramas Evolutivas Lvl 20 (ACTUAL)
-    ├── [Fase 1] Menú KERNEL HUB: Cuarto personaje '[4] AGENTE MORCILLITA (SUMMONER)' de chasis rosa sin disparo básico propio
-    ├── [Fase 2] Mecánica Base (Nivel 1 - `CompanionPet.ts`): Mascota cuadrado marrón que patrulla en un radio de 200px y daña por contacto continuo
-    ├── [Fase 3] Bifurcación Obligatoria (Nivel 2): 3 cartas únicas de evolución ('Fuerza Bruta', 'La Botnet', 'Cable Trampa') bloqueando las otras dos al elegir
-    └── [Fase 4] Escalado Extremo (Niveles 5, 10 y 20):
-        ├── Rama 1 ('Fuerza Bruta'): Lvl 5 Gigante + Temblor | Lvl 10 'Masa Crítica' (cráter de daño) | Lvl 20 'Onda de Choque' (explosión AoE al matar)
-        ├── Rama 2 ('La Botnet'): Lvl 5 'Mente Colmena' (5 cuadrados defensivos) | Lvl 10 'Ataque DDoS' (clones efímeros) | Lvl 20 'Botnet Global' (15 pirañas por toda la pantalla)
-        └── Rama 3 ('Cable Trampa'): Lvl 5 Triángulo láser | Lvl 10 'Fibra Óptica' (Congelación de Red -80% vel) | Lvl 20 'Red de Malla' (4 cuadrados + jugador = estrella láser gigante)
+├── v0.9.0 — Agente Morcillita (Summoner), Sistema de Compañero y Ramas Evolutivas Lvl 20
+│   ├── [Fase 1] Menú KERNEL HUB: Cuarto personaje '[4] AGENTE MORCILLITA (SUMMONER)' de chasis rosa sin disparo básico propio
+│   ├── [Fase 2] Mecánica Base (Nivel 1 - `CompanionPet.ts`): Mascota cuadrado marrón que patrulla en un radio de 200px y daña por contacto continuo
+│   ├── [Fase 3] Bifurcación Obligatoria (Nivel 2): 3 cartas únicas de evolución ('Fuerza Bruta', 'La Botnet', 'Cable Trampa') bloqueando las otras dos al elegir
+│   └── [Fase 4] Escalado Extremo (Niveles 5, 10 y 20):
+│       ├── Rama 1 ('Fuerza Bruta'): Lvl 5 Gigante + Temblor | Lvl 10 'Masa Crítica' (cráter de daño) | Lvl 20 'Onda de Choque' (explosión AoE al matar)
+│       ├── Rama 2 ('La Botnet'): Lvl 5 'Mente Colmena' (5 cuadrados defensivos) | Lvl 10 'Ataque DDoS' (clones efímeros) | Lvl 20 'Botnet Global' (15 pirañas por toda la pantalla)
+│       └── Rama 3 ('Cable Trampa'): Lvl 5 Triángulo láser | Lvl 10 'Fibra Óptica' (Congelación de Red -80% vel) | Lvl 20 'Red de Malla' (4 cuadrados + jugador = estrella láser gigante)
+│
+└── v0.9.1 — Balance de Enemigos Rojos, Flechas PING_TRACKER y 'Propagación de Malware' en La Botnet (ACTUAL)
+    ├── [Fase 1] Balance y Correcciones Visuales:
+    │   ├── Reducción del spawn rate y límite máximo en pantalla (`maxActiveRedAdware = 14`) de los enemigos 'rojos' (`Adware`)
+    │   └── Rediseño visual de `PING_TRACKER.exe` (`PingProjectile.ts`): dibujado como flechas/triángulos orientados en la dirección exacta de su movimiento
+    └── [Fase 2] Modificación de la Rama 2 ('La Botnet') de Morcillita (`CompanionPet.ts`):
+        ├── Regla estricta de apuntado único: ningún cuadrado va a por el mismo enemigo que otro; los cuadrados sobrantes orbitan al jugador
+        └── Nivel 10 ('Propagación de Malware'): al matar a un enemigo con un cuadrado, explota lanzando fragmentos de metralla digital en área que dañan a enemigos cercanos
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.9.1] - 2026-10-28
+- **Balanceado y Mejorado (`Spawner.ts`, `PingProjectile.ts` - Fase 1)**:
+  - Reducida la frecuencia de aparición (`spawn rate`) y añadido un límite máximo en pantalla (`maxActiveRedAdware = 14`) para los enemigos rojos (`Adware`), evitando que saturen el mapa.
+  - Modificado el método `draw` de `PING_TRACKER.exe` (`PingProjectile.ts`) para que sus proyectiles ya no sean cuadrados, sino flechas/triángulos afilados que apuntan exactamente en la dirección de su vector de velocidad (`Math.atan2(vy, vx)`).
+- **Mejorado (`CompanionPet.ts`, `UpgradeSystem.ts` - Fase 2: Rama 2 `'La Botnet'` de Morcillita)**:
+  - **Apuntado de Objetivo Único**: Cada cuadrado de *La Botnet* selecciona un enemigo único no reclamado por otro cuadrado; si hay más cuadrados que enemigos disponibles en rango, los cuadrados restantes orbitan alrededor del jugador.
+  - **Nivel 10 (`Propagación de Malware`)**: Cuando uno de los cuadrados de *La Botnet* mata a un enemigo, dicho enemigo explota lanzando fragmentos radiales de metralla digital (`MalwareShrapnelFragment`) que dañan a los enemigos cercanos en el área.
 
 ### [v0.9.0] - 2026-10-27
 - **Añadido (`MetaSystem.ts`, `Player.ts`, `Game.ts` - Fase 1: Agente Morcillita / Summoner)**:
