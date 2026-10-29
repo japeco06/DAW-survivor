@@ -56,7 +56,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.9.1';
+const GAME_VERSION = 'v0.9.2';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -789,7 +789,7 @@ export class Game {
     if (this.spawner.swarmTriggeredJustNow) {
       this.sound.playExplosion(true);
       this.particleSystem.triggerShake(12, 0.65);
-      this.addTerminalLog('!! ALERTA DE PLAGA: EL ENJAMBRE (50 ENEMIGOS - 15s) !!');
+      this.addTerminalLog('!! ALERTA DE PLAGA: EL ENJAMBRE (50 ENEMIGOS - 11s) !!');
     }
     if (this.spawner.minerSpawnedJustNow) {
       this.sound.playCoinPickup();
@@ -826,7 +826,9 @@ export class Game {
         dt,
         this.player,
         this.upgradeSystem.level,
-        this.enemies
+        this.enemies,
+        this.canvas.width,
+        this.canvas.height
       );
       combatEvents.enemiesKilled += compEvents.killedEnemies.length;
       combatEvents.damagedEnemies.push(...compEvents.damagedEnemies);
@@ -858,8 +860,29 @@ export class Game {
       }
     }
 
+    const prevKillCount = this.killCount;
     this.killCount += combatEvents.enemiesKilled;
     this.highScoreKills = Math.max(this.highScoreKills, this.killCount);
+
+    // Mecánica pasiva de Vampirismo: cura una pequeña cantidad de HP (1% HP máx, mín. 1 HP) por cada 50 enemigos eliminados
+    const prevVampirismTier = Math.floor(prevKillCount / 50);
+    const currentVampirismTier = Math.floor(this.killCount / 50);
+    if (currentVampirismTier > prevVampirismTier && this.player.active) {
+      const tiersCrossed = currentVampirismTier - prevVampirismTier;
+      const healPerTier = Math.max(1, Math.round(this.player.maxHp * 0.01));
+      const passiveVampirismHeal = tiersCrossed * healPerTier;
+      this.player.heal(passiveVampirismHeal);
+      this.particleSystem.spawnFloatingText(
+        this.player.x,
+        this.player.y - 30,
+        `+${passiveVampirismHeal} HP [VAMPIRISMO]`,
+        '#f43f5e',
+        1.0
+      );
+      this.addTerminalLog(
+        `VAMPIRISM PASSIVE: +${passiveVampirismHeal} HP restored (${this.killCount} kills).`
+      );
+    }
 
     if (combatEvents.shotsFired > 0) {
       this.sound.playShoot(false);

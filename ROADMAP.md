@@ -111,18 +111,41 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │       ├── Rama 2 ('La Botnet'): Lvl 5 'Mente Colmena' (5 cuadrados defensivos) | Lvl 10 'Ataque DDoS' (clones efímeros) | Lvl 20 'Botnet Global' (15 pirañas por toda la pantalla)
 │       └── Rama 3 ('Cable Trampa'): Lvl 5 Triángulo láser | Lvl 10 'Fibra Óptica' (Congelación de Red -80% vel) | Lvl 20 'Red de Malla' (4 cuadrados + jugador = estrella láser gigante)
 │
-└── v0.9.1 — Balance de Enemigos Rojos, Flechas PING_TRACKER y 'Propagación de Malware' en La Botnet (ACTUAL)
-    ├── [Fase 1] Balance y Correcciones Visuales:
-    │   ├── Reducción del spawn rate y límite máximo en pantalla (`maxActiveRedAdware = 14`) de los enemigos 'rojos' (`Adware`)
-    │   └── Rediseño visual de `PING_TRACKER.exe` (`PingProjectile.ts`): dibujado como flechas/triángulos orientados en la dirección exacta de su movimiento
-    └── [Fase 2] Modificación de la Rama 2 ('La Botnet') de Morcillita (`CompanionPet.ts`):
-        ├── Regla estricta de apuntado único: ningún cuadrado va a por el mismo enemigo que otro; los cuadrados sobrantes orbitan al jugador
-        └── Nivel 10 ('Propagación de Malware'): al matar a un enemigo con un cuadrado, explota lanzando fragmentos de metralla digital en área que dañan a enemigos cercanos
+├── v0.9.1 — Balance de Enemigos Rojos, Flechas PING_TRACKER y 'Propagación de Malware' en La Botnet
+│   ├── [Fase 1] Balance y Correcciones Visuales:
+│   │   ├── Reducción del spawn rate y límite máximo en pantalla (`maxActiveRedAdware = 14`) de los enemigos 'rojos' (`Adware`)
+│   │   └── Rediseño visual de `PING_TRACKER.exe` (`PingProjectile.ts`): dibujado como flechas/triángulos orientados en la dirección exacta de su movimiento
+│   └── [Fase 2] Modificación de la Rama 2 ('La Botnet') de Morcillita (`CompanionPet.ts`):
+│       ├── Regla estricta de apuntado único: ningún cuadrado va a por el mismo enemigo que otro; los cuadrados sobrantes orbitan al jugador
+│       └── Nivel 10 ('Propagación de Malware'): al matar a un enemigo con un cuadrado, explota lanzando fragmentos de metralla digital en área que dañan a enemigos cercanos
+│
+└── v0.9.2 — Rama 3 'Protocolo Pinball', Ajustes de Apuntado en Botnet, Reducción de Alerta de Enjambre y Vampirismo Pasivo (ACTUAL)
+    ├── [Botnet (Rama 2)] Enemigos estándar: máx. 1 mascota por objetivo | Mini-jefes: hasta 3 mascotas simultáneamente
+    ├── [Rama 3 ('Protocolo Pinball')]
+    │   ├── Nivel 2: La mascota se separa del jugador, viaja en línea recta a velocidad extrema, rebota en los bordes y atraviesa enemigos (ignora Mega-Jefes)
+    │   ├── Nivel 5: +50% velocidad y estela temporal de corrupción de datos que daña al contacto
+    │   ├── Nivel 10 ('Explosión Cinética'): Rebotar en un borde o impactar a un enemigo dispara 4 proyectiles pequeños (arriba, abajo, izquierda, derecha)
+    │   └── Nivel 20 ('Multibola'): Se divide en 3 mascotas rebotadoras independientes de alta velocidad
+    └── [Gameplay & Balance]
+        ├── Reducción de 4 segundos exactos en la duración de la alerta/evento de horda ('El Enjambre': 15s -> 11s)
+        └── Nueva curación pasiva 'Vampirismo': el jugador recupera pasivamente un 1% de HP (mín. 1 HP) por cada 50 enemigos eliminados
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.9.2] - 2026-10-29
+- **Ajustado (`CompanionPet.ts` - Apuntado de La Botnet / Rama 2)**:
+  - Enemigos estándar mantienen el límite estricto de máximo `1` mascota por objetivo, mientras que los mini-jefes (`RANSOMWARE`) permiten hasta **`3` mascotas** atacando al mismo mini-jefe simultáneamente.
+- **Rediseñado (`CompanionPet.ts`, `UpgradeSystem.ts` - Rama 3 `'Protocolo Pinball'`)**:
+  - **Nivel 2**: La mascota se independiza del jugador, moviéndose en línea recta a velocidad extrema (`620 px/s`), rebotando en los bordes de la pantalla y atravesando enemigos (ignorando Mega-Jefes).
+  - **Nivel 5**: Velocidad aumentada un **`+50%`** (`930 px/s`) y generación de una estela temporal de corrupción de datos (`PinballCorruptionTrail`) que daña a los enemigos que la tocan.
+  - **Nivel 10 (`Explosión Cinética`)**: Al rebotar contra un borde o impactar contra un enemigo, dispara `4` proyectiles pequeños en las direcciones cardinales (`arriba`, `abajo`, `izquierda`, `derecha`).
+  - **Nivel 20 (`Multibola`)**: Se divide en `3` mascotas independientes de alta velocidad que rebotan por toda la pantalla.
+- **Balanceado (`Spawner.ts`, `Game.ts` - Evento de Horda y Vampirismo Pasivo)**:
+  - Reducida la duración de la alerta del evento de horda (`El Enjambre`) en exactamente **4 segundos** (`15.0s` → `11.0s`).
+  - Implementada la mecánica pasiva de curación por **Vampirismo**: el jugador se cura pasivamente un `1%` de su vida máxima (mínimo `1 HP`) cada **50 enemigos eliminados**.
 
 ### [v0.9.1] - 2026-10-28
 - **Balanceado y Mejorado (`Spawner.ts`, `PingProjectile.ts` - Fase 1)**:

@@ -303,18 +303,18 @@ export class UpgradeSystem {
         },
       },
       {
-        id: 'companion_branch_tripwire',
-        name: 'CABLE TRAMPA',
+        id: 'companion_branch_pinball',
+        name: 'PROTOCOLO PINBALL',
         category: 'EVOLUCIÓN NV.2 // RAMA 3',
         description:
-          'Un grueso láser une al Agente rosa y al cuadrado marrón dañando al contacto. [Nv.5: Triángulo | Nv.10: Fibra Óptica -80% Vel | Nv.20: Red de Malla]',
+          'La mascota se independiza y rebota a velocidad extrema atravesando enemigos. [Nv.5: +50% Vel + Estela Corrupta | Nv.10: Explosión Cinética | Nv.20: Multibola (3)]',
         color: '#ec4899',
         level: 0,
         maxLevel: 1,
         isCompanionBranchCard: true,
         apply: (player) => {
           if (player.companion) {
-            player.companion.selectBranch('TRIPWIRE', player, this.level);
+            player.companion.selectBranch('PINBALL', player, this.level);
           }
           for (const card of this.companionBranchCards) {
             card.isMaxed = true;

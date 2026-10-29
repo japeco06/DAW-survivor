@@ -1,7 +1,7 @@
 import { Player } from './Player';
 import { Adware } from './Adware';
 
-export type CompanionBranch = 'NONE' | 'BRUTE' | 'BOTNET' | 'TRIPWIRE';
+export type CompanionBranch = 'NONE' | 'BRUTE' | 'BOTNET' | 'PINBALL';
 
 interface CompanionUnit {
   x: number;
@@ -11,6 +11,8 @@ interface CompanionUnit {
   size: number;
   speed: number;
   patrolAngle: number;
+  trailTimer: number;
+  burstCooldown: number;
   hitCooldowns: WeakMap<Adware, number>;
 }
 
@@ -70,6 +72,118 @@ class MalwareShrapnelFragment {
     ctx.moveTo(this.size * 0.8, 0);
     ctx.lineTo(-this.size * 0.6, -this.size * 0.45);
     ctx.lineTo(-this.size * 0.6, this.size * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+class PinballCorruptionTrail {
+  public x: number;
+  public y: number;
+  public size: number = 18;
+  public damage: number;
+  public duration: number = 1.25;
+  public elapsed: number = 0;
+  public active: boolean = true;
+
+  constructor(x: number, y: number, damage: number) {
+    this.x = x;
+    this.y = y;
+    this.damage = damage;
+  }
+
+  public update(dt: number): void {
+    this.elapsed += dt;
+    if (this.elapsed >= this.duration) {
+      this.active = false;
+    }
+  }
+
+  public draw(ctx: CanvasRenderingContext2D): void {
+    const alpha = Math.max(0.08, 1 - this.elapsed / this.duration);
+    const half = (this.size * (0.65 + 0.35 * alpha)) / 2;
+    ctx.save();
+    ctx.fillStyle = `rgba(236, 72, 153, ${alpha * 0.42})`;
+    ctx.strokeStyle = `rgba(0, 240, 255, ${alpha * 0.85})`;
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = '#ec4899';
+    ctx.shadowBlur = 8 * alpha;
+    ctx.fillRect(this.x - half, this.y - half, half * 2, half * 2);
+    ctx.strokeRect(this.x - half, this.y - half, half * 2, half * 2);
+    ctx.restore();
+  }
+}
+
+class PinballKineticProjectile {
+  public x: number;
+  public y: number;
+  public vx: number;
+  public vy: number;
+  public size: number = 8;
+  public damage: number;
+  public active: boolean = true;
+  private lifeTime: number = 1.2;
+  private hitSet: Set<Adware> = new Set();
+
+  constructor(x: number, y: number, dirX: number, dirY: number, speed: number, damage: number) {
+    this.x = x;
+    this.y = y;
+    this.vx = dirX * speed;
+    this.vy = dirY * speed;
+    this.damage = damage;
+  }
+
+  public update(
+    dt: number,
+    enemies: Adware[],
+    canvasWidth: number,
+    canvasHeight: number
+  ): { enemy: Adware; dmg: number }[] {
+    this.lifeTime -= dt;
+    if (
+      this.lifeTime <= 0 ||
+      this.x < -40 ||
+      this.x > canvasWidth + 40 ||
+      this.y < -40 ||
+      this.y > canvasHeight + 40
+    ) {
+      this.active = false;
+      return [];
+    }
+
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    const hits: { enemy: Adware; dmg: number }[] = [];
+    for (const e of enemies) {
+      if (!e.active || this.hitSet.has(e)) continue;
+      const d = Math.hypot(e.x - this.x, e.y - this.y);
+      if (d <= (this.size + e.size) * 0.55) {
+        this.hitSet.add(e);
+        this.active = false;
+        hits.push({ enemy: e, dmg: this.damage });
+        break;
+      }
+    }
+
+    return hits;
+  }
+
+  public draw(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.fillStyle = '#00f0ff';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = '#00f0ff';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(0, -this.size * 0.7);
+    ctx.lineTo(this.size * 0.7, 0);
+    ctx.lineTo(0, this.size * 0.7);
+    ctx.lineTo(-this.size * 0.7, 0);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
@@ -189,9 +303,11 @@ export class CompanionPet {
   public bonusDamageStat: number = 0;
   private units: CompanionUnit[] = [];
   private shrapnelFragments: MalwareShrapnelFragment[] = [];
+  private pinballTrails: PinballCorruptionTrail[] = [];
+  private pinballProjectiles: PinballKineticProjectile[] = [];
+  private trailHitCooldowns: WeakMap<Adware, number> = new WeakMap();
   private craters: BruteCraterZone[] = [];
   private shockwaves: BruteShockwave[] = [];
-  private tripwireTickCooldowns: WeakMap<Adware, number> = new WeakMap();
   private lastMilestoneLevel: number = 1;
   private craterCooldown: number = 0;
 
@@ -212,7 +328,7 @@ export class CompanionPet {
   public getBranchDisplayName(_playerLevel: number = 1): string {
     if (this.branch === 'BRUTE') return 'Mascota: Fuerza Bruta';
     if (this.branch === 'BOTNET') return 'Mascota: La Botnet';
-    if (this.branch === 'TRIPWIRE') return 'Mascota: Cable Trampa';
+    if (this.branch === 'PINBALL') return 'Mascota: Protocolo Pinball';
     return 'Mascota: Compañero Base';
   }
 
@@ -224,16 +340,22 @@ export class CompanionPet {
     speed: number
   ): void {
     this.units = [];
+    const pinballAngles = [Math.PI * 0.22, Math.PI * 0.78, Math.PI * 1.38];
     for (let i = 0; i < count; i++) {
-      const angle = (i * Math.PI * 2) / count;
+      const angle =
+        this.branch === 'PINBALL'
+          ? pinballAngles[i % pinballAngles.length]
+          : (i * Math.PI * 2) / count;
       this.units.push({
         x: centerX + Math.cos(angle) * 75,
         y: centerY + Math.sin(angle) * 75,
-        vx: 0,
-        vy: 0,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
         size,
         speed,
         patrolAngle: angle,
+        trailTimer: 0,
+        burstCooldown: 0,
         hitCooldowns: new WeakMap(),
       });
     }
@@ -281,22 +403,37 @@ export class CompanionPet {
         this.lastMilestoneLevel = 5;
         milestoneMsg = 'EVOLUCIÓN LVL 5 [LA BOTNET]: ¡MENTE COLMENA (5 UNIDADES DEFENSORAS)!';
       }
-    } else if (this.branch === 'TRIPWIRE') {
-      const targetCount = playerLevel >= 20 ? 4 : playerLevel >= 5 ? 2 : 1;
-      const speed = playerLevel >= 20 ? 255 : 220;
+    } else if (this.branch === 'PINBALL') {
+      const targetCount = playerLevel >= 20 ? 3 : 1;
+      const basePinballSpeed = 620;
+      const speed = playerLevel >= 5 ? Math.round(basePinballSpeed * 1.5) : basePinballSpeed;
       if (this.units.length !== targetCount) {
-        this.spawnUnits(targetCount, player.x, player.y, 22, speed);
+        this.spawnUnits(targetCount, player.x, player.y, 24, speed);
+      } else {
+        for (const u of this.units) {
+          u.size = 24;
+          u.speed = speed;
+          const currentLen = Math.hypot(u.vx, u.vy);
+          if (currentLen < 10) {
+            const angle = Math.PI * 0.25;
+            u.vx = Math.cos(angle) * speed;
+            u.vy = Math.sin(angle) * speed;
+          } else {
+            u.vx = (u.vx / currentLen) * speed;
+            u.vy = (u.vy / currentLen) * speed;
+          }
+        }
       }
 
       if (playerLevel >= 20 && this.lastMilestoneLevel < 20) {
         this.lastMilestoneLevel = 20;
-        milestoneMsg = 'EVOLUCIÓN LVL 20 [CABLE TRAMPA]: ¡RED DE MALLA (PENTAGRAMA LÁSER)!';
+        milestoneMsg = 'EVOLUCIÓN LVL 20 [PINBALL]: ¡MULTIBOLA (3 MASCOTAS REBOTADORAS)!';
       } else if (playerLevel >= 10 && this.lastMilestoneLevel < 10) {
         this.lastMilestoneLevel = 10;
-        milestoneMsg = 'EVOLUCIÓN LVL 10 [CABLE TRAMPA]: ¡FIBRA ÓPTICA (-80% VELOCIDAD ENEMIGA)!';
+        milestoneMsg = 'EVOLUCIÓN LVL 10 [PINBALL]: ¡EXPLOSIÓN CINÉTICA (4 DISPAROS CARDINALES)!';
       } else if (playerLevel >= 5 && this.lastMilestoneLevel < 5) {
         this.lastMilestoneLevel = 5;
-        milestoneMsg = 'EVOLUCIÓN LVL 5 [CABLE TRAMPA]: ¡TRIÁNGULO LÁSER ACTIVO!';
+        milestoneMsg = 'EVOLUCIÓN LVL 5 [PINBALL]: ¡+50% VELOCIDAD Y ESTELA CORRUPTA!';
       }
     }
 
@@ -307,7 +444,9 @@ export class CompanionPet {
     dt: number,
     player: Player,
     playerLevel: number,
-    enemies: Adware[]
+    enemies: Adware[],
+    canvasWidth: number = window.innerWidth,
+    canvasHeight: number = window.innerHeight
   ): CompanionUpdateOutput {
     const damagedEnemies: { x: number; y: number; damage: number; color: string }[] = [];
     const killedEnemies: Adware[] = [];
@@ -321,7 +460,13 @@ export class CompanionPet {
       this.branch !== 'NONE' ? this.reconfigureUnitsForTier(playerLevel, player) : null;
 
     const baseContactDamage = Math.round(
-      (this.branch === 'BRUTE' ? 38 : this.branch === 'BOTNET' ? 18 : 22) *
+      (this.branch === 'BRUTE'
+        ? 38
+        : this.branch === 'BOTNET'
+        ? 18
+        : this.branch === 'PINBALL'
+        ? 30
+        : 22) *
         player.damageMultiplier +
         this.bonusDamageStat
     );
@@ -339,6 +484,20 @@ export class CompanionPet {
         const angle = (k * Math.PI * 2) / fragmentCount;
         this.shrapnelFragments.push(
           new MalwareShrapnelFragment(originX, originY, angle, 370, shrapnelDmg)
+        );
+      }
+    };
+
+    const spawnKineticBurst = (originX: number, originY: number, burstDmg: number) => {
+      const cardinalDirs = [
+        { dx: 0, dy: -1 }, // Arriba
+        { dx: 0, dy: 1 },  // Abajo
+        { dx: -1, dy: 0 }, // Izquierda
+        { dx: 1, dy: 0 },  // Derecha
+      ];
+      for (const dir of cardinalDirs) {
+        this.pinballProjectiles.push(
+          new PinballKineticProjectile(originX, originY, dir.dx, dir.dy, 560, burstDmg)
         );
       }
     };
@@ -373,30 +532,82 @@ export class CompanionPet {
       }
     };
 
-    // Regla estricta de apuntado para La Botnet: ningún cuadrado puede elegir el mismo objetivo que otro
-    const claimedBotnetTargets = new Set<Adware>();
+    // Regla de apuntado para La Botnet:
+    // - Enemigos estándar: máximo 1 mascota por objetivo.
+    // - Mini-jefes (RANSOMWARE): hasta 3 mascotas pueden apuntar al mismo mini-jefe simultáneamente.
+    const claimedBotnetTargetCounts = new Map<Adware, number>();
 
-    // Actualizar cada cuadrado marrón acompañante
+    // Actualizar cada cuadrado acompañante
     for (let i = 0; i < this.units.length; i++) {
       const unit = this.units[i];
-      unit.patrolAngle += dt * (this.branch === 'TRIPWIRE' ? 1.85 : 2.3);
+      unit.patrolAngle += dt * 2.3;
+      if (unit.burstCooldown > 0) {
+        unit.burstCooldown = Math.max(0, unit.burstCooldown - dt);
+      }
 
-      // Si es Cable Trampa en Lvl 5 o Lvl 20, orbitan estratégicamente en un radio amplio para tender la red de láseres
-      if (this.branch === 'TRIPWIRE' && playerLevel >= 5) {
-        const orbitRadius = playerLevel >= 20 ? 270 : 195;
-        const desiredAngle = unit.patrolAngle + (i * Math.PI * 2) / this.units.length;
-        const targetX = player.x + Math.cos(desiredAngle) * orbitRadius;
-        const targetY = player.y + Math.sin(desiredAngle) * orbitRadius;
-        unit.x += (targetX - unit.x) * Math.min(1, dt * 6);
-        unit.y += (targetY - unit.y) * Math.min(1, dt * 6);
+      if (this.branch === 'PINBALL') {
+        // Rama 3 (Protocolo Pinball): independiente del jugador, línea recta a velocidad extrema y rebote en bordes
+        unit.x += unit.vx * dt;
+        unit.y += unit.vy * dt;
+
+        const half = unit.size / 2;
+        let bouncedEdge = false;
+
+        if (unit.x <= half) {
+          unit.x = half;
+          unit.vx = Math.abs(unit.vx);
+          bouncedEdge = true;
+        } else if (unit.x >= canvasWidth - half) {
+          unit.x = canvasWidth - half;
+          unit.vx = -Math.abs(unit.vx);
+          bouncedEdge = true;
+        }
+
+        if (unit.y <= half) {
+          unit.y = half;
+          unit.vy = Math.abs(unit.vy);
+          bouncedEdge = true;
+        } else if (unit.y >= canvasHeight - half) {
+          unit.y = canvasHeight - half;
+          unit.vy = -Math.abs(unit.vy);
+          bouncedEdge = true;
+        }
+
+        // Lvl 10 (Explosión Cinética): al rebotar en un borde dispara 4 proyectiles (arriba, abajo, izquierda, derecha)
+        if (bouncedEdge && playerLevel >= 10) {
+          spawnKineticBurst(
+            unit.x,
+            unit.y,
+            Math.max(14, Math.round(baseContactDamage * 0.65))
+          );
+        }
+
+        // Lvl 5: deja una estela temporal de corrupción de datos que daña a los enemigos que la pisen
+        if (playerLevel >= 5) {
+          unit.trailTimer += dt;
+          if (unit.trailTimer >= 0.032) {
+            unit.trailTimer = 0;
+            this.pinballTrails.push(
+              new PinballCorruptionTrail(
+                unit.x,
+                unit.y,
+                Math.max(10, Math.round(baseContactDamage * 0.45))
+              )
+            );
+          }
+        }
       } else {
-        // Buscar enemigo dentro del radio alrededor del jugador (objetivo único si es La Botnet)
+        // Buscar enemigo dentro del radio alrededor del jugador (con límites de objetivo si es La Botnet)
         let target: Adware | null = null;
         let bestScore = Infinity;
 
         for (const e of enemies) {
           if (!e.active) continue;
-          if (this.branch === 'BOTNET' && claimedBotnetTargets.has(e)) continue;
+          if (this.branch === 'BOTNET') {
+            const maxPetsForTarget = e.malwareType === 'RANSOMWARE' ? 3 : 1;
+            const currentClaims = claimedBotnetTargetCounts.get(e) ?? 0;
+            if (currentClaims >= maxPetsForTarget) continue;
+          }
 
           const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
           if (distToPlayer > searchRadius) continue;
@@ -415,7 +626,10 @@ export class CompanionPet {
 
         if (target) {
           if (this.branch === 'BOTNET') {
-            claimedBotnetTargets.add(target);
+            claimedBotnetTargetCounts.set(
+              target,
+              (claimedBotnetTargetCounts.get(target) ?? 0) + 1
+            );
           }
           const dx = target.x - unit.x;
           const dy = target.y - unit.y;
@@ -423,13 +637,9 @@ export class CompanionPet {
           unit.x += (dx / dist) * unit.speed * dt;
           unit.y += (dy / dist) * unit.speed * dt;
         } else {
-          // Si sobran cuadrados sin objetivo único disponible, orbitan alrededor del jugador
+          // Si sobran cuadrados sin objetivo disponible, orbitan alrededor del jugador
           const patrolR =
-            this.branch === 'TRIPWIRE'
-              ? 175
-              : this.branch === 'BOTNET'
-              ? 95 + (i % 3) * 18
-              : 115 + (i % 3) * 24;
+            this.branch === 'BOTNET' ? 95 + (i % 3) * 18 : 115 + (i % 3) * 24;
           const orbitAngle = unit.patrolAngle + (i * Math.PI * 2) / this.units.length;
           const desiredX = player.x + Math.cos(orbitAngle) * patrolR;
           const desiredY = player.y + Math.sin(orbitAngle) * patrolR;
@@ -442,7 +652,7 @@ export class CompanionPet {
         }
       }
 
-      // Colisión de contacto continuo de cada cuadrado marrón contra enemigos
+      // Colisión de contacto / perforación de cada cuadrado contra enemigos (ignora Mega-Jefes)
       for (const enemy of enemies) {
         if (!enemy.active) continue;
         const cd = unit.hitCooldowns.get(enemy) ?? 0;
@@ -453,9 +663,19 @@ export class CompanionPet {
 
         const dist = Math.hypot(enemy.x - unit.x, enemy.y - unit.y);
         if (dist <= (unit.size + enemy.size) * 0.52) {
-          unit.hitCooldowns.set(enemy, this.branch === 'BOTNET' ? 0.18 : 0.24);
+          unit.hitCooldowns.set(
+            enemy,
+            this.branch === 'BOTNET' ? 0.18 : this.branch === 'PINBALL' ? 0.2 : 0.24
+          );
 
-          const pushForce = this.branch === 'BRUTE' ? (playerLevel >= 5 ? 36 : 24) : 8;
+          const pushForce =
+            this.branch === 'BRUTE'
+              ? playerLevel >= 5
+                ? 36
+                : 24
+              : this.branch === 'PINBALL'
+              ? 6
+              : 8;
           const nx = (enemy.x - unit.x) / (dist || 1);
           const ny = (enemy.y - unit.y) / (dist || 1);
 
@@ -464,10 +684,20 @@ export class CompanionPet {
             baseContactDamage,
             nx * pushForce,
             ny * pushForce,
-            '#f59e0b',
+            this.branch === 'PINBALL' ? '#ec4899' : '#f59e0b',
             this.branch === 'BRUTE',
             this.branch === 'BOTNET'
           );
+
+          // Pinball Lvl 10 (Explosión Cinética): al impactar a un enemigo dispara 4 proyectiles cardinales
+          if (this.branch === 'PINBALL' && playerLevel >= 10 && unit.burstCooldown <= 0) {
+            unit.burstCooldown = 0.08;
+            spawnKineticBurst(
+              unit.x,
+              unit.y,
+              Math.max(14, Math.round(baseContactDamage * 0.65))
+            );
+          }
 
           // Fuerza Bruta Lvl 5: temblor de pantalla al golpear
           if (this.branch === 'BRUTE' && playerLevel >= 5) {
@@ -483,12 +713,51 @@ export class CompanionPet {
           ) {
             this.craterCooldown = 0.45;
             this.craters.push(
-              new BruteCraterZone(enemy.x, enemy.y, Math.max(10, Math.round(baseContactDamage * 0.4)))
+              new BruteCraterZone(
+                enemy.x,
+                enemy.y,
+                Math.max(10, Math.round(baseContactDamage * 0.4))
+              )
             );
           }
         }
       }
     }
+
+    // Actualizar Estela de Corrupción de Datos (Pinball Lvl 5)
+    for (const trail of this.pinballTrails) {
+      trail.update(dt);
+    }
+    this.pinballTrails = this.pinballTrails.filter((t) => t.active);
+
+    if (this.branch === 'PINBALL' && this.pinballTrails.length > 0) {
+      for (const enemy of enemies) {
+        if (!enemy.active) continue;
+        const cd = this.trailHitCooldowns.get(enemy) ?? 0;
+        if (cd > 0) {
+          this.trailHitCooldowns.set(enemy, cd - dt);
+          continue;
+        }
+        for (const trail of this.pinballTrails) {
+          const d = Math.hypot(enemy.x - trail.x, enemy.y - trail.y);
+          if (d <= (trail.size + enemy.size) * 0.5) {
+            this.trailHitCooldowns.set(enemy, 0.22);
+            applyDamageToEnemy(enemy, trail.damage, 0, 0, '#00f0ff', false, false);
+            break;
+          }
+        }
+      }
+    }
+
+    // Actualizar Proyectiles de Explosión Cinética (Pinball Lvl 10)
+    for (const proj of this.pinballProjectiles) {
+      if (!proj.active) continue;
+      const hits = proj.update(dt, enemies, canvasWidth, canvasHeight);
+      for (const h of hits) {
+        applyDamageToEnemy(h.enemy, h.dmg, 0, 0, '#00f0ff', false, false);
+      }
+    }
+    this.pinballProjectiles = this.pinballProjectiles.filter((p) => p.active);
 
     // Actualizar Fragmentos de Metralla Digital (Propagación de Malware - Botnet Lvl 10)
     for (const frag of this.shrapnelFragments) {
@@ -520,41 +789,6 @@ export class CompanionPet {
     }
     this.shockwaves = this.shockwaves.filter((w) => w.active);
 
-    // Actualizar Haces Láser de Cable Trampa (Rama 3)
-    if (this.branch === 'TRIPWIRE') {
-      const segments = this.getTripwireSegments(player);
-      const beamDamage = Math.round((26 + playerLevel * 2.5) * player.damageMultiplier + this.bonusDamageStat);
-      const appliesFreeze = playerLevel >= 10;
-
-      for (const enemy of enemies) {
-        if (!enemy.active) continue;
-        const cd = this.tripwireTickCooldowns.get(enemy) ?? 0;
-        if (cd > 0) {
-          this.tripwireTickCooldowns.set(enemy, cd - dt);
-          continue;
-        }
-
-        for (const seg of segments) {
-          const d = this.pointToSegmentDist(enemy.x, enemy.y, seg.x1, seg.y1, seg.x2, seg.y2);
-          if (d <= 10 + enemy.size * 0.45) {
-            this.tripwireTickCooldowns.set(enemy, 0.2);
-            if (appliesFreeze) {
-              enemy.networkFreezeTimer = 1.8;
-            }
-            applyDamageToEnemy(
-              enemy,
-              beamDamage,
-              0,
-              0,
-              appliesFreeze ? '#38bdf8' : '#ec4899',
-              false
-            );
-            break;
-          }
-        }
-      }
-    }
-
     return {
       damagedEnemies,
       killedEnemies,
@@ -563,67 +797,18 @@ export class CompanionPet {
     };
   }
 
-  private getTripwireSegments(
-    player: Player
-  ): { x1: number; y1: number; x2: number; y2: number }[] {
-    const vertices = [{ x: player.x, y: player.y }, ...this.units.map((u) => ({ x: u.x, y: u.y }))];
-    const segments: { x1: number; y1: number; x2: number; y2: number }[] = [];
-
-    if (vertices.length === 2) {
-      segments.push({
-        x1: vertices[0].x,
-        y1: vertices[0].y,
-        x2: vertices[1].x,
-        y2: vertices[1].y,
-      });
-    } else if (vertices.length === 3) {
-      // Triángulo láser (Lvl 5)
-      for (let i = 0; i < 3; i++) {
-        const next = (i + 1) % 3;
-        segments.push({
-          x1: vertices[i].x,
-          y1: vertices[i].y,
-          x2: vertices[next].x,
-          y2: vertices[next].y,
-        });
-      }
-    } else if (vertices.length >= 5) {
-      // Estrella / Pentagrama y Malla completa (Lvl 20)
-      for (let i = 0; i < vertices.length; i++) {
-        for (let j = i + 1; j < vertices.length; j++) {
-          segments.push({
-            x1: vertices[i].x,
-            y1: vertices[i].y,
-            x2: vertices[j].x,
-            y2: vertices[j].y,
-          });
-        }
-      }
-    }
-
-    return segments;
-  }
-
-  private pointToSegmentDist(
-    px: number,
-    py: number,
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number
-  ): number {
-    const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
-    if (l2 === 0) return Math.hypot(px - x1, py - y1);
-    const t = Math.max(0, Math.min(1, ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2));
-    return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
-  }
-
-  public draw(ctx: CanvasRenderingContext2D, player: Player, playerLevel: number): void {
+  public draw(ctx: CanvasRenderingContext2D, player: Player, _playerLevel: number): void {
     for (const crater of this.craters) {
       crater.draw(ctx);
     }
     for (const wave of this.shockwaves) {
       wave.draw(ctx);
+    }
+    for (const trail of this.pinballTrails) {
+      trail.draw(ctx);
+    }
+    for (const proj of this.pinballProjectiles) {
+      proj.draw(ctx);
     }
 
     // Radio de patrulla sutil en Nivel 1
@@ -638,54 +823,30 @@ export class CompanionPet {
       ctx.restore();
     }
 
-    // Dibujar Haces Láser si la rama es Cable Trampa
-    if (this.branch === 'TRIPWIRE') {
-      const segments = this.getTripwireSegments(player);
-      const isFiberOptic = playerLevel >= 10;
-
-      ctx.save();
-      ctx.strokeStyle = isFiberOptic ? '#00f0ff' : '#f43f5e';
-      ctx.shadowColor = isFiberOptic ? '#38bdf8' : '#ec4899';
-      ctx.shadowBlur = 18;
-      ctx.lineWidth = playerLevel >= 20 ? 7 : 9;
-
-      for (const seg of segments) {
-        ctx.beginPath();
-        ctx.moveTo(seg.x1, seg.y1);
-        ctx.lineTo(seg.x2, seg.y2);
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2.5;
-      for (const seg of segments) {
-        ctx.beginPath();
-        ctx.moveTo(seg.x1, seg.y1);
-        ctx.lineTo(seg.x2, seg.y2);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
     // Dibujar Fragmentos de Metralla Digital (Propagación de Malware)
     for (const frag of this.shrapnelFragments) {
       frag.draw(ctx);
     }
 
-    // Dibujar los cuadrados marrones acompañantes
+    // Dibujar los cuadrados acompañantes
     for (const unit of this.units) {
       ctx.save();
-      ctx.fillStyle = '#92400e';
-      ctx.strokeStyle = this.branch === 'BRUTE' ? '#fbbf24' : '#f59e0b';
+      ctx.fillStyle = this.branch === 'PINBALL' ? '#be185d' : '#92400e';
+      ctx.strokeStyle =
+        this.branch === 'BRUTE'
+          ? '#fbbf24'
+          : this.branch === 'PINBALL'
+          ? '#00f0ff'
+          : '#f59e0b';
       ctx.lineWidth = 2;
-      ctx.shadowColor = '#d97706';
+      ctx.shadowColor = this.branch === 'PINBALL' ? '#ec4899' : '#d97706';
       ctx.shadowBlur = 12;
 
       const half = unit.size / 2;
       ctx.fillRect(unit.x - half, unit.y - half, unit.size, unit.size);
       ctx.strokeRect(unit.x - half, unit.y - half, unit.size, unit.size);
 
-      ctx.fillStyle = '#fde68a';
+      ctx.fillStyle = this.branch === 'PINBALL' ? '#00f0ff' : '#fde68a';
       ctx.fillRect(unit.x - half * 0.35, unit.y - half * 0.35, unit.size * 0.35, unit.size * 0.35);
       ctx.restore();
     }
