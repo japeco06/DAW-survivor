@@ -864,12 +864,12 @@ export class Game {
     this.killCount += combatEvents.enemiesKilled;
     this.highScoreKills = Math.max(this.highScoreKills, this.killCount);
 
-    // Mecánica pasiva de Vampirismo: cura una pequeña cantidad de HP (1% HP máx, mín. 1 HP) por cada 50 enemigos eliminados
-    const prevVampirismTier = Math.floor(prevKillCount / 50);
-    const currentVampirismTier = Math.floor(this.killCount / 50);
+    // Mecánica pasiva de Vampirismo: cura un 4% de HP máx (mín. 1 HP) por cada 28 enemigos eliminados
+    const prevVampirismTier = Math.floor(prevKillCount / 28);
+    const currentVampirismTier = Math.floor(this.killCount / 28);
     if (currentVampirismTier > prevVampirismTier && this.player.active) {
       const tiersCrossed = currentVampirismTier - prevVampirismTier;
-      const healPerTier = Math.max(1, Math.round(this.player.maxHp * 0.01));
+      const healPerTier = Math.max(1, Math.round(this.player.maxHp * 0.04));
       const passiveVampirismHeal = tiersCrossed * healPerTier;
       this.player.heal(passiveVampirismHeal);
       this.particleSystem.spawnFloatingText(

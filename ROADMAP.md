@@ -128,7 +128,7 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
     │   └── Nivel 20 ('Multibola'): Se divide en 3 mascotas rebotadoras independientes de alta velocidad
     └── [Gameplay & Balance]
         ├── Reducción de 4 segundos exactos en la duración de la alerta/evento de horda ('El Enjambre': 15s -> 11s)
-        └── Nueva curación pasiva 'Vampirismo': el jugador recupera pasivamente un 1% de HP (mín. 1 HP) por cada 50 enemigos eliminados
+        └── Nueva curación pasiva 'Vampirismo': el jugador recupera pasivamente un 4% de HP (mín. 1 HP) por cada 28 enemigos eliminados
 ```
 
 ---
@@ -145,7 +145,7 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
   - **Nivel 20 (`Multibola`)**: Se divide en `3` mascotas independientes de alta velocidad que rebotan por toda la pantalla.
 - **Balanceado (`Spawner.ts`, `Game.ts` - Evento de Horda y Vampirismo Pasivo)**:
   - Reducida la duración de la alerta del evento de horda (`El Enjambre`) en exactamente **4 segundos** (`15.0s` → `11.0s`).
-  - Implementada la mecánica pasiva de curación por **Vampirismo**: el jugador se cura pasivamente un `1%` de su vida máxima (mínimo `1 HP`) cada **50 enemigos eliminados**.
+  - Implementada la mecánica pasiva de curación por **Vampirismo**: el jugador se cura pasivamente un `4%` de su vida máxima (mínimo `1 HP`) cada **28 enemigos eliminados**.
 
 ### [v0.9.1] - 2026-10-28
 - **Balanceado y Mejorado (`Spawner.ts`, `PingProjectile.ts` - Fase 1)**:
