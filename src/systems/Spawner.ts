@@ -43,7 +43,7 @@ export class Spawner {
     canvasWidth: number,
     canvasHeight: number
   ): void {
-    this.swarmActiveTimer = 11.0;
+    this.swarmActiveTimer = 6.0;
     this.swarmTriggeredJustNow = true;
 
     // Generar inmediatamente 50 enemigos de la variante 'Amarilla' con muy poca vida y daño

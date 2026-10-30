@@ -127,15 +127,16 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
     │   ├── Nivel 10 ('Explosión Cinética'): Rebotar en un borde o impactar a un enemigo dispara 4 proyectiles pequeños (arriba, abajo, izquierda, derecha)
     │   └── Nivel 20 ('Multibola'): Se divide en 3 mascotas rebotadoras independientes de alta velocidad
     └── [Gameplay & Balance]
-        ├── Reducción de 4 segundos exactos en la duración de la alerta/evento de horda ('El Enjambre': 15s -> 11s)
-        └── Nueva curación pasiva 'Vampirismo': el jugador recupera pasivamente un 4% de HP (mín. 1 HP) por cada 28 enemigos eliminados
+        ├── Duración de la alerta/evento de horda ('El Enjambre') fijada exactamente en 6 segundos
+        ├── Cajas de Hardware (Obstáculos): otorgan curación el 100% de las veces al ser destruidas (eliminado drop de monedas/XP en cajas)
+        └── Mecánica 'Vampirismo': el jugador recupera exactamente 20 HP por cada 20 enemigos eliminados
 ```
 
 ---
 
 ## Historial Detallado de Versiones
 
-### [v0.9.2] - 2026-10-29
+### [v0.9.2] - 2026-10-30
 - **Ajustado (`CompanionPet.ts` - Apuntado de La Botnet / Rama 2)**:
   - Enemigos estándar mantienen el límite estricto de máximo `1` mascota por objetivo, mientras que los mini-jefes (`RANSOMWARE`) permiten hasta **`3` mascotas** atacando al mismo mini-jefe simultáneamente.
 - **Rediseñado (`CompanionPet.ts`, `UpgradeSystem.ts` - Rama 3 `'Protocolo Pinball'`)**:
@@ -143,9 +144,10 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
   - **Nivel 5**: Velocidad aumentada un **`+50%`** (`930 px/s`) y generación de una estela temporal de corrupción de datos (`PinballCorruptionTrail`) que daña a los enemigos que la tocan.
   - **Nivel 10 (`Explosión Cinética`)**: Al rebotar contra un borde o impactar contra un enemigo, dispara `4` proyectiles pequeños en las direcciones cardinales (`arriba`, `abajo`, `izquierda`, `derecha`).
   - **Nivel 20 (`Multibola`)**: Se divide en `3` mascotas independientes de alta velocidad que rebotan por toda la pantalla.
-- **Balanceado (`Spawner.ts`, `Game.ts` - Evento de Horda y Vampirismo Pasivo)**:
-  - Reducida la duración de la alerta del evento de horda (`El Enjambre`) en exactamente **4 segundos** (`15.0s` → `11.0s`).
-  - Implementada la mecánica pasiva de curación por **Vampirismo**: el jugador se cura pasivamente un `4%` de su vida máxima (mínimo `1 HP`) cada **28 enemigos eliminados**.
+- **Balanceado (`Spawner.ts`, `Game.ts` - Evento de Horda, Cajas de Hardware y Vampirismo)**:
+  - Fijada la duración de la alerta del evento de horda (`El Enjambre`) en exactamente **6 segundos**.
+  - **Cajas de Hardware**: Ahora otorgan curación (`+25 HP`) el **100% de las veces** al destruirse (eliminando los drops de monedas de las cajas).
+  - **Mecánica de Vampirismo**: El jugador recupera exactamente **`20 HP`** cada **20 enemigos eliminados**.
 
 ### [v0.9.1] - 2026-10-28
 - **Balanceado y Mejorado (`Spawner.ts`, `PingProjectile.ts` - Fase 1)**:

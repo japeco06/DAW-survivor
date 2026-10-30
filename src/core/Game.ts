@@ -789,7 +789,7 @@ export class Game {
     if (this.spawner.swarmTriggeredJustNow) {
       this.sound.playExplosion(true);
       this.particleSystem.triggerShake(12, 0.65);
-      this.addTerminalLog('!! ALERTA DE PLAGA: EL ENJAMBRE (50 ENEMIGOS - 11s) !!');
+      this.addTerminalLog('!! ALERTA DE PLAGA: EL ENJAMBRE (50 ENEMIGOS - 6s) !!');
     }
     if (this.spawner.minerSpawnedJustNow) {
       this.sound.playCoinPickup();
@@ -864,13 +864,12 @@ export class Game {
     this.killCount += combatEvents.enemiesKilled;
     this.highScoreKills = Math.max(this.highScoreKills, this.killCount);
 
-    // Mecánica pasiva de Vampirismo: cura un 4% de HP máx (mín. 1 HP) por cada 28 enemigos eliminados
-    const prevVampirismTier = Math.floor(prevKillCount / 28);
-    const currentVampirismTier = Math.floor(this.killCount / 28);
+    // Mecánica de Vampirismo: cura exactamente 20 HP por cada 20 enemigos eliminados
+    const prevVampirismTier = Math.floor(prevKillCount / 20);
+    const currentVampirismTier = Math.floor(this.killCount / 20);
     if (currentVampirismTier > prevVampirismTier && this.player.active) {
       const tiersCrossed = currentVampirismTier - prevVampirismTier;
-      const healPerTier = Math.max(1, Math.round(this.player.maxHp * 0.04));
-      const passiveVampirismHeal = tiersCrossed * healPerTier;
+      const passiveVampirismHeal = tiersCrossed * 20;
       this.player.heal(passiveVampirismHeal);
       this.particleSystem.spawnFloatingText(
         this.player.x,
@@ -941,51 +940,14 @@ export class Game {
       );
 
       if (drop.malwareType === 'HARDWARE_BOX') {
-        const rewardRoll = Math.random();
-        if (rewardRoll < 0.35) {
-          for (let c = 0; c < 3; c++) {
-            this.cryptoCoins.push(
-              new CryptoCoin(
-                drop.x + (Math.random() - 0.5) * 28,
-                drop.y + (Math.random() - 0.5) * 28,
-                1
-              )
-            );
-          }
-          this.particleSystem.spawnFloatingText(
-            drop.x,
-            drop.y - 12,
-            'CAJA: +3 CRYPTO 🪙',
-            '#fbbf24',
-            1.05
-          );
-        } else if (rewardRoll < 0.72) {
-          for (let f = 0; f < 3; f++) {
-            this.codeFragments.push(
-              new CodeFragment(
-                drop.x + (Math.random() - 0.5) * 30,
-                drop.y + (Math.random() - 0.5) * 30,
-                35
-              )
-            );
-          }
-          this.particleSystem.spawnFloatingText(
-            drop.x,
-            drop.y - 12,
-            'CAJA: +PAQUETE XP',
-            '#00f0ff',
-            1.05
-          );
-        } else {
-          this.player.heal(25);
-          this.particleSystem.spawnFloatingText(
-            this.player.x,
-            this.player.y - 24,
-            'CAJA: +25 HP REPARACIÓN',
-            '#00ff66',
-            1.1
-          );
-        }
+        this.player.heal(25);
+        this.particleSystem.spawnFloatingText(
+          this.player.x,
+          this.player.y - 24,
+          'CAJA: +25 HP REPARACIÓN',
+          '#00ff66',
+          1.1
+        );
         continue;
       }
 
