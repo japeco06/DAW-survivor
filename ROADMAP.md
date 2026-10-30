@@ -137,21 +137,39 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   │   └── Escalado de HP restaurado por activación según el nivel: Nv.1 = 2 HP, Nv.2 = 4 HP, Nv.3 = 6 HP, Nv.4 = 8 HP, Nv.5 = 10 HP (eliminada la curación plana de 1 HP)
 │   └── [Control de Versiones] Versión actualizada a `v0.9.3` en el Menú Principal, insignia inferior derecha y `ROADMAP.md`
 │
-└── v0.9.4 — High Score Local, Drones de Escudo Reactivo y Nuevo Enemigo 'Evasor' (Ghost Script) (ACTUAL)
-    ├── [High Score Local (`MetaSystem.ts`, `Game.ts`)] Guardado en `localStorage` y visualización de `"High Score: [Value]"` en el Menú Principal
-    ├── [Rediseño de Drones (Escudo Reactivo - `CombatSystem.ts`)]
-    │   ├── Orbitan e interceptan enemigos (0 daño al jugador al impactar contra un dron)
-    │   ├── Durabilidad de 3 impactos por dron con cambio de color (Verde -> Amarillo -> Rojo)
-    │   ├── Al 3er impacto: el dron explota infligiendo daño AoE a los enemigos cercanos y desaparece
-    │   └── Cooldown de reaparición: 10 segundos por cada dron destruido
-    └── [Nuevo Enemigo ('Evasor' / Ghost Script - `Evasor.ts`, `Spawner.ts`)]
-        ├── Reglas de aparición: no aparece durante los primeros 60s de partida y límite estricto de máx. 3 en pantalla
-        └── Mecánica de Esquiva: dash lateral instantáneo cuando un proyectil entra en su radio de proximidad (cooldown de 4s completamente vulnerable)
+├── v0.9.4 — High Score Local, Drones de Escudo Reactivo y Nuevo Enemigo 'Evasor' (Ghost Script)
+│   ├── [High Score Local (`MetaSystem.ts`, `Game.ts`)] Guardado en `localStorage` y visualización de `"High Score: [Value]"` en el Menú Principal
+│   ├── [Rediseño de Drones (Escudo Reactivo - `CombatSystem.ts`)]
+│   │   ├── Orbitan e interceptan enemigos (0 daño al jugador al impactar contra un dron)
+│   │   ├── Durabilidad de 3 impactos por dron con cambio de color (Verde -> Amarillo -> Rojo)
+│   │   ├── Al 3er impacto: el dron explota infligiendo daño AoE a los enemigos cercanos y desaparece
+│   │   └── Cooldown de reaparición: 10 segundos por cada dron destruido
+│   └── [Nuevo Enemigo ('Evasor' / Ghost Script - `Evasor.ts`, `Spawner.ts`)]
+│       ├── Reglas de aparición: no aparece durante los primeros 60s de partida y límite estricto de máx. 3 en pantalla
+│       └── Mecánica de Esquiva: dash lateral instantáneo cuando un proyectil entra en su radio de proximidad (cooldown de 4s completamente vulnerable)
+│
+└── v0.9.5 — Sistema de Golpes Críticos, Nerf RNG a 'Robo de Ancho de Banda' y Corrección Física de Pinball (ACTUAL)
+    ├── [Sistema de Golpes Críticos (`Player.ts`, `CombatSystem.ts`, `CompanionPet.ts`, `Game.ts`)]
+    │   ├── Probabilidad base del 5% en todos los ataques para infligir el doble de daño (2x / 200%)
+    │   └── Visualización de números de daño crítico en color amarillo (`#facc15`) y mayor tamaño (`1.35x`)
+    ├── [Nerf a 'Robo de Ancho de Banda' (`UpgradeSystem.ts`, `Game.ts`)]
+    │   └── Cambiado a activación por RNG: 15% de probabilidad de activar el efecto de curación al cumplirse la condición
+    └── [Corrección Física de Morcillita Rama 3 - Pinball (`CompanionPet.ts`)]
+        └── Eliminados los rebotes en bucle infinito: al rebotar en bordes o enemigos se aplica una desviación angular aleatoria de +/- 15° a 45°
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.9.5] - 2026-10-30
+- **Añadido (`Player.ts`, `CombatSystem.ts`, `CompanionPet.ts`, `Game.ts` - Sistema de Golpes Críticos)**:
+  - Todos los ataques cuentan con un **5% de probabilidad base** de infligir **2x (200%) de daño**.
+  - Los impactos críticos se muestran en pantalla en color amarillo brillante (`#facc15`) y con un tamaño mayor (`1.35` frente a `0.95` del texto de daño normal).
+- **Balanceado (`UpgradeSystem.ts`, `Game.ts` - Nerf a `'Robo de Ancho de Banda'`)**:
+  - Cambiado de activación garantizada a probabilística (**RNG del 15%**) para activar la curación cuando se cumple la condición.
+- **Corregido (`CompanionPet.ts` - Física de Rebote en Rama 3 `'Protocolo Pinball'`)**:
+  - Corregidos los rebotes en bucle infinito: al rebotar contra un borde de la pantalla o contra un enemigo, la trayectoria ya no solo invierte su eje sino que aplica una desviación angular aleatoria de **`+/- 15° a 45°`**, recorriendo dinámicamente toda la pantalla.
 
 ### [v0.9.4] - 2026-10-30
 - **Añadido (`MetaSystem.ts`, `Game.ts` - High Score Local)**:

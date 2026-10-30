@@ -21,6 +21,7 @@ export interface DamagedEnemyInfo {
   y: number;
   damage: number;
   color: string;
+  isCrit?: boolean;
 }
 
 export interface CombatEvents {
@@ -348,12 +349,16 @@ export class CombatSystem {
       }
     };
 
-    const computePlayerHitDamage = (baseDamage: number): { dmg: number; isCrit: boolean } => {
-      const scaled = Math.round(baseDamage * player.damageMultiplier);
-      if (player.critChance > 0 && Math.random() < player.critChance) {
-        return { dmg: scaled * 2, isCrit: true };
-      }
-      return { dmg: scaled, isCrit: false };
+    const computeBaseScaledDamage = (baseDamage: number): number => {
+      return Math.round(baseDamage * player.damageMultiplier);
+    };
+
+    const rollCritHit = (scaledDamage: number): { dmg: number; isCrit: boolean } => {
+      const isCrit = Math.random() < player.critChance;
+      return {
+        dmg: isCrit ? scaledDamage * 2 : scaledDamage,
+        isCrit,
+      };
     };
 
     const effectiveFireCooldown = this.fireCooldown / Math.max(0.5, player.fireRateMultiplier);
@@ -379,7 +384,7 @@ export class CombatSystem {
               : spreadIndex * 0.12;
 
           const finalAngle = baseAngle + spreadOffset;
-          const hitCalc = computePlayerHitDamage(this.projectileDamage);
+          const baseDmg = computeBaseScaledDamage(this.projectileDamage);
 
           projectiles.push(
             new Projectile(
@@ -388,7 +393,7 @@ export class CombatSystem {
               Math.cos(finalAngle),
               Math.sin(finalAngle),
               this.projectileSpeed,
-              hitCalc.dmg
+              baseDmg
             )
           );
         }
@@ -408,7 +413,7 @@ export class CombatSystem {
           const angle =
             Math.atan2(target.y - player.y, target.x - player.x) +
             (i - (projectilesToSpawn - 1) / 2) * 0.35;
-          const hitCalc = computePlayerHitDamage(this.pingDamage);
+          const baseDmg = computeBaseScaledDamage(this.pingDamage);
 
           pingProjectiles.push(
             new PingProjectile(
@@ -417,7 +422,7 @@ export class CombatSystem {
               Math.cos(angle),
               Math.sin(angle),
               this.pingSpeed,
-              hitCalc.dmg
+              baseDmg
             )
           );
         }
@@ -438,7 +443,7 @@ export class CombatSystem {
           spawnX,
           spawnY,
           this.quarantineRadius,
-          this.quarantineDamage,
+          computeBaseScaledDamage(this.quarantineDamage),
           this.quarantineDuration
         )
       );
@@ -453,9 +458,9 @@ export class CombatSystem {
       this.firewallPulseTimer >= effectivePulseCooldown
     ) {
       this.firewallPulseTimer = 0;
-      const pulseHit = computePlayerHitDamage(this.firewallPulseDamage);
+      const baseDmg = computeBaseScaledDamage(this.firewallPulseDamage);
       this.firewallPulses.push(
-        new FirewallPulseRing(player.x, player.y, this.firewallPulseMaxRadius, pulseHit.dmg)
+        new FirewallPulseRing(player.x, player.y, this.firewallPulseMaxRadius, baseDmg)
       );
     }
 
@@ -469,14 +474,14 @@ export class CombatSystem {
         : this.firewallAngle;
       this.sqlBeamTimer = 0;
       shotsFired++;
-      const beamHit = computePlayerHitDamage(this.sqlBeamDamage);
+      const baseDmg = computeBaseScaledDamage(this.sqlBeamDamage);
       this.sqlBeams.push(
         new SqlInjectionBeam(
           player.x,
           player.y,
           angle,
           this.sqlBeamSpeed,
-          beamHit.dmg,
+          baseDmg,
           this.sqlBeamThickness
         )
       );
@@ -523,14 +528,16 @@ export class CombatSystem {
           const dx = enemy.x - player.x;
           const dy = enemy.y - player.y;
           const dist = Math.hypot(dx, dy) || 1;
-          enemy.takeDamage(proj.damage, (dx / dist) * 6, (dy / dist) * 6);
+          const critRoll = rollCritHit(proj.damage);
+          enemy.takeDamage(critRoll.dmg, (dx / dist) * 6, (dy / dist) * 6);
           tryTriggerVampirism();
 
           damagedEnemies.push({
             x: enemy.x,
             y: enemy.y,
-            damage: proj.damage,
+            damage: critRoll.dmg,
             color: enemy.color,
+            isCrit: critRoll.isCrit,
           });
 
           registerEnemyKillIfDead(enemy);
@@ -564,14 +571,16 @@ export class CombatSystem {
           const dx = enemy.x - player.x;
           const dy = enemy.y - player.y;
           const dist = Math.hypot(dx, dy) || 1;
-          enemy.takeDamage(ping.damage, (dx / dist) * 8, (dy / dist) * 8);
+          const critRoll = rollCritHit(ping.damage);
+          enemy.takeDamage(critRoll.dmg, (dx / dist) * 8, (dy / dist) * 8);
           tryTriggerVampirism();
 
           damagedEnemies.push({
             x: enemy.x,
             y: enemy.y,
-            damage: ping.damage,
+            damage: critRoll.dmg,
             color: '#0088ff',
+            isCrit: critRoll.isCrit,
           });
 
           registerEnemyKillIfDead(enemy);
@@ -587,13 +596,15 @@ export class CombatSystem {
 
       for (const hit of zoneHits) {
         if (!hit.enemy.active) continue;
-        hit.enemy.takeDamage(hit.damage, 0, 0);
+        const critRoll = rollCritHit(hit.damage);
+        hit.enemy.takeDamage(critRoll.dmg, 0, 0);
 
         damagedEnemies.push({
           x: hit.enemy.x,
           y: hit.enemy.y,
-          damage: hit.damage,
+          damage: critRoll.dmg,
           color: '#10b981',
+          isCrit: critRoll.isCrit,
         });
 
         registerEnemyKillIfDead(hit.enemy);
@@ -609,14 +620,16 @@ export class CombatSystem {
         const dx = hit.enemy.x - player.x;
         const dy = hit.enemy.y - player.y;
         const dist = Math.hypot(dx, dy) || 1;
-        hit.enemy.takeDamage(hit.damage, (dx / dist) * 18, (dy / dist) * 18);
+        const critRoll = rollCritHit(hit.damage);
+        hit.enemy.takeDamage(critRoll.dmg, (dx / dist) * 18, (dy / dist) * 18);
         tryTriggerVampirism();
 
         damagedEnemies.push({
           x: hit.enemy.x,
           y: hit.enemy.y,
-          damage: hit.damage,
+          damage: critRoll.dmg,
           color: '#ff8800',
+          isCrit: critRoll.isCrit,
         });
 
         registerEnemyKillIfDead(hit.enemy);
@@ -642,14 +655,16 @@ export class CombatSystem {
         const dx = hit.enemy.x - player.x;
         const dy = hit.enemy.y - player.y;
         const dist = Math.hypot(dx, dy) || 1;
-        hit.enemy.takeDamage(hit.damage, (dx / dist) * 10, (dy / dist) * 10);
+        const critRoll = rollCritHit(hit.damage);
+        hit.enemy.takeDamage(critRoll.dmg, (dx / dist) * 10, (dy / dist) * 10);
         tryTriggerVampirism();
 
         damagedEnemies.push({
           x: hit.enemy.x,
           y: hit.enemy.y,
-          damage: hit.damage,
+          damage: critRoll.dmg,
           color: '#d946ef',
+          isCrit: critRoll.isCrit,
         });
 
         registerEnemyKillIfDead(hit.enemy);
@@ -688,7 +703,7 @@ export class CombatSystem {
           slot.respawnTimer = 10.0;
           this.droneExplosions.push(new DroneExplosionWave(nodeX, nodeY));
           const aoeRadius = 115;
-          const aoeDamage = Math.round(this.firewallDamage * 2.5 * player.damageMultiplier);
+          const baseAoeDamage = Math.round(this.firewallDamage * 2.5 * player.damageMultiplier);
 
           for (const target of enemies) {
             if (!target.active) continue;
@@ -696,12 +711,14 @@ export class CombatSystem {
             if (d <= aoeRadius + target.size * 0.5) {
               const kx = ((target.x - nodeX) / (d || 1)) * 28;
               const ky = ((target.y - nodeY) / (d || 1)) * 28;
-              target.takeDamage(aoeDamage, kx, ky);
+              const critRoll = rollCritHit(baseAoeDamage);
+              target.takeDamage(critRoll.dmg, kx, ky);
               damagedEnemies.push({
                 x: target.x,
                 y: target.y,
-                damage: aoeDamage,
+                damage: critRoll.dmg,
                 color: '#ff1e42',
+                isCrit: critRoll.isCrit,
               });
               registerEnemyKillIfDead(target);
             }
@@ -731,8 +748,9 @@ export class CombatSystem {
             const dy = enemy.y - player.y;
             const dist = Math.hypot(dx, dy) || 1;
             const pushDist = 36;
+            const critRoll = rollCritHit(computeBaseScaledDamage(this.firewallDamage));
             enemy.takeDamage(
-              this.firewallDamage,
+              critRoll.dmg,
               (dx / dist) * pushDist,
               (dy / dist) * pushDist
             );
@@ -741,13 +759,14 @@ export class CombatSystem {
             damagedEnemies.push({
               x: enemy.x,
               y: enemy.y,
-              damage: this.firewallDamage,
+              damage: critRoll.dmg,
               color:
                 slot.durability === 3
                   ? '#00ff66'
                   : slot.durability === 2
                   ? '#facc15'
                   : '#ff1e42',
+              isCrit: critRoll.isCrit,
             });
 
             registerEnemyKillIfDead(enemy);

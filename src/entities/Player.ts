@@ -13,7 +13,7 @@ export class Player extends Entity {
   public vampirismHealAmount: number = 0;
   public damageMultiplier: number = 1.0;
   public fireRateMultiplier: number = 1.0;
-  public critChance: number = 0;
+  public critChance: number = 0.05; // 5% probabilidad crítica base (2x daño)
   public equippedHat: HatItem | null = null;
   public borderColor: string = '#ffffff';
   public profileName: string = 'AGENTE ESTÁNDAR';
@@ -58,7 +58,7 @@ export class Player extends Entity {
       this.pickupRadius += hat.stats.magnetBonus ?? 0;
       this.damageMultiplier = Number((1 + (hat.stats.damageMult ?? 0)).toFixed(2));
       this.fireRateMultiplier = Number((1 + (hat.stats.fireRateMult ?? 0)).toFixed(2));
-      this.critChance = hat.stats.critChance ?? 0;
+      this.critChance = Number((0.05 + (hat.stats.critChance ?? 0)).toFixed(3));
     }
   }
 

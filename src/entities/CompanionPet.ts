@@ -292,7 +292,7 @@ class BruteShockwave {
 }
 
 export interface CompanionUpdateOutput {
-  damagedEnemies: { x: number; y: number; damage: number; color: string }[];
+  damagedEnemies: { x: number; y: number; damage: number; color: string; isCrit?: boolean }[];
   killedEnemies: Adware[];
   screenShakeIntensity: number;
   milestoneMessage: string | null;
@@ -448,7 +448,7 @@ export class CompanionPet {
     canvasWidth: number = window.innerWidth,
     canvasHeight: number = window.innerHeight
   ): CompanionUpdateOutput {
-    const damagedEnemies: { x: number; y: number; damage: number; color: string }[] = [];
+    const damagedEnemies: { x: number; y: number; damage: number; color: string; isCrit?: boolean }[] = [];
     const killedEnemies: Adware[] = [];
     let screenShakeIntensity = 0;
 
@@ -512,13 +512,15 @@ export class CompanionPet {
       fromBotnetSquare: boolean = false
     ) => {
       if (!enemy.active) return;
-      enemy.takeDamage(dmg, kbX, kbY);
-      damagedEnemies.push({ x: enemy.x, y: enemy.y, damage: dmg, color });
+      const isCrit = Math.random() < player.critChance;
+      const finalDmg = isCrit ? dmg * 2 : dmg;
+      enemy.takeDamage(finalDmg, kbX, kbY);
+      damagedEnemies.push({ x: enemy.x, y: enemy.y, damage: finalDmg, color, isCrit });
 
       if (!enemy.active) {
         killedEnemies.push(enemy);
         if (fromBruteImpact && this.branch === 'BRUTE' && playerLevel >= 20) {
-          this.shockwaves.push(new BruteShockwave(enemy.x, enemy.y, Math.round(dmg * 1.45)));
+          this.shockwaves.push(new BruteShockwave(enemy.x, enemy.y, Math.round(finalDmg * 1.45)));
           screenShakeIntensity = Math.max(screenShakeIntensity, 9);
         }
         // Propagación de Malware (Botnet Lvl 10): al matar a un enemigo con un cuadrado, explota en metralla digital en área
@@ -530,6 +532,12 @@ export class CompanionPet {
           );
         }
       }
+    };
+
+    const getRandomPinballDeflectionRad = (): number => {
+      const deg = 15 + Math.random() * 30; // 15 a 45 grados
+      const sign = Math.random() < 0.5 ? -1 : 1;
+      return ((deg * Math.PI) / 180) * sign;
     };
 
     // Regla de apuntado para La Botnet:
@@ -551,26 +559,45 @@ export class CompanionPet {
         unit.y += unit.vy * dt;
 
         const half = unit.size / 2;
-        let bouncedEdge = false;
+        let bouncedX = 0; // -1 izq, 1 der
+        let bouncedY = 0; // -1 arriba, 1 abajo
 
         if (unit.x <= half) {
           unit.x = half;
           unit.vx = Math.abs(unit.vx);
-          bouncedEdge = true;
+          bouncedX = -1;
         } else if (unit.x >= canvasWidth - half) {
           unit.x = canvasWidth - half;
           unit.vx = -Math.abs(unit.vx);
-          bouncedEdge = true;
+          bouncedX = 1;
         }
 
         if (unit.y <= half) {
           unit.y = half;
           unit.vy = Math.abs(unit.vy);
-          bouncedEdge = true;
+          bouncedY = -1;
         } else if (unit.y >= canvasHeight - half) {
           unit.y = canvasHeight - half;
           unit.vy = -Math.abs(unit.vy);
-          bouncedEdge = true;
+          bouncedY = 1;
+        }
+
+        const bouncedEdge = bouncedX !== 0 || bouncedY !== 0;
+        if (bouncedEdge) {
+          // Desviación angular aleatoria (+/- 15 a 45 grados) para evitar bucles infinitos
+          const deflectedAngle = Math.atan2(unit.vy, unit.vx) + getRandomPinballDeflectionRad();
+          let nextVx = Math.cos(deflectedAngle) * unit.speed;
+          let nextVy = Math.sin(deflectedAngle) * unit.speed;
+          const minAxisSpeed = unit.speed * 0.25;
+
+          if (bouncedX === -1 && nextVx < minAxisSpeed) nextVx = Math.max(minAxisSpeed, Math.abs(nextVx));
+          if (bouncedX === 1 && nextVx > -minAxisSpeed) nextVx = -Math.max(minAxisSpeed, Math.abs(nextVx));
+          if (bouncedY === -1 && nextVy < minAxisSpeed) nextVy = Math.max(minAxisSpeed, Math.abs(nextVy));
+          if (bouncedY === 1 && nextVy > -minAxisSpeed) nextVy = -Math.max(minAxisSpeed, Math.abs(nextVy));
+
+          const norm = Math.hypot(nextVx, nextVy) || 1;
+          unit.vx = (nextVx / norm) * unit.speed;
+          unit.vy = (nextVy / norm) * unit.speed;
         }
 
         // Lvl 10 (Explosión Cinética): al rebotar en un borde dispara 4 proyectiles (arriba, abajo, izquierda, derecha)
@@ -688,6 +715,14 @@ export class CompanionPet {
             this.branch === 'BRUTE',
             this.branch === 'BOTNET'
           );
+
+          // Pinball: desvío dinámico de trayectoria (+/- 15 a 45 grados) al impactar contra un enemigo
+          if (this.branch === 'PINBALL') {
+            const baseAngle = Math.atan2(unit.vy, unit.vx);
+            const deflectedAngle = baseAngle + getRandomPinballDeflectionRad();
+            unit.vx = Math.cos(deflectedAngle) * unit.speed;
+            unit.vy = Math.sin(deflectedAngle) * unit.speed;
+          }
 
           // Pinball Lvl 10 (Explosión Cinética): al impactar a un enemigo dispara 4 proyectiles cardinales
           if (this.branch === 'PINBALL' && playerLevel >= 10 && unit.burstCooldown <= 0) {

@@ -56,7 +56,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.9.4';
+const GAME_VERSION = 'v0.9.5';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -881,23 +881,31 @@ export class Game {
     this.metaSystem.updateHighScore(this.killCount, this.elapsedTime);
     this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
 
-    // Mecánica de Vampirismo: cura exactamente 20 HP por cada 20 enemigos eliminados
+    // Mecánica de Vampirismo / Robo de Ancho de Banda: 15% de probabilidad de activar curación al cumplir la condición de bajas
     const prevVampirismTier = Math.floor(prevKillCount / 20);
     const currentVampirismTier = Math.floor(this.killCount / 20);
     if (currentVampirismTier > prevVampirismTier && this.player.active) {
       const tiersCrossed = currentVampirismTier - prevVampirismTier;
-      const passiveVampirismHeal = tiersCrossed * 20;
-      this.player.heal(passiveVampirismHeal);
-      this.particleSystem.spawnFloatingText(
-        this.player.x,
-        this.player.y - 30,
-        `+${passiveVampirismHeal} HP [VAMPIRISMO]`,
-        '#f43f5e',
-        1.0
-      );
-      this.addTerminalLog(
-        `VAMPIRISM PASSIVE: +${passiveVampirismHeal} HP restored (${this.killCount} kills).`
-      );
+      let triggeredTiers = 0;
+      for (let t = 0; t < tiersCrossed; t++) {
+        if (Math.random() < 0.15) {
+          triggeredTiers++;
+        }
+      }
+      if (triggeredTiers > 0) {
+        const passiveVampirismHeal = triggeredTiers * 20;
+        this.player.heal(passiveVampirismHeal);
+        this.particleSystem.spawnFloatingText(
+          this.player.x,
+          this.player.y - 30,
+          `+${passiveVampirismHeal} HP [VAMPIRISMO]`,
+          '#f43f5e',
+          1.0
+        );
+        this.addTerminalLog(
+          `VAMPIRISM PASSIVE (15% RNG): +${passiveVampirismHeal} HP restored (${this.killCount} kills).`
+        );
+      }
     }
 
     if (combatEvents.shotsFired > 0) {
@@ -917,9 +925,11 @@ export class Game {
     }
 
     for (const hit of combatEvents.damagedEnemies) {
-      this.particleSystem.spawnHitSparks(hit.x, hit.y, hit.color);
+      this.particleSystem.spawnHitSparks(hit.x, hit.y, hit.isCrit ? '#facc15' : hit.color);
       if (hit.damage === 0) {
         this.particleSystem.spawnFloatingText(hit.x, hit.y, '0 [SHIELD]', '#38bdf8', 0.85);
+      } else if (hit.isCrit) {
+        this.particleSystem.spawnFloatingText(hit.x, hit.y, `-${hit.damage}!`, '#facc15', 1.35);
       } else {
         this.particleSystem.spawnFloatingText(hit.x, hit.y, `-${hit.damage}`, '#ffffff', 0.95);
       }
