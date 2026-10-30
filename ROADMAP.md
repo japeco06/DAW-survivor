@@ -157,15 +157,27 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   └── [Corrección Física de Morcillita Rama 3 - Pinball (`CompanionPet.ts`)]
 │       └── Eliminados los rebotes en bucle infinito: al rebotar en bordes o enemigos se aplica una desviación angular aleatoria de +/- 15° a 45°
 │
-└── v0.10.2 — Rebote Inteligente 50% Auto-Aim en Protocolo Pinball (ACTUAL)
-    └── [Física de Pinball (`CompanionPet.ts`)]
-        ├── 50% de probabilidad en cada rebote (borde o enemigo) de apuntar directamente al enemigo más cercano en pantalla
-        └── 50% de probabilidad restante manteniendo el rebote con deflexión angular caótica (+/- 15° a 45°)
+├── v0.10.2 — Rebote Inteligente 50% Auto-Aim en Protocolo Pinball
+│   └── [Física de Pinball (`CompanionPet.ts`)]
+│       ├── 50% de probabilidad en cada rebote (borde o enemigo) de apuntar directamente al enemigo más cercano en pantalla
+│       └── 50% de probabilidad restante manteniendo el rebote con deflexión angular caótica (+/- 15° a 45°)
+│
+└── v0.10.3 — Nerf a Robo de Ancho de Banda (5% RNG) y Pinball 100% Auto-Aim (ACTUAL)
+    ├── [Nerf a 'Robo de Ancho de Banda' (`UpgradeSystem.ts`, `Game.ts`)]
+    │   └── Probabilidad de activación por RNG reducida del 10% al 5% para prevenir curación desmedida en late game
+    └── [Física de Pinball 100% Auto-Aim (`CompanionPet.ts`)]
+        └── 100% de auto-apuntado hacia el enemigo más cercano en todos los rebotes (bordes y enemigos), eliminando por completo la deflexión caótica
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.10.3] - 2026-10-30
+- **Balanceado (`UpgradeSystem.ts`, `Game.ts` - Nerf a 'Robo de Ancho de Banda')**:
+  - Probabilidad de activación reducida del **10% al 5%** en cada impacto/baja para equilibrar la regeneración de vida en fases avanzadas.
+- **Mejorado (`CompanionPet.ts` - Pinball 100% Auto-Aim en Rama 3)**:
+  - En cada rebote (contra un borde del mapa o contra un enemigo), la nueva trayectoria apunta **100% directamente hacia el enemigo más cercano** en pantalla, eliminando totalmente la deflexión angular caótica aleatoria.
 
 ### [v0.10.2] - 2026-10-30
 - **Mejorado (`CompanionPet.ts` - Rebote de Morcillita Rama 3 'Protocolo Pinball')**:

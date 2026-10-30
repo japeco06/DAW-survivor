@@ -56,7 +56,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.10.2';
+const GAME_VERSION = 'v0.10.3';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -881,14 +881,14 @@ export class Game {
     this.metaSystem.updateHighScore(this.killCount, this.elapsedTime);
     this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
 
-    // Mecánica de Vampirismo / Robo de Ancho de Banda: 15% de probabilidad de activar curación al cumplir la condición de bajas
+    // Mecánica de Vampirismo / Robo de Ancho de Banda: 5% de probabilidad de activar curación al cumplir la condición de bajas
     const prevVampirismTier = Math.floor(prevKillCount / 20);
     const currentVampirismTier = Math.floor(this.killCount / 20);
     if (currentVampirismTier > prevVampirismTier && this.player.active) {
       const tiersCrossed = currentVampirismTier - prevVampirismTier;
       let triggeredTiers = 0;
       for (let t = 0; t < tiersCrossed; t++) {
-        if (Math.random() < 0.10) {
+        if (Math.random() < 0.05) {
           triggeredTiers++;
         }
       }
@@ -903,7 +903,7 @@ export class Game {
           1.0
         );
         this.addTerminalLog(
-          `VAMPIRISM PASSIVE (10% RNG): +${passiveVampirismHeal} HP restored (${this.killCount} kills).`
+          `VAMPIRISM PASSIVE (5% RNG): +${passiveVampirismHeal} HP restored (${this.killCount} kills).`
         );
       }
     }
