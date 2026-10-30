@@ -540,6 +540,24 @@ export class CompanionPet {
       return ((deg * Math.PI) / 180) * sign;
     };
 
+    const findNearestEnemy = (fromX: number, fromY: number, exclude?: Adware): Adware | null => {
+      let nearest: Adware | null = null;
+      let minDst = Infinity;
+      for (const e of enemies) {
+        if (!e.active) continue;
+        if (exclude && e === exclude) continue;
+        const d = Math.hypot(e.x - fromX, e.y - fromY);
+        if (d < minDst) {
+          minDst = d;
+          nearest = e;
+        }
+      }
+      if (!nearest && exclude && exclude.active) {
+        return exclude;
+      }
+      return nearest;
+    };
+
     // Regla de apuntado para La Botnet:
     // - Enemigos estándar: máximo 1 mascota por objetivo.
     // - Mini-jefes (RANSOMWARE): hasta 3 mascotas pueden apuntar al mismo mini-jefe simultáneamente.
@@ -584,10 +602,22 @@ export class CompanionPet {
 
         const bouncedEdge = bouncedX !== 0 || bouncedY !== 0;
         if (bouncedEdge) {
-          // Desviación angular aleatoria (+/- 15 a 45 grados) para evitar bucles infinitos
-          const deflectedAngle = Math.atan2(unit.vy, unit.vx) + getRandomPinballDeflectionRad();
-          let nextVx = Math.cos(deflectedAngle) * unit.speed;
-          let nextVy = Math.sin(deflectedAngle) * unit.speed;
+          let chosenAngle: number | null = null;
+          // 50% de probabilidad de apuntar directamente al enemigo más cercano en pantalla
+          if (Math.random() < 0.5) {
+            const nearest = findNearestEnemy(unit.x, unit.y);
+            if (nearest) {
+              chosenAngle = Math.atan2(nearest.y - unit.y, nearest.x - unit.x);
+            }
+          }
+
+          // 50% restante (o sin enemigos): deflexión angular aleatoria (+/- 15 a 45 grados)
+          const baseAngle =
+            chosenAngle !== null
+              ? chosenAngle
+              : Math.atan2(unit.vy, unit.vx) + getRandomPinballDeflectionRad();
+          let nextVx = Math.cos(baseAngle) * unit.speed;
+          let nextVy = Math.sin(baseAngle) * unit.speed;
           const minAxisSpeed = unit.speed * 0.25;
 
           if (bouncedX === -1 && nextVx < minAxisSpeed) nextVx = Math.max(minAxisSpeed, Math.abs(nextVx));
@@ -716,12 +746,25 @@ export class CompanionPet {
             this.branch === 'BOTNET'
           );
 
-          // Pinball: desvío dinámico de trayectoria (+/- 15 a 45 grados) al impactar contra un enemigo
+          // Pinball: al rebotar contra un enemigo, 50% de probabilidad de apuntar al enemigo más cercano, 50% deflexión caótica
           if (this.branch === 'PINBALL') {
-            const baseAngle = Math.atan2(unit.vy, unit.vx);
-            const deflectedAngle = baseAngle + getRandomPinballDeflectionRad();
-            unit.vx = Math.cos(deflectedAngle) * unit.speed;
-            unit.vy = Math.sin(deflectedAngle) * unit.speed;
+            let targeted = false;
+            if (Math.random() < 0.5) {
+              const nearestTarget = findNearestEnemy(unit.x, unit.y, enemy);
+              if (nearestTarget) {
+                const targetAngle = Math.atan2(nearestTarget.y - unit.y, nearestTarget.x - unit.x);
+                unit.vx = Math.cos(targetAngle) * unit.speed;
+                unit.vy = Math.sin(targetAngle) * unit.speed;
+                targeted = true;
+              }
+            }
+
+            if (!targeted) {
+              const baseAngle = Math.atan2(unit.vy, unit.vx);
+              const deflectedAngle = baseAngle + getRandomPinballDeflectionRad();
+              unit.vx = Math.cos(deflectedAngle) * unit.speed;
+              unit.vy = Math.sin(deflectedAngle) * unit.speed;
+            }
           }
 
           // Pinball Lvl 10 (Explosión Cinética): al impactar a un enemigo dispara 4 proyectiles cardinales

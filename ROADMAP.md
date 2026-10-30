@@ -148,19 +148,29 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │       ├── Reglas de aparición: no aparece durante los primeros 60s de partida y límite estricto de máx. 3 en pantalla
 │       └── Mecánica de Esquiva: dash lateral instantáneo cuando un proyectil entra en su radio de proximidad (cooldown de 4s completamente vulnerable)
 │
-└── v0.10.1 — Sistema de Golpes Críticos, Nerf RNG a 'Robo de Ancho de Banda' y Corrección Física de Pinball (ACTUAL)
-    ├── [Sistema de Golpes Críticos (`Player.ts`, `CombatSystem.ts`, `CompanionPet.ts`, `Game.ts`)]
-    │   ├── Probabilidad base del 5% en todos los ataques para infligir el doble de daño (2x / 200%)
-    │   └── Visualización de números de daño crítico en color amarillo (`#facc15`) y mayor tamaño (`1.35x`)
-    ├── [Nerf a 'Robo de Ancho de Banda' (`UpgradeSystem.ts`, `Game.ts`)]
-    │   └── Cambiado a activación por RNG: 10% de probabilidad de activar el efecto de curación al cumplirse la condición
-    └── [Corrección Física de Morcillita Rama 3 - Pinball (`CompanionPet.ts`)]
-        └── Eliminados los rebotes en bucle infinito: al rebotar en bordes o enemigos se aplica una desviación angular aleatoria de +/- 15° a 45°
+├── v0.10.1 — Sistema de Golpes Críticos, Nerf RNG a 'Robo de Ancho de Banda' y Corrección Física de Pinball
+│   ├── [Sistema de Golpes Críticos (`Player.ts`, `CombatSystem.ts`, `CompanionPet.ts`, `Game.ts`)]
+│   │   ├── Probabilidad base del 5% en todos los ataques para infligir el doble de daño (2x / 200%)
+│   │   └── Visualización de números de daño crítico en color amarillo (`#facc15`) y mayor tamaño (`1.35x`)
+│   ├── [Nerf a 'Robo de Ancho de Banda' (`UpgradeSystem.ts`, `Game.ts`)]
+│   │   └── Cambiado a activación por RNG: 10% de probabilidad de activar el efecto de curación al cumplirse la condición
+│   └── [Corrección Física de Morcillita Rama 3 - Pinball (`CompanionPet.ts`)]
+│       └── Eliminados los rebotes en bucle infinito: al rebotar en bordes o enemigos se aplica una desviación angular aleatoria de +/- 15° a 45°
+│
+└── v0.10.2 — Rebote Inteligente 50% Auto-Aim en Protocolo Pinball (ACTUAL)
+    └── [Física de Pinball (`CompanionPet.ts`)]
+        ├── 50% de probabilidad en cada rebote (borde o enemigo) de apuntar directamente al enemigo más cercano en pantalla
+        └── 50% de probabilidad restante manteniendo el rebote con deflexión angular caótica (+/- 15° a 45°)
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.10.2] - 2026-10-30
+- **Mejorado (`CompanionPet.ts` - Rebote de Morcillita Rama 3 'Protocolo Pinball')**:
+  - Implementada un **50% de probabilidad** en cada rebote (tanto contra bordes del mapa como contra enemigos) de reorientar su trayectoria directamente hacia el **enemigo más cercano** en pantalla.
+  - El **50% restante** conserva la física de deflexión angular caótica aleatoria (`+/- 15° a 45°`).
 
 ### [v0.10.1] - 2026-10-30
 - **Añadido (`Player.ts`, `CombatSystem.ts`, `CompanionPet.ts`, `Game.ts` - Sistema de Golpes Críticos)**:
