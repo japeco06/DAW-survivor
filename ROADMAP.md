@@ -153,7 +153,7 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
     │   ├── Probabilidad base del 5% en todos los ataques para infligir el doble de daño (2x / 200%)
     │   └── Visualización de números de daño crítico en color amarillo (`#facc15`) y mayor tamaño (`1.35x`)
     ├── [Nerf a 'Robo de Ancho de Banda' (`UpgradeSystem.ts`, `Game.ts`)]
-    │   └── Cambiado a activación por RNG: 15% de probabilidad de activar el efecto de curación al cumplirse la condición
+    │   └── Cambiado a activación por RNG: 10% de probabilidad de activar el efecto de curación al cumplirse la condición
     └── [Corrección Física de Morcillita Rama 3 - Pinball (`CompanionPet.ts`)]
         └── Eliminados los rebotes en bucle infinito: al rebotar en bordes o enemigos se aplica una desviación angular aleatoria de +/- 15° a 45°
 ```
@@ -167,7 +167,7 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
   - Todos los ataques cuentan con un **5% de probabilidad base** de infligir **2x (200%) de daño**.
   - Los impactos críticos se muestran en pantalla en color amarillo brillante (`#facc15`) y con un tamaño mayor (`1.35` frente a `0.95` del texto de daño normal).
 - **Balanceado (`UpgradeSystem.ts`, `Game.ts` - Nerf a `'Robo de Ancho de Banda'`)**:
-  - Cambiado de activación garantizada a probabilística (**RNG del 15%**) para activar la curación cuando se cumple la condición.
+  - Cambiado de activación garantizada a probabilística (**RNG del 10%**) para activar la curación cuando se cumple la condición.
 - **Corregido (`CompanionPet.ts` - Física de Rebote en Rama 3 `'Protocolo Pinball'`)**:
   - Corregidos los rebotes en bucle infinito: al rebotar contra un borde de la pantalla o contra un enemigo, la trayectoria ya no solo invierte su eje sino que aplica una desviación angular aleatoria de **`+/- 15° a 45°`**, recorriendo dinámicamente toda la pantalla.
 

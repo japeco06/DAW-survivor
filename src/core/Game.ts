@@ -888,7 +888,7 @@ export class Game {
       const tiersCrossed = currentVampirismTier - prevVampirismTier;
       let triggeredTiers = 0;
       for (let t = 0; t < tiersCrossed; t++) {
-        if (Math.random() < 0.15) {
+        if (Math.random() < 0.10) {
           triggeredTiers++;
         }
       }
@@ -903,7 +903,7 @@ export class Game {
           1.0
         );
         this.addTerminalLog(
-          `VAMPIRISM PASSIVE (15% RNG): +${passiveVampirismHeal} HP restored (${this.killCount} kills).`
+          `VAMPIRISM PASSIVE (10% RNG): +${passiveVampirismHeal} HP restored (${this.killCount} kills).`
         );
       }
     }
