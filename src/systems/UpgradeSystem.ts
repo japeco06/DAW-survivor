@@ -126,10 +126,10 @@ export class UpgradeSystem {
       {
         id: 'antivirus_drones',
         name: 'DRONES ANTIVIRUS',
-        category: 'ARMA // ORBITAL',
+        category: 'ARMA // ESCUDO REACTIVO',
         description:
-          'Despliega drones que orbitan en círculos alrededor del Agente dañando al contacto (+1 dron, +daño y +velocidad de órbita por nivel).',
-        color: '#00f0ff',
+          'Drones escudo que orbitan e interceptan enemigos (0 daño al jugador). Durabilidad: 3 golpes (Verde->Amarillo->Rojo), explotan en AoE al 3er impacto y reaparecen en 10s.',
+        color: '#00ff66',
         level: 0,
         maxLevel: 5,
         isWeapon: true,

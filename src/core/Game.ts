@@ -56,7 +56,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.9.3';
+const GAME_VERSION = 'v0.9.4';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -131,6 +131,7 @@ export class Game {
     this.input = new Input();
     this.sound = new SoundSystem();
     this.metaSystem = new MetaSystem();
+    this.highScoreKills = this.metaSystem.highScore;
     this.player = new Player(
       this.canvas.width / 2,
       this.canvas.height / 2,
@@ -479,6 +480,8 @@ export class Game {
   }
 
   private exitToMainMenu(): void {
+    this.metaSystem.updateHighScore(this.killCount, this.elapsedTime);
+    this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
     this.isPaused = false;
     this.hoveredPauseAction = null;
     this.hoveredCardIndex = -1;
@@ -875,7 +878,8 @@ export class Game {
 
     const prevKillCount = this.killCount;
     this.killCount += combatEvents.enemiesKilled;
-    this.highScoreKills = Math.max(this.highScoreKills, this.killCount);
+    this.metaSystem.updateHighScore(this.killCount, this.elapsedTime);
+    this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
 
     // Mecánica de Vampirismo: cura exactamente 20 HP por cada 20 enemigos eliminados
     const prevVampirismTier = Math.floor(prevKillCount / 20);
@@ -1676,10 +1680,10 @@ export class Game {
 
     const equippedHat = this.metaSystem.getEquippedHat();
     this.ctx.fillStyle = '#fbbf24';
-    this.ctx.font = 'bold 15px "Courier New", monospace';
+    this.ctx.font = 'bold 14px "Courier New", monospace';
     this.ctx.fillText(
-      `[ CRIPTOMONEDAS: ${this.metaSystem.coins} 🪙 ]   |   [ EQUIPADO: ${
-        equippedHat ? `${equippedHat.icon} ${equippedHat.name} (${equippedHat.statsLabel})` : 'Ninguno'
+      `[ High Score: ${this.metaSystem.highScore} (${this.formatTimeMMSS(this.metaSystem.bestTimeSeconds)}) ]  |  [ CRYPTO: ${this.metaSystem.coins} 🪙 ]  |  [ EQUIPADO: ${
+        equippedHat ? `${equippedHat.icon} ${equippedHat.name}` : 'Ninguno'
       } ]`,
       cx,
       py + 68

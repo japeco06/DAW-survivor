@@ -1,6 +1,7 @@
 import { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { Adware, MalwareType } from '../entities/Adware';
+import { Evasor } from '../entities/Evasor';
 import { TrojanShooter, EnemyProjectile } from '../entities/TrojanShooter';
 import { Projectile } from '../entities/Projectile';
 import { PingProjectile } from '../entities/PingProjectile';
@@ -30,6 +31,46 @@ export interface CombatEvents {
   shotsFired: number;
   homingShotsFired: number;
   vampirismHeals: number;
+}
+
+export interface ReactiveDroneSlot {
+  durability: number; // 3 = verde, 2 = amarillo, 1 = rojo, 0 = destruido (en cooldown)
+  respawnTimer: number; // 10 segundos para reaparecer tras explotar
+}
+
+export class DroneExplosionWave {
+  public x: number;
+  public y: number;
+  public radius: number = 12;
+  public maxRadius: number = 115;
+  public active: boolean = true;
+
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+
+  public update(dt: number): void {
+    this.radius += 380 * dt;
+    if (this.radius >= this.maxRadius) {
+      this.active = false;
+    }
+  }
+
+  public draw(ctx: CanvasRenderingContext2D): void {
+    const alpha = Math.max(0.1, 1 - this.radius / this.maxRadius);
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 30, 66, ${alpha * 0.22})`;
+    ctx.strokeStyle = `rgba(250, 204, 21, ${alpha})`;
+    ctx.shadowColor = '#ff1e42';
+    ctx.shadowBlur = 16;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 export class FirewallPulseRing {
@@ -225,14 +266,16 @@ export class CombatSystem {
   public quarantineDamage: number = 14;
   public quarantineDuration: number = 4.6;
 
-  // 4. Arma Orbital: Drones Antivirus
+  // 4. Arma Orbital: Drones Antivirus (Escudo Reactivo)
   public dronesLevel: number = 0;
   public firewallCount: number = 0;
-  public firewallRadius: number = 82;
+  public firewallRadius: number = 78;
   public firewallDamage: number = 18;
   public firewallOrbitSpeed: number = 3.4;
   private firewallAngle: number = 0;
   private firewallHitCooldowns: WeakMap<Adware, number> = new WeakMap();
+  public droneSlots: ReactiveDroneSlot[] = [];
+  public droneExplosions: DroneExplosionWave[] = [];
 
   // 5. Nueva Arma: Cortafuegos (Ataque en Área Expansivo)
   public firewallPulseLevel: number = 0;
@@ -439,6 +482,22 @@ export class CombatSystem {
       );
     }
 
+    // --- ESQUIVA LATERAL DEL ENEMIGO 'EVASOR' (Ghost Script) ---
+    const incomingProjectiles: { x: number; y: number; vx: number; vy: number }[] = [];
+    for (const p of projectiles) {
+      if (p.active) incomingProjectiles.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy });
+    }
+    for (const p of pingProjectiles) {
+      if (p.active) incomingProjectiles.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy });
+    }
+    if (incomingProjectiles.length > 0) {
+      for (const enemy of enemies) {
+        if (enemy.active && enemy instanceof Evasor) {
+          enemy.tryDodgeIncomingProjectiles(incomingProjectiles, canvasWidth, canvasHeight);
+        }
+      }
+    }
+
     // --- COLISIONES: Ráfaga de Firewall vs Enemigos ---
     for (const proj of projectiles) {
       if (!proj.active) continue;
@@ -598,10 +657,57 @@ export class CombatSystem {
     }
     this.sqlBeams = this.sqlBeams.filter((b) => b.active);
 
-    // --- COLISIONES: Drones Antivirus (Arma Orbital) vs Enemigos ---
+    // --- COLISIONES: Drones Antivirus (Escudo Reactivo) vs Enemigos ---
+    while (this.droneSlots.length < this.firewallCount) {
+      this.droneSlots.push({ durability: 3, respawnTimer: 0 });
+    }
+
+    for (const slot of this.droneSlots) {
+      if (slot.durability <= 0) {
+        slot.respawnTimer -= dt;
+        if (slot.respawnTimer <= 0) {
+          slot.durability = 3;
+          slot.respawnTimer = 0;
+        }
+      }
+    }
+
+    for (const exp of this.droneExplosions) {
+      exp.update(dt);
+    }
+    this.droneExplosions = this.droneExplosions.filter((e) => e.active);
+
     if (player.active && this.firewallCount > 0) {
       const nodes = this.getFirewallNodePositions(player);
-      const nodeHalfSize = 9;
+      const interceptRadius = 15;
+
+      const triggerDroneHitAndCheckExplosion = (slot: ReactiveDroneSlot, nodeX: number, nodeY: number) => {
+        slot.durability -= 1;
+        if (slot.durability <= 0) {
+          slot.durability = 0;
+          slot.respawnTimer = 10.0;
+          this.droneExplosions.push(new DroneExplosionWave(nodeX, nodeY));
+          const aoeRadius = 115;
+          const aoeDamage = Math.round(this.firewallDamage * 2.5 * player.damageMultiplier);
+
+          for (const target of enemies) {
+            if (!target.active) continue;
+            const d = Math.hypot(target.x - nodeX, target.y - nodeY);
+            if (d <= aoeRadius + target.size * 0.5) {
+              const kx = ((target.x - nodeX) / (d || 1)) * 28;
+              const ky = ((target.y - nodeY) / (d || 1)) * 28;
+              target.takeDamage(aoeDamage, kx, ky);
+              damagedEnemies.push({
+                x: target.x,
+                y: target.y,
+                damage: aoeDamage,
+                color: '#ff1e42',
+              });
+              registerEnemyKillIfDead(target);
+            }
+          }
+        }
+      };
 
       for (const enemy of enemies) {
         if (!enemy.active) continue;
@@ -612,29 +718,40 @@ export class CombatSystem {
           continue;
         }
 
-        const enemyBounds = enemy.getBounds();
-        for (const node of nodes) {
-          const hit =
-            node.x - nodeHalfSize < enemyBounds.right &&
-            node.x + nodeHalfSize > enemyBounds.left &&
-            node.y - nodeHalfSize < enemyBounds.bottom &&
-            node.y + nodeHalfSize > enemyBounds.top;
+        for (let i = 0; i < nodes.length; i++) {
+          const slot = this.droneSlots[i];
+          if (!slot || slot.durability <= 0) continue;
 
-          if (hit) {
+          const node = nodes[i];
+          const distToDrone = Math.hypot(enemy.x - node.x, enemy.y - node.y);
+
+          if (distToDrone <= interceptRadius + enemy.size * 0.5) {
+            // El dron intercepta al enemigo: empuja al enemigo hacia atrás (0 daño al jugador)
             const dx = enemy.x - player.x;
             const dy = enemy.y - player.y;
             const dist = Math.hypot(dx, dy) || 1;
-            enemy.takeDamage(this.firewallDamage, (dx / dist) * 14, (dy / dist) * 14);
-            this.firewallHitCooldowns.set(enemy, 0.25);
+            const pushDist = 36;
+            enemy.takeDamage(
+              this.firewallDamage,
+              (dx / dist) * pushDist,
+              (dy / dist) * pushDist
+            );
+            this.firewallHitCooldowns.set(enemy, 0.28);
 
             damagedEnemies.push({
               x: enemy.x,
               y: enemy.y,
               damage: this.firewallDamage,
-              color: '#ff8800',
+              color:
+                slot.durability === 3
+                  ? '#00ff66'
+                  : slot.durability === 2
+                  ? '#facc15'
+                  : '#ff1e42',
             });
 
             registerEnemyKillIfDead(enemy);
+            triggerDroneHitAndCheckExplosion(slot, node.x, node.y);
             break;
           }
         }
@@ -762,30 +879,48 @@ export class CombatSystem {
       }
     }
 
+    for (const exp of this.droneExplosions) {
+      if (exp.active) {
+        exp.draw(ctx);
+      }
+    }
+
     if (this.firewallCount <= 0 || !player.active) return;
 
     const nodes = this.getFirewallNodePositions(player);
 
     ctx.save();
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+    ctx.strokeStyle = 'rgba(0, 255, 102, 0.18)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(player.x, player.y, this.firewallRadius, 0, Math.PI * 2);
     ctx.stroke();
 
-    for (const node of nodes) {
-      ctx.fillStyle = '#00f0ff';
-      ctx.shadowColor = '#38bdf8';
-      ctx.shadowBlur = 14;
+    for (let i = 0; i < nodes.length; i++) {
+      const slot = this.droneSlots[i];
+      if (!slot || slot.durability <= 0) continue;
+
+      const node = nodes[i];
+      // Color según durabilidad: 3 = Verde (#00ff66), 2 = Amarillo (#facc15), 1 = Rojo (#ff1e42)
+      const droneColor =
+        slot.durability === 3
+          ? '#00ff66'
+          : slot.durability === 2
+          ? '#facc15'
+          : '#ff1e42';
+
+      ctx.fillStyle = droneColor;
+      ctx.shadowColor = droneColor;
+      ctx.shadowBlur = 16;
       ctx.beginPath();
-      ctx.arc(node.x, node.y, 9, 0, Math.PI * 2);
+      ctx.arc(node.x, node.y, 10, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
-      ctx.strokeRect(node.x - 6, node.y - 6, 12, 12);
+      ctx.strokeRect(node.x - 7, node.y - 7, 14, 14);
 
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = '#0f172a';
       ctx.fillRect(node.x - 2, node.y - 2, 4, 4);
     }
     ctx.restore();

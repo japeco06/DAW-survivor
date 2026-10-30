@@ -21,6 +21,8 @@ interface SavedMetaState {
   selectedCharacter: CharacterId;
   unlockedHats?: string[];
   equippedHatId?: string | null;
+  highScore?: number;
+  bestTimeSeconds?: number;
 }
 
 export const STORAGE_KEY = 'cyber_survivor_meta_v020';
@@ -40,6 +42,8 @@ export class MetaSystem {
   public selectedCharacter: CharacterId = 'STANDARD';
   public unlockedHats: Set<string> = new Set();
   public equippedHatId: string | null = null;
+  public highScore: number = 0;
+  public bestTimeSeconds: number = 0;
 
   public readonly characterOrder: CharacterId[] = ['STANDARD', 'ROOT', 'PROXY', 'MORCILLITA'];
 
@@ -101,6 +105,22 @@ export class MetaSystem {
   public addCoins(amount: number): void {
     this.coins += amount;
     this.save();
+  }
+
+  public updateHighScore(kills: number, elapsedSeconds: number): void {
+    let changed = false;
+    if (kills > this.highScore) {
+      this.highScore = kills;
+      changed = true;
+    }
+    const flooredTime = Math.floor(elapsedSeconds);
+    if (flooredTime > this.bestTimeSeconds) {
+      this.bestTimeSeconds = flooredTime;
+      changed = true;
+    }
+    if (changed) {
+      this.save();
+    }
   }
 
   public isUnlocked(id: CharacterId): boolean {
@@ -301,6 +321,12 @@ export class MetaSystem {
       } else {
         this.equippedHatId = null;
       }
+      if (typeof parsed.highScore === 'number' && parsed.highScore >= 0) {
+        this.highScore = Math.floor(parsed.highScore);
+      }
+      if (typeof parsed.bestTimeSeconds === 'number' && parsed.bestTimeSeconds >= 0) {
+        this.bestTimeSeconds = Math.floor(parsed.bestTimeSeconds);
+      }
     } catch {
       // Ignorar errores de almacenamiento restringido
     }
@@ -314,6 +340,8 @@ export class MetaSystem {
         selectedCharacter: this.selectedCharacter,
         unlockedHats: Array.from(this.unlockedHats),
         equippedHatId: this.equippedHatId,
+        highScore: this.highScore,
+        bestTimeSeconds: this.bestTimeSeconds,
       };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {

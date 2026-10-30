@@ -3,6 +3,7 @@ import { Trojan } from '../entities/Trojan';
 import { TrojanShooter } from '../entities/TrojanShooter';
 import { Worm } from '../entities/Worm';
 import { ArmoredWorm } from '../entities/ArmoredWorm';
+import { Evasor } from '../entities/Evasor';
 import { HardwareBox } from '../entities/HardwareBox';
 import { CryptoMiner } from '../entities/CryptoMiner';
 import { RansomwareBoss } from '../entities/RansomwareBoss';
@@ -15,6 +16,7 @@ export class Spawner {
   private bossCount: number = 0;
 
   private readonly maxActiveArmoredWorms: number = 3;
+  private readonly maxActiveEvasors: number = 3;
   private readonly maxActiveTrojanShooters: number = 5;
   private readonly maxActiveTrojans: number = 5;
   private readonly maxActiveWorms: number = 5;
@@ -185,6 +187,9 @@ export class Spawner {
     const activeArmoredCount = enemies.filter(
       (e) => e.active && e instanceof ArmoredWorm
     ).length;
+    const activeEvasorCount = enemies.filter(
+      (e) => e.active && e instanceof Evasor
+    ).length;
     const activeShooterCount = enemies.filter(
       (e) => e.active && e instanceof TrojanShooter
     ).length;
@@ -198,10 +203,20 @@ export class Spawner {
       (e) => e.active && e.malwareType === 'ADWARE'
     ).length;
 
+    // Nuevo enemigo 'Evasor' (Ghost Script): no aparece durante los primeros 60s y límite máx. de 3 en pantalla
+    if (
+      elapsedTime >= 60 &&
+      roll < 0.08 &&
+      activeEvasorCount < this.maxActiveEvasors
+    ) {
+      return new Evasor(pos.x, pos.y, hpMultiplier);
+    }
+
     // Máximo 3 Gusanos Blindados vivos simultáneamente en pantalla
     if (
       elapsedTime >= 18 &&
-      roll < 0.06 &&
+      roll >= 0.08 &&
+      roll < 0.14 &&
       activeArmoredCount < this.maxActiveArmoredWorms
     ) {
       return new ArmoredWorm(pos.x, pos.y, hpMultiplier);
@@ -210,8 +225,8 @@ export class Spawner {
     // Máximo 5 Troyanos Tiradores vivos simultáneamente en pantalla
     if (
       elapsedTime >= 14 &&
-      roll >= 0.06 &&
-      roll < 0.13 &&
+      roll >= 0.14 &&
+      roll < 0.21 &&
       activeShooterCount < this.maxActiveTrojanShooters
     ) {
       return new TrojanShooter(pos.x, pos.y, hpMultiplier);
@@ -220,8 +235,8 @@ export class Spawner {
     // Máximo 5 enemigos morados (Worm) vivos simultáneamente en pantalla
     if (
       elapsedTime >= 30 &&
-      roll >= 0.13 &&
-      roll < 0.28 &&
+      roll >= 0.21 &&
+      roll < 0.34 &&
       activeWormCount < this.maxActiveWorms
     ) {
       return new Worm(pos.x, pos.y, hpMultiplier, false);
@@ -229,7 +244,7 @@ export class Spawner {
 
     // Máximo 5 enemigos amarillos (Trojan) vivos simultáneamente en pantalla
     const trojanChance = elapsedTime >= 12 ? Math.min(0.32, 0.15 + elapsedTime * 0.0025) : 0;
-    if (roll >= 0.28 && roll < 0.28 + trojanChance && activeTrojanCount < this.maxActiveTrojans) {
+    if (roll >= 0.34 && roll < 0.34 + trojanChance && activeTrojanCount < this.maxActiveTrojans) {
       return new Trojan(pos.x, pos.y, hpMultiplier);
     }
 

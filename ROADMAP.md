@@ -131,16 +131,38 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │       ├── Cajas de Hardware (Obstáculos): otorgan curación el 100% de las veces al ser destruidas
 │       └── Mecánica 'Vampirismo': el jugador recupera exactamente 20 HP por cada 20 enemigos eliminados
 │
-└── v0.9.3 — Botín Triple en Cajas de Hardware (HP + XP + Monedas) y Escalado de Curación en 'Robo de Ancho de Banda' (ACTUAL)
-    ├── [Cajas de Hardware (`Game.ts`)] Garantizan 100% curación (+25 HP) y sueltan simultáneamente paquetes de XP y Criptomonedas
-    ├── [Pasiva 'Robo de Ancho de Banda' (`UpgradeSystem.ts`, `CombatSystem.ts`, `Player.ts`)]
-    │   └── Escalado de HP restaurado por activación según el nivel: Nv.1 = 2 HP, Nv.2 = 4 HP, Nv.3 = 6 HP, Nv.4 = 8 HP, Nv.5 = 10 HP (eliminada la curación plana de 1 HP)
-    └── [Control de Versiones] Versión actualizada a `v0.9.3` en el Menú Principal, insignia inferior derecha y `ROADMAP.md`
+├── v0.9.3 — Botín Triple en Cajas de Hardware (HP + XP + Monedas) y Escalado de Curación en 'Robo de Ancho de Banda'
+│   ├── [Cajas de Hardware (`Game.ts`)] Garantizan 100% curación (+25 HP) y sueltan simultáneamente paquetes de XP y Criptomonedas
+│   ├── [Pasiva 'Robo de Ancho de Banda' (`UpgradeSystem.ts`, `CombatSystem.ts`, `Player.ts`)]
+│   │   └── Escalado de HP restaurado por activación según el nivel: Nv.1 = 2 HP, Nv.2 = 4 HP, Nv.3 = 6 HP, Nv.4 = 8 HP, Nv.5 = 10 HP (eliminada la curación plana de 1 HP)
+│   └── [Control de Versiones] Versión actualizada a `v0.9.3` en el Menú Principal, insignia inferior derecha y `ROADMAP.md`
+│
+└── v0.9.4 — High Score Local, Drones de Escudo Reactivo y Nuevo Enemigo 'Evasor' (Ghost Script) (ACTUAL)
+    ├── [High Score Local (`MetaSystem.ts`, `Game.ts`)] Guardado en `localStorage` y visualización de `"High Score: [Value]"` en el Menú Principal
+    ├── [Rediseño de Drones (Escudo Reactivo - `CombatSystem.ts`)]
+    │   ├── Orbitan e interceptan enemigos (0 daño al jugador al impactar contra un dron)
+    │   ├── Durabilidad de 3 impactos por dron con cambio de color (Verde -> Amarillo -> Rojo)
+    │   ├── Al 3er impacto: el dron explota infligiendo daño AoE a los enemigos cercanos y desaparece
+    │   └── Cooldown de reaparición: 10 segundos por cada dron destruido
+    └── [Nuevo Enemigo ('Evasor' / Ghost Script - `Evasor.ts`, `Spawner.ts`)]
+        ├── Reglas de aparición: no aparece durante los primeros 60s de partida y límite estricto de máx. 3 en pantalla
+        └── Mecánica de Esquiva: dash lateral instantáneo cuando un proyectil entra en su radio de proximidad (cooldown de 4s completamente vulnerable)
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.9.4] - 2026-10-30
+- **Añadido (`MetaSystem.ts`, `Game.ts` - High Score Local)**:
+  - Guardado persistente en `localStorage` de la máxima puntuación/tiempo y visualización de `"High Score: [Value]"` en el Menú Principal.
+- **Rediseñado (`CombatSystem.ts`, `UpgradeSystem.ts` - Drones como Escudo Reactivo)**:
+  - Los drones orbitan al jugador e interceptan enemigos evitando que dañen al jugador (`0` daño recibido).
+  - Cada dron tiene **3 puntos de durabilidad**, cambiando de color según su estado (`Verde` → `Amarillo` → `Rojo`).
+  - Al **3er impacto**, el dron explota infligiendo daño en área (**AoE**) a los enemigos cercanos y entra en un tiempo de recarga de **10 segundos** antes de reaparecer.
+- **Añadido (`Evasor.ts`, `Spawner.ts`, `CombatSystem.ts`, `Adware.ts` - Nuevo Enemigo `'Evasor'` / Ghost Script)**:
+  - No aparece durante los primeros **60 segundos** de partida y tiene un límite estricto de **máximo 3** en pantalla.
+  - Persigue al jugador y, cuando un proyectil entra en su radio de proximidad, ejecuta un **dash lateral instantáneo** para esquivarlo, entrando en un **cooldown de 4 segundos** durante el cual es totalmente vulnerable.
 
 ### [v0.9.3] - 2026-10-30
 - **Mejorado (`Game.ts` - Cajas de Hardware / Drops)**:
