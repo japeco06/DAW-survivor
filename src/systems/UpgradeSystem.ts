@@ -78,7 +78,7 @@ export class UpgradeSystem {
         name: 'ROBO DE ANCHO DE BANDA',
         category: 'PASIVA // VAMPIRISMO',
         description:
-          'Drena +1 HP al impactar con proyectiles. Escalado (5 niveles): 3% / 4.5% / 6% / 7.5% / 10%.',
+          'Drena vida al impactar según el nivel (Nv.1: 2 HP | Nv.2: 4 HP | Nv.3: 6 HP | Nv.4: 8 HP | Nv.5: 10 HP). Probabilidad: 3% a 10%.',
         color: '#f43f5e',
         level: 0,
         maxLevel: 5,
@@ -87,6 +87,7 @@ export class UpgradeSystem {
           const vampirismRates = [0.03, 0.045, 0.06, 0.075, 0.1];
           const idx = Math.max(0, Math.min(vampirismRates.length - 1, this.level - 1));
           player.vampirismChance = vampirismRates[idx];
+          player.vampirismHealAmount = this.level * 2;
         },
       },
       {

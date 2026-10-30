@@ -56,7 +56,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.9.2';
+const GAME_VERSION = 'v0.9.3';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -832,6 +832,19 @@ export class Game {
       );
       combatEvents.enemiesKilled += compEvents.killedEnemies.length;
       combatEvents.damagedEnemies.push(...compEvents.damagedEnemies);
+      if (this.player.vampirismChance > 0) {
+        const healAmount = Math.max(2, this.player.vampirismHealAmount);
+        for (let h = 0; h < compEvents.damagedEnemies.length; h++) {
+          if (Math.random() < this.player.vampirismChance) {
+            const prevHp = this.player.hp;
+            this.player.heal(healAmount);
+            const restored = this.player.hp - prevHp;
+            if (restored > 0) {
+              combatEvents.vampirismHeals += restored;
+            }
+          }
+        }
+      }
       for (const killed of compEvents.killedEnemies) {
         combatEvents.destroyedEnemies.push({
           x: killed.x,
@@ -941,10 +954,28 @@ export class Game {
 
       if (drop.malwareType === 'HARDWARE_BOX') {
         this.player.heal(25);
+        for (let c = 0; c < 3; c++) {
+          this.cryptoCoins.push(
+            new CryptoCoin(
+              drop.x + (Math.random() - 0.5) * 28,
+              drop.y + (Math.random() - 0.5) * 28,
+              1
+            )
+          );
+        }
+        for (let f = 0; f < 3; f++) {
+          this.codeFragments.push(
+            new CodeFragment(
+              drop.x + (Math.random() - 0.5) * 30,
+              drop.y + (Math.random() - 0.5) * 30,
+              35
+            )
+          );
+        }
         this.particleSystem.spawnFloatingText(
           this.player.x,
           this.player.y - 24,
-          'CAJA: +25 HP REPARACIÓN',
+          'CAJA: +25 HP + XP + 3 CRYPTO 🪙',
           '#00ff66',
           1.1
         );
@@ -1641,7 +1672,7 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#00ff66';
     this.ctx.font = 'bold 30px "Courier New", monospace';
-    this.ctx.fillText('CYBER SURVIVOR // KERNEL HUB', cx, py + 38);
+    this.ctx.fillText(`CYBER SURVIVOR // KERNEL HUB (${GAME_VERSION})`, cx, py + 38);
 
     const equippedHat = this.metaSystem.getEquippedHat();
     this.ctx.fillStyle = '#fbbf24';

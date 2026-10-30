@@ -119,22 +119,36 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │       ├── Regla estricta de apuntado único: ningún cuadrado va a por el mismo enemigo que otro; los cuadrados sobrantes orbitan al jugador
 │       └── Nivel 10 ('Propagación de Malware'): al matar a un enemigo con un cuadrado, explota lanzando fragmentos de metralla digital en área que dañan a enemigos cercanos
 │
-└── v0.9.2 — Rama 3 'Protocolo Pinball', Ajustes de Apuntado en Botnet, Reducción de Alerta de Enjambre y Vampirismo Pasivo (ACTUAL)
-    ├── [Botnet (Rama 2)] Enemigos estándar: máx. 1 mascota por objetivo | Mini-jefes: hasta 3 mascotas simultáneamente
-    ├── [Rama 3 ('Protocolo Pinball')]
-    │   ├── Nivel 2: La mascota se separa del jugador, viaja en línea recta a velocidad extrema, rebota en los bordes y atraviesa enemigos (ignora Mega-Jefes)
-    │   ├── Nivel 5: +50% velocidad y estela temporal de corrupción de datos que daña al contacto
-    │   ├── Nivel 10 ('Explosión Cinética'): Rebotar en un borde o impactar a un enemigo dispara 4 proyectiles pequeños (arriba, abajo, izquierda, derecha)
-    │   └── Nivel 20 ('Multibola'): Se divide en 3 mascotas rebotadoras independientes de alta velocidad
-    └── [Gameplay & Balance]
-        ├── Duración de la alerta/evento de horda ('El Enjambre') fijada exactamente en 6 segundos
-        ├── Cajas de Hardware (Obstáculos): otorgan curación el 100% de las veces al ser destruidas (eliminado drop de monedas/XP en cajas)
-        └── Mecánica 'Vampirismo': el jugador recupera exactamente 20 HP por cada 20 enemigos eliminados
+├── v0.9.2 — Rama 3 'Protocolo Pinball', Ajustes de Apuntado en Botnet, Reducción de Alerta de Enjambre y Vampirismo Pasivo
+│   ├── [Botnet (Rama 2)] Enemigos estándar: máx. 1 mascota por objetivo | Mini-jefes: hasta 3 mascotas simultáneamente
+│   ├── [Rama 3 ('Protocolo Pinball')]
+│   │   ├── Nivel 2: La mascota se separa del jugador, viaja en línea recta a velocidad extrema, rebota en los bordes y atraviesa enemigos (ignora Mega-Jefes)
+│   │   ├── Nivel 5: +50% velocidad y estela temporal de corrupción de datos que daña al contacto
+│   │   ├── Nivel 10 ('Explosión Cinética'): Rebotar en un borde o impactar a un enemigo dispara 4 proyectiles pequeños (arriba, abajo, izquierda, derecha)
+│   │   └── Nivel 20 ('Multibola'): Se divide en 3 mascotas rebotadoras independientes de alta velocidad
+│   └── [Gameplay & Balance]
+│       ├── Duración de la alerta/evento de horda ('El Enjambre') fijada exactamente en 6 segundos
+│       ├── Cajas de Hardware (Obstáculos): otorgan curación el 100% de las veces al ser destruidas
+│       └── Mecánica 'Vampirismo': el jugador recupera exactamente 20 HP por cada 20 enemigos eliminados
+│
+└── v0.9.3 — Botín Triple en Cajas de Hardware (HP + XP + Monedas) y Escalado de Curación en 'Robo de Ancho de Banda' (ACTUAL)
+    ├── [Cajas de Hardware (`Game.ts`)] Garantizan 100% curación (+25 HP) y sueltan simultáneamente paquetes de XP y Criptomonedas
+    ├── [Pasiva 'Robo de Ancho de Banda' (`UpgradeSystem.ts`, `CombatSystem.ts`, `Player.ts`)]
+    │   └── Escalado de HP restaurado por activación según el nivel: Nv.1 = 2 HP, Nv.2 = 4 HP, Nv.3 = 6 HP, Nv.4 = 8 HP, Nv.5 = 10 HP (eliminada la curación plana de 1 HP)
+    └── [Control de Versiones] Versión actualizada a `v0.9.3` en el Menú Principal, insignia inferior derecha y `ROADMAP.md`
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.9.3] - 2026-10-30
+- **Mejorado (`Game.ts` - Cajas de Hardware / Drops)**:
+  - Al destruir una Caja de Hardware, ahora otorga **curación garantizada al 100%** (`+25 HP`) y **simultáneamente** suelta los fragmentos de **XP** (`3` orbes) y **Criptomonedas** (`3` monedas).
+- **Escalado (`Player.ts`, `UpgradeSystem.ts`, `CombatSystem.ts`, `Game.ts` - Pasiva `'Robo de Ancho de Banda'`)**:
+  - Eliminada la curación plana de `1 HP` por activación. Ahora la cantidad de vida restaurada escala con el nivel de la mejora: **Nivel 1 = `2 HP`, Nivel 2 = `4 HP`, Nivel 3 = `6 HP`, Nivel 4 = `8 HP`, Nivel 5 = `10 HP`**.
+- **Versionado (`Game.ts`, `package.json`, `ROADMAP.md`)**:
+  - Actualizada la versión del juego a **`v0.9.3`** tanto en el encabezado del Menú Principal (`KERNEL HUB (v0.9.3)`) como en la esquina inferior derecha y en este documento.
 
 ### [v0.9.2] - 2026-10-30
 - **Ajustado (`CompanionPet.ts` - Apuntado de La Botnet / Rama 2)**:

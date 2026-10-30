@@ -10,6 +10,7 @@ export class Player extends Entity {
   public pickupRadius: number = 115;
   public xpMultiplier: number = 1.0;
   public vampirismChance: number = 0;
+  public vampirismHealAmount: number = 0;
   public damageMultiplier: number = 1.0;
   public fireRateMultiplier: number = 1.0;
   public critChance: number = 0;

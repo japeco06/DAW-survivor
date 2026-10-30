@@ -281,10 +281,12 @@ export class CombatSystem {
 
     const tryTriggerVampirism = () => {
       if (player.vampirismChance > 0 && Math.random() < player.vampirismChance) {
+        const healAmount = Math.max(2, player.vampirismHealAmount);
         const prevHp = player.hp;
-        player.heal(1);
-        if (player.hp > prevHp) {
-          vampirismHeals++;
+        player.heal(healAmount);
+        const restored = player.hp - prevHp;
+        if (restored > 0) {
+          vampirismHeals += restored;
         }
       }
     };
