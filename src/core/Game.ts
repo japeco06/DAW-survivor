@@ -15,6 +15,9 @@ import { PingProjectile } from '../entities/PingProjectile';
 import { QuarantineZone } from '../entities/QuarantineZone';
 import { CodeFragment } from '../entities/CodeFragment';
 import { CryptoCoin } from '../entities/CryptoCoin';
+import { ArmoredWorm } from '../entities/ArmoredWorm';
+import { Evasor } from '../entities/Evasor';
+import { PowerUpItem, PowerUpType } from '../entities/PowerUpItem';
 import { Spawner } from '../systems/Spawner';
 import { CombatSystem } from '../systems/CombatSystem';
 import { UpgradeSystem } from '../systems/UpgradeSystem';
@@ -56,7 +59,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.11.0';
+const GAME_VERSION = 'v0.12.0';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -72,6 +75,9 @@ export class Game {
   private quarantineZones: QuarantineZone[] = [];
   private codeFragments: CodeFragment[] = [];
   private cryptoCoins: CryptoCoin[] = [];
+  private powerUps: PowerUpItem[] = [];
+  private systemFreezeTimer: number = 0;
+  private thermalOverclockTimer: number = 0;
   private spawner: Spawner;
   private combatSystem: CombatSystem;
   private upgradeSystem: UpgradeSystem;
@@ -494,6 +500,9 @@ export class Game {
     this.combatSystem.sqlBeams = [];
     this.codeFragments = [];
     this.cryptoCoins = [];
+    this.powerUps = [];
+    this.systemFreezeTimer = 0;
+    this.thermalOverclockTimer = 0;
     this.decryptionKeys = [];
     this.encryptedBlocks = [];
     this.megaBoss = null;
@@ -532,6 +541,9 @@ export class Game {
     this.combatSystem.sqlBeams = [];
     this.codeFragments = [];
     this.cryptoCoins = [];
+    this.powerUps = [];
+    this.systemFreezeTimer = 0;
+    this.thermalOverclockTimer = 0;
     this.decryptionKeys = [];
     this.encryptedBlocks = [];
     this.megaBoss = null;
@@ -570,6 +582,9 @@ export class Game {
     this.combatSystem.sqlBeams = [];
     this.codeFragments = [];
     this.cryptoCoins = [];
+    this.powerUps = [];
+    this.systemFreezeTimer = 0;
+    this.thermalOverclockTimer = 0;
     this.decryptionKeys = [];
 
     this.megaBoss = createRandomMegaBoss(this.canvas.width, forcedIndex);
@@ -585,7 +600,6 @@ export class Game {
     this.spawnDecryptionKeyInArena();
 
     this.sound.playExplosion(true);
-    this.particleSystem.triggerShake(14, 0.65);
     this.particleSystem.spawnExplosion(
       this.megaBoss.x,
       this.megaBoss.y,
@@ -740,7 +754,6 @@ export class Game {
         if (hitBoss && this.megaBoss) {
           this.megaBoss.takeKeyDamage(keyEntity.damage);
           this.sound.playExplosion(false);
-          this.particleSystem.triggerShake(9, 0.25);
           this.particleSystem.spawnExplosion(
             this.megaBoss.x,
             this.megaBoss.y,
@@ -787,16 +800,19 @@ export class Game {
     }
     if (prevBossAlert === 0 && this.spawner.activeBossAlertTimer > 0) {
       this.addTerminalLog(`CRITICAL ALERT: ${this.spawner.lastBossSpawnedName} breached firewall!`);
-      this.particleSystem.triggerShake(9, 0.45);
     }
     if (this.spawner.swarmTriggeredJustNow) {
       this.sound.playExplosion(true);
-      this.particleSystem.triggerShake(12, 0.65);
       this.addTerminalLog('!! ALERTA DE PLAGA: EL ENJAMBRE (50 ENEMIGOS - 6s) !!');
     }
     if (this.spawner.minerSpawnedJustNow) {
       this.sound.playCoinPickup();
       this.addTerminalLog('!! MINERO DE CRIPTOS DETECTADO: ¡CÁZALO ANTES DE QUE ESCAPE! !!');
+    }
+
+    const isFrozen = this.systemFreezeTimer > 0;
+    if (this.systemFreezeTimer > 0) {
+      this.systemFreezeTimer = Math.max(0, this.systemFreezeTimer - dt);
     }
 
     for (const proj of this.projectiles) {
@@ -806,11 +822,26 @@ export class Game {
       ping.update(dt, this.enemies, this.canvas.width, this.canvas.height);
     }
     for (const enemy of this.enemies) {
-      enemy.update(dt, this.player);
+      if (isFrozen) {
+        enemy.networkFreezeTimer = 0.2;
+      } else {
+        enemy.update(dt, this.player);
+      }
       if (enemy instanceof CryptoMiner && enemy.escaped) {
         this.particleSystem.spawnFloatingText(enemy.x, enemy.y, '¡MINERO ESCAPÓ!', '#94a3b8', 1.0);
         this.addTerminalLog('> Crypto Miner escaped from the sector.');
       }
+    }
+
+    if (this.thermalOverclockTimer > 0) {
+      this.thermalOverclockTimer = Math.max(0, this.thermalOverclockTimer - dt);
+    }
+    const isFrenzy = this.thermalOverclockTimer > 0;
+    const baseFireRate = this.player.fireRateMultiplier;
+    const baseCrit = this.player.critChance;
+    if (isFrenzy) {
+      this.player.fireRateMultiplier = baseFireRate * 2.0;
+      this.player.critChance = 1.0;
     }
 
     const combatEvents = this.combatSystem.update(
@@ -859,9 +890,6 @@ export class Game {
         });
       }
 
-      if (compEvents.screenShakeIntensity > 0) {
-        this.particleSystem.triggerShake(compEvents.screenShakeIntensity, 0.22);
-      }
       if (compEvents.milestoneMessage) {
         this.sound.playCoinPickup();
         this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#ec4899', 42, true);
@@ -874,6 +902,15 @@ export class Game {
         );
         this.addTerminalLog(`>> ${compEvents.milestoneMessage} <<`);
       }
+    }
+
+    if (isFrenzy) {
+      this.player.fireRateMultiplier = baseFireRate;
+      this.player.critChance = baseCrit;
+    }
+
+    if (combatEvents.droneExploded) {
+      this.particleSystem.triggerShake(7, 0.22);
     }
 
     const prevKillCount = this.killCount;
@@ -986,6 +1023,12 @@ export class Game {
             )
           );
         }
+        // 25% de probabilidad de soltar un power-up raro (Nuke, Freeze, Frenzy)
+        if (Math.random() < 0.25) {
+          const pTypes: PowerUpType[] = ['NUKE', 'FREEZE', 'FRENZY'];
+          const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
+          this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
+        }
         this.particleSystem.spawnFloatingText(
           this.player.x,
           this.player.y - 24,
@@ -1009,7 +1052,6 @@ export class Game {
         }
         this.codeFragments.push(new CodeFragment(drop.x, drop.y, drop.xpValue));
         this.sound.playCoinPickup();
-        this.particleSystem.triggerShake(10, 0.45);
         this.particleSystem.spawnFloatingText(
           drop.x,
           drop.y - 16,
@@ -1023,7 +1065,6 @@ export class Game {
 
       if (isBoss) {
         this.normalBossesKilledCount++;
-        this.particleSystem.triggerShake(12, 0.5);
         this.addTerminalLog(
           `BOSS PURGED (${this.normalBossesKilledCount}/${NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS} for Mega-Boss Event)!`
         );
@@ -1035,6 +1076,13 @@ export class Game {
       }
 
       this.codeFragments.push(new CodeFragment(drop.x, drop.y, drop.xpValue));
+
+      // 1% de probabilidad de soltar un power-up raro temporal
+      if (Math.random() < 0.01) {
+        const pTypes: PowerUpType[] = ['NUKE', 'FREEZE', 'FRENZY'];
+        const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
+        this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
+      }
 
       if (isBoss) {
         for (let c = 0; c < 2; c++) {
@@ -1124,6 +1172,17 @@ export class Game {
       }
     }
 
+    for (let i = this.powerUps.length - 1; i >= 0; i--) {
+      const p = this.powerUps[i];
+      if (!p.active) continue;
+      p.update(dt, this.player);
+
+      if (CombatSystem.checkAABBCollision(this.player, p)) {
+        p.active = false;
+        this.activatePowerUp(p.type, p.x, p.y);
+      }
+    }
+
     this.resolveEnemyCrowd();
     this.projectiles = this.projectiles.filter((p) => p.active);
     this.pingProjectiles = this.pingProjectiles.filter((p) => p.active);
@@ -1131,15 +1190,40 @@ export class Game {
     this.enemies = this.enemies.filter((e) => e.active);
     this.codeFragments = this.codeFragments.filter((f) => f.active);
     this.cryptoCoins = this.cryptoCoins.filter((c) => c.active);
+    this.powerUps = this.powerUps.filter((p) => p.active);
 
     if (triggerMegaBossNow) {
       this.triggerMegaBossEvent();
     }
   }
 
+  private activatePowerUp(type: PowerUpType, x: number, y: number): void {
+    this.sound.playCoinPickup();
+    if (type === 'NUKE') {
+      this.sound.playExplosion(true);
+      let killedCount = 0;
+      for (const e of this.enemies) {
+        if (!e.active || e.malwareType === 'RANSOMWARE' || e.malwareType === 'HARDWARE_BOX') continue;
+        e.active = false;
+        killedCount++;
+        this.codeFragments.push(new CodeFragment(e.x, e.y, e.xpValue));
+        this.particleSystem.spawnExplosion(e.x, e.y, '#ff1e42', 12, false);
+      }
+      this.particleSystem.spawnFloatingText(x, y - 24, '¡BOMBA LÓGICA ACTIVADA!', '#ff1e42', 1.3);
+      this.addTerminalLog(`>> LOGIC BOMB DETONATED: ${killedCount} basic malware units purged! <<`);
+    } else if (type === 'FREEZE') {
+      this.systemFreezeTimer = 4.0;
+      this.particleSystem.spawnFloatingText(x, y - 24, '¡SISTEMA CONGELADO (4s)!', '#38bdf8', 1.3);
+      this.addTerminalLog('>> SYSTEM FREEZE: Enemy movement paused for 4 seconds! <<');
+    } else if (type === 'FRENZY') {
+      this.thermalOverclockTimer = 6.0;
+      this.particleSystem.spawnFloatingText(x, y - 24, '¡OVERCLOCK TÉRMICO (x2 VEL, 100% CRIT)!', '#f97316', 1.3);
+      this.addTerminalLog('>> THERMAL OVERCLOCK: 2x fire rate & 100% critical hit chance for 6s! <<');
+    }
+  }
+
   private handleMegaBossDefeated(bossX: number, bossY: number, title: string): void {
     this.sound.playExplosion(true);
-    this.particleSystem.triggerShake(18, 0.8);
     this.particleSystem.spawnExplosion(bossX, bossY, '#ff0055', 95, true);
     this.particleSystem.spawnExplosion(bossX, bossY, '#00ffcc', 60, true);
     this.particleSystem.spawnFloatingText(
@@ -1235,6 +1319,10 @@ export class Game {
         coin.draw(this.ctx);
       }
 
+      for (const p of this.powerUps) {
+        p.draw(this.ctx);
+      }
+
       for (const keyEntity of this.decryptionKeys) {
         keyEntity.draw(this.ctx);
       }
@@ -1258,6 +1346,8 @@ export class Game {
         enemy.draw(this.ctx);
       }
 
+      this.drawEliteHpBars();
+
       if (this.megaBoss && this.megaBoss.active) {
         this.megaBoss.draw(this.ctx);
       }
@@ -1274,6 +1364,16 @@ export class Game {
     }
 
     this.ctx.restore();
+
+    if (this.gameState === 'PLAYING') {
+      this.drawOffScreenIndicators();
+      if (this.systemFreezeTimer > 0) {
+        this.drawFreezeOverlay();
+      }
+      if (this.thermalOverclockTimer > 0) {
+        this.drawThermalOverclockIndicator();
+      }
+    }
 
     if (this.spawner.swarmActiveTimer > 0 && this.gameState !== 'MENU') {
       this.drawSwarmPlagueOverlay();
@@ -1432,6 +1532,167 @@ export class Game {
     grad.addColorStop(1, `rgba(255, 15, 60, ${this.damageVignetteAlpha * 0.45})`);
     this.ctx.fillStyle = grad;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.restore();
+  }
+
+  private drawEliteHpBars(): void {
+    for (const enemy of this.enemies) {
+      if (!enemy.active) continue;
+      const isElite =
+        enemy.malwareType === 'RANSOMWARE' ||
+        enemy instanceof ArmoredWorm ||
+        enemy instanceof Evasor;
+
+      if (isElite) {
+        const hpRatio = Math.max(0, Math.min(1, enemy.hp / enemy.maxHp));
+        const barW = Math.max(28, enemy.size * 0.95);
+        const barH = 3.5;
+        const barX = enemy.x - barW / 2;
+        const barY = enemy.y - enemy.size * 0.5 - 9;
+
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        this.ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        this.ctx.fillStyle = hpRatio > 0.5 ? '#00ff66' : hpRatio > 0.25 ? '#facc15' : '#ff1e42';
+        this.ctx.shadowColor = this.ctx.fillStyle;
+        this.ctx.shadowBlur = 6;
+        this.ctx.fillRect(barX, barY, barW * hpRatio, barH);
+        this.ctx.restore();
+      }
+    }
+  }
+
+  private drawOffScreenIndicators(): void {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const edgePadding = 26;
+    const flashAlpha = 0.45 + 0.55 * Math.abs(Math.sin(Date.now() * 0.007));
+
+    for (const enemy of this.enemies) {
+      if (!enemy.active) continue;
+      const isMiner = enemy instanceof CryptoMiner || enemy.malwareType === 'CRYPTO_MINER';
+      const isElite =
+        enemy.malwareType === 'RANSOMWARE' ||
+        enemy instanceof ArmoredWorm ||
+        enemy instanceof Evasor;
+
+      if (!isMiner && !isElite) continue;
+
+      const isOffScreen = enemy.x < 0 || enemy.x > w || enemy.y < 0 || enemy.y > h;
+      if (!isOffScreen) continue;
+
+      const cx = w / 2;
+      const cy = h / 2;
+      const dx = enemy.x - cx;
+      const dy = enemy.y - cy;
+      const angle = Math.atan2(dy, dx);
+
+      const edgeX = Math.max(edgePadding, Math.min(w - edgePadding, cx + dx));
+      const edgeY = Math.max(edgePadding, Math.min(h - edgePadding, cy + dy));
+
+      this.ctx.save();
+      this.ctx.translate(edgeX, edgeY);
+      this.ctx.rotate(angle);
+
+      const fillColor = isMiner
+        ? `rgba(250, 204, 21, ${flashAlpha})`
+        : `rgba(255, 30, 66, ${flashAlpha})`;
+      const strokeColor = isMiner ? '#fef08a' : '#fecdd3';
+
+      this.ctx.fillStyle = fillColor;
+      this.ctx.strokeStyle = strokeColor;
+      this.ctx.shadowColor = isMiner ? '#f59e0b' : '#ff1e42';
+      this.ctx.shadowBlur = 12;
+      this.ctx.lineWidth = 1.5;
+
+      this.ctx.beginPath();
+      this.ctx.moveTo(14, 0);
+      this.ctx.lineTo(-10, -8);
+      this.ctx.lineTo(-4, 0);
+      this.ctx.lineTo(-10, 8);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
+
+      this.ctx.restore();
+    }
+
+    if (this.megaBoss && this.megaBoss.active) {
+      const isOffScreen =
+        this.megaBoss.x < 0 || this.megaBoss.x > w || this.megaBoss.y < 0 || this.megaBoss.y > h;
+      if (isOffScreen) {
+        const cx = w / 2;
+        const cy = h / 2;
+        const dx = this.megaBoss.x - cx;
+        const dy = this.megaBoss.y - cy;
+        const angle = Math.atan2(dy, dx);
+        const edgeX = Math.max(edgePadding, Math.min(w - edgePadding, cx + dx));
+        const edgeY = Math.max(edgePadding, Math.min(h - edgePadding, cy + dy));
+
+        this.ctx.save();
+        this.ctx.translate(edgeX, edgeY);
+        this.ctx.rotate(angle);
+        this.ctx.fillStyle = `rgba(255, 30, 66, ${flashAlpha})`;
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.shadowColor = '#ff1e42';
+        this.ctx.shadowBlur = 16;
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(18, 0);
+        this.ctx.lineTo(-12, -10);
+        this.ctx.lineTo(-5, 0);
+        this.ctx.lineTo(-12, 10);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.restore();
+      }
+    }
+  }
+
+  private drawFreezeOverlay(): void {
+    this.ctx.save();
+    const grad = this.ctx.createRadialGradient(
+      this.canvas.width / 2,
+      this.canvas.height / 2,
+      this.canvas.width * 0.3,
+      this.canvas.width / 2,
+      this.canvas.height / 2,
+      this.canvas.width * 0.7
+    );
+    grad.addColorStop(0, 'rgba(0, 240, 255, 0)');
+    grad.addColorStop(1, 'rgba(0, 200, 255, 0.28)');
+    this.ctx.fillStyle = grad;
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    this.ctx.font = 'bold 15px "JetBrains Mono", Consolas, monospace';
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.shadowColor = '#00f0ff';
+    this.ctx.shadowBlur = 10;
+    this.ctx.textAlign = 'center';
+    this.ctx.fillText(
+      `❄ SISTEMA CONGELADO: ${this.systemFreezeTimer.toFixed(1)}s`,
+      this.canvas.width / 2,
+      72
+    );
+    this.ctx.restore();
+  }
+
+  private drawThermalOverclockIndicator(): void {
+    this.ctx.save();
+    this.ctx.font = 'bold 15px "JetBrains Mono", Consolas, monospace';
+    this.ctx.fillStyle = '#f97316';
+    this.ctx.shadowColor = '#fbbf24';
+    this.ctx.shadowBlur = 12;
+    this.ctx.textAlign = 'center';
+    this.ctx.fillText(
+      `⚡ OVERCLOCK TÉRMICO (x2 CADENCIA + 100% CRIT): ${this.thermalOverclockTimer.toFixed(1)}s`,
+      this.canvas.width / 2,
+      94
+    );
     this.ctx.restore();
   }
 

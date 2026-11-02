@@ -32,6 +32,7 @@ export interface CombatEvents {
   shotsFired: number;
   homingShotsFired: number;
   vampirismHeals: number;
+  droneExploded?: boolean;
 }
 
 export interface ReactiveDroneSlot {
@@ -322,6 +323,7 @@ export class CombatSystem {
     let shotsFired = 0;
     let homingShotsFired = 0;
     let vampirismHeals = 0;
+    let droneExploded = false;
 
     const tryTriggerVampirism = () => {
       if (player.vampirismChance > 0 && Math.random() < player.vampirismChance) {
@@ -701,6 +703,7 @@ export class CombatSystem {
         if (slot.durability <= 0) {
           slot.durability = 0;
           slot.respawnTimer = 10.0;
+          droneExploded = true;
           this.droneExplosions.push(new DroneExplosionWave(nodeX, nodeY));
           const aoeRadius = 115;
           const baseAoeDamage = Math.round(this.firewallDamage * 2.5 * player.damageMultiplier);
@@ -839,6 +842,7 @@ export class CombatSystem {
       shotsFired,
       homingShotsFired,
       vampirismHeals,
+      droneExploded,
     };
   }
 

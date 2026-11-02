@@ -168,27 +168,57 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   └── [Física de Pinball 100% Auto-Aim (`CompanionPet.ts`)]
 │       └── 100% de auto-apuntado hacia el enemigo más cercano en todos los rebotes (bordes y enemigos), eliminando por completo la deflexión caótica
 │
-└── v0.11.0 — Escalado Lineal de Vida, Micro-Oleadas de Flanco y Parche Integral de Balance (ACTUAL)
-    ├── [Rework de Vida y Spawner (`Spawner.ts`)]
-    │   ├── Sustituido el escalado exponencial por escalado lineal (+8% multiplicador de HP por nivel tras el nivel 6)
-    │   ├── Vida del enemigo básico rojo (Adware) limitada estrictamente a un máximo de 2.5x base HP
-    │   └── Micro-oleadas de flanco: aparición cada 15-20s de un grupo de 4-6 enemigos rojos por el mismo borde
-    └── [Parche Integral de Armas y Mejoras (`UpgradeSystem.ts`, `CompanionPet.ts`)]
-        ├── Overclock de Memoria: reducido a +20% XP por nivel (máx. +100%)
-        ├── Overclocking.exe: reducción de cooldown a -14% por nivel y tope mínimo fijado en 0.18s
-        ├── Multithreading.dll: reducido nivel máximo de 5 a 3 (máx. 4 proyectiles simultáneos)
-        ├── Heuristic_Scan (Deepscan): escalado reducido a +10 DMG por nivel (máx. 75 DMG)
-        ├── Sinapsis de Mascota: reducido a +5 DMG por nivel y tope de 5 niveles (máx. +25 DMG)
-        ├── Fiber Optic Bus: incremento de velocidad reducido a +10% por nivel (máx. +50%)
-        ├── Cortafuegos: escalado reducido a +8 DMG por nivel y cooldown mínimo fijado en 1.8s
-        ├── Rayo SQL: escalado reducido a +12 DMG por nivel (máx. 86 DMG)
-        ├── Morcillita Rama 1: Onda de Choque de nivel 20 reducida del 145% al 100% del daño letal
-        └── Morcillita Rama 3 (Pinball): daño base de contacto reducido a 22 DMG y proyectiles cinéticos al 45% (máx. 10 DMG)
+├── v0.11.0 — Escalado Lineal de Vida, Micro-Oleadas de Flanco y Parche Integral de Balance
+│   ├── [Rework de Vida y Spawner (`Spawner.ts`)]
+│   │   ├── Sustituido el escalado exponencial por escalado lineal (+8% multiplicador de HP por nivel tras el nivel 6)
+│   │   ├── Vida del enemigo básico rojo (Adware) limitada estrictamente a un máximo de 2.5x base HP
+│   │   └── Micro-oleadas de flanco: aparición cada 15-20s de un grupo de 4-6 enemigos rojos por el mismo borde
+│   └── [Parche Integral de Armas y Mejoras (`UpgradeSystem.ts`, `CompanionPet.ts`)]
+│       ├── Overclock de Memoria: reducido a +20% XP por nivel (máx. +100%)
+│       ├── Overclocking.exe: reducción de cooldown a -14% por nivel y tope mínimo fijado en 0.18s
+│       ├── Multithreading.dll: reducido nivel máximo de 5 a 3 (máx. 4 proyectiles simultáneos)
+│       ├── Heuristic_Scan (Deepscan): escalado reducido a +10 DMG por nivel (máx. 75 DMG)
+│       ├── Sinapsis de Mascota: reducido a +5 DMG por nivel y tope de 5 niveles (máx. +25 DMG)
+│       ├── Fiber Optic Bus: incremento de velocidad reducido a +10% por nivel (máx. +50%)
+│       ├── Cortafuegos: escalado reducido a +8 DMG por nivel y cooldown mínimo fijado en 1.8s
+│       ├── Rayo SQL: escalado reducido a +12 DMG por nivel (máx. 86 DMG)
+│       ├── Morcillita Rama 1: Onda de Choque de nivel 20 reducida del 145% al 100% del daño letal
+│       └── Morcillita Rama 3 (Pinball): daño base de contacto reducido a 22 DMG y proyectiles cinéticos al 45% (máx. 10 DMG)
+│
+└── v0.12.0 — Indicadores UI de Élite/Jefes, Barras de HP de Élites, Power-ups Raros y Screen Shake Táctico (ACTUAL)
+    ├── [Indicadores Fuera de Pantalla (`Game.ts`)]
+    │   ├── Flechas rojas parpadeantes en los bordes de la pantalla señalando enemigos Élite o Jefes fuera del viewport
+    │   └── Flecha dorada parpadeante apuntando hacia el 'Crypto Miner' cuando se encuentra fuera de pantalla
+    ├── [Barras de Vida de Élites (`Game.ts`)]
+    │   └── Barras de HP minimalistas renderizadas directamente sobre los sprites de Jefes Ransomware, Gusanos Blindados y Evasores
+    ├── [Power-ups Raros Temporales (`PowerUpItem.ts`, `Game.ts`)]
+    │   ├── Logic Bomb (Nuke): aniquila instantáneamente a todos los enemigos básicos en pantalla y suelta sus fragmentos de XP
+    │   ├── System Freeze (Congelación): congela el movimiento de todos los enemigos durante 4 segundos
+    │   └── Thermal Overclock (Frenesí): duplica la cadencia de disparo (2x) y otorga 100% de probabilidad de crítico durante 6 segundos
+    └── [Screen Shake Táctico / Game Feel (`CombatSystem.ts`, `Game.ts`)]
+        ├── Agitado de pantalla sutil activado ÚNICAMENTE cuando el jugador recibe daño o cuando explota un Dron Reactivo
+        └── Prohibición estricta: NO se activa Screen Shake con golpes críticos ni otros eventos no letales
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.12.0] - 2026-11-02
+- **Indicadores Fuera de Pantalla (`Game.ts`)**:
+  - Implementación de flechas de advertencia parpadeantes en los bordes de la pantalla para señalar enemigos peligrosos fuera del campo de visión.
+  - Flechas rojas para enemigos Élite (`RansomwareBoss`, `ArmoredWorm`, `Evasor`) y Mega-Jefes (`MegaBoss`).
+  - Flecha dorada especial orientada hacia el `CryptoMiner`.
+- **Barras de Vida Minimalistas para Élites (`Game.ts`)**:
+  - Renderizado de barra de vida sobre los sprites de todos los enemigos Élite (`RansomwareBoss`, `ArmoredWorm`, `Evasor`), con código de colores según el porcentaje de vida restante (verde/amarillo/rojo).
+- **Power-ups Raros Temporales (`PowerUpItem.ts`, `Game.ts`)**:
+  - Introducción de la entidad coleccionable `PowerUpItem` con baja probabilidad de drop (1% en enemigos básicos, 25% en Cajas de Hardware):
+    - **Logic Bomb (Bomba Lógica)**: Elimina de inmediato a todos los enemigos estándar en pantalla conservando íntegro su drop de fragmentos de XP.
+    - **System Freeze (Congelación de Sistema)**: Detiene por completo el movimiento y comportamiento enemigo durante 4 segundos con overlay glacial.
+    - **Thermal Overclock (Frenesí Térmico)**: Otorga 6 segundos de doble velocidad de ataque (+100% fire rate) y 100% de probabilidad de impacto crítico garantizado.
+- **Screen Shake Táctico & Game Feel (`CombatSystem.ts`, `Game.ts`)**:
+  - El efecto de vibración / temblor de cámara se limita de forma estricta y exclusiva a dos situaciones: cuando el jugador recibe daño directo o cuando se detona la onda expansiva de un Dron Reactivo destruido (`combatEvents.droneExploded`).
+  - Eliminado cualquier screen shake en golpes críticos, recolección de monedas o impactos secundarios.
 
 ### [v0.11.0] - 2026-11-02
 - **Rework de Vida y Spawner (`Spawner.ts`)**:
