@@ -162,16 +162,50 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │       ├── 50% de probabilidad en cada rebote (borde o enemigo) de apuntar directamente al enemigo más cercano en pantalla
 │       └── 50% de probabilidad restante manteniendo el rebote con deflexión angular caótica (+/- 15° a 45°)
 │
-└── v0.10.3 — Nerf a Robo de Ancho de Banda (5% RNG) y Pinball 100% Auto-Aim (ACTUAL)
-    ├── [Nerf a 'Robo de Ancho de Banda' (`UpgradeSystem.ts`, `Game.ts`)]
-    │   └── Probabilidad de activación por RNG reducida del 10% al 5% para prevenir curación desmedida en late game
-    └── [Física de Pinball 100% Auto-Aim (`CompanionPet.ts`)]
-        └── 100% de auto-apuntado hacia el enemigo más cercano en todos los rebotes (bordes y enemigos), eliminando por completo la deflexión caótica
+├── v0.10.3 — Nerf a Robo de Ancho de Banda (5% RNG) y Pinball 100% Auto-Aim
+│   ├── [Nerf a 'Robo de Ancho de Banda' (`UpgradeSystem.ts`, `Game.ts`)]
+│   │   └── Probabilidad de activación por RNG reducida del 10% al 5% para prevenir curación desmedida en late game
+│   └── [Física de Pinball 100% Auto-Aim (`CompanionPet.ts`)]
+│       └── 100% de auto-apuntado hacia el enemigo más cercano en todos los rebotes (bordes y enemigos), eliminando por completo la deflexión caótica
+│
+└── v0.11.0 — Escalado Lineal de Vida, Micro-Oleadas de Flanco y Parche Integral de Balance (ACTUAL)
+    ├── [Rework de Vida y Spawner (`Spawner.ts`)]
+    │   ├── Sustituido el escalado exponencial por escalado lineal (+8% multiplicador de HP por nivel tras el nivel 6)
+    │   ├── Vida del enemigo básico rojo (Adware) limitada estrictamente a un máximo de 2.5x base HP
+    │   └── Micro-oleadas de flanco: aparición cada 15-20s de un grupo de 4-6 enemigos rojos por el mismo borde
+    └── [Parche Integral de Armas y Mejoras (`UpgradeSystem.ts`, `CompanionPet.ts`)]
+        ├── Overclock de Memoria: reducido a +20% XP por nivel (máx. +100%)
+        ├── Overclocking.exe: reducción de cooldown a -14% por nivel y tope mínimo fijado en 0.18s
+        ├── Multithreading.dll: reducido nivel máximo de 5 a 3 (máx. 4 proyectiles simultáneos)
+        ├── Heuristic_Scan (Deepscan): escalado reducido a +10 DMG por nivel (máx. 75 DMG)
+        ├── Sinapsis de Mascota: reducido a +5 DMG por nivel y tope de 5 niveles (máx. +25 DMG)
+        ├── Fiber Optic Bus: incremento de velocidad reducido a +10% por nivel (máx. +50%)
+        ├── Cortafuegos: escalado reducido a +8 DMG por nivel y cooldown mínimo fijado en 1.8s
+        ├── Rayo SQL: escalado reducido a +12 DMG por nivel (máx. 86 DMG)
+        ├── Morcillita Rama 1: Onda de Choque de nivel 20 reducida del 145% al 100% del daño letal
+        └── Morcillita Rama 3 (Pinball): daño base de contacto reducido a 22 DMG y proyectiles cinéticos al 45% (máx. 10 DMG)
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.11.0] - 2026-11-02
+- **Rework de Vida y Spawner (`Spawner.ts`)**:
+  - Reemplazado el escalado exponencial por **escalado lineal (+8% por nivel tras nivel 6)**, evitando picos astronómicos de HP en late game.
+  - La vida del enemigo básico rojo (**Adware**) queda limitada estrictamente a un **máximo de 2.5x base HP** (~62 HP máx), permitiendo que las armas sigan limpiando masas rápidamente.
+  - Añadidas **micro-oleadas de flanco** cada 15-20 segundos generando grupos coordinados de **4 a 6 enemigos rojos** por un mismo borde exterior del mapa.
+- **Balance Integral de Mejoras y Armas (`UpgradeSystem.ts`, `CompanionPet.ts`)**:
+  - **Overclock de Memoria**: Reducido a `+20% XP` por nivel (máx. +100% XP).
+  - **Overclocking.exe**: Cooldown reducido a `-14%` por nivel y tope mínimo de enfriamiento establecido en `0.18s`.
+  - **Multithreading.dll**: Nivel máximo recortado de 5 a **3** (máximo 4 proyectiles simultáneos).
+  - **Heuristic_Scan (Deepscan)**: Daño por nivel reducido a `+10 DMG` (máx. 75 DMG), manteniendo +60px de rango.
+  - **Sinapsis de Mascota**: Daño reducido a `+5 DMG` por nivel y niveles máximos limitados a **5** (máx. +25 DMG acumulado).
+  - **Fiber Optic Bus**: Velocidad reducida a `+10%` por nivel (máx. +50%).
+  - **Cortafuegos**: Daño reducido a `+8 DMG` por nivel y cooldown mínimo elevado a `1.8s`.
+  - **Rayo SQL**: Daño reducido a `+12 DMG` por nivel.
+  - **Morcillita Rama 1 (Fuerza Bruta)**: Onda de choque de nivel 20 ajustada del 145% al `100%` del daño letal.
+  - **Morcillita Rama 3 (Pinball)**: Daño base de contacto reducido de 30 a **22 DMG** y daño de proyectiles cinéticos ajustado del 65% al **45%** del daño base.
 
 ### [v0.10.3] - 2026-10-30
 - **Balanceado (`UpgradeSystem.ts`, `Game.ts` - Nerf a 'Robo de Ancho de Banda')**:

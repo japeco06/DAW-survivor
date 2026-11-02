@@ -51,13 +51,13 @@ export class UpgradeSystem {
         name: 'OVERCLOCK DE MEMORIA',
         category: 'PASIVA // MULTIPLICADOR XP',
         description:
-          'Aplica un multiplicador permanente (+35% XP) a la experiencia que otorgan todos los futuros orbes de código.',
+          'Aplica un multiplicador permanente (+20% XP) a la experiencia que otorgan todos los futuros orbes de código.',
         color: '#a3e635',
         level: 0,
         maxLevel: 5,
         isMemoryOverclock: true,
         apply: (player) => {
-          player.xpMultiplier = Number((player.xpMultiplier + 0.35).toFixed(2));
+          player.xpMultiplier = Number((player.xpMultiplier + 0.2).toFixed(2));
         },
       },
       {
@@ -150,9 +150,9 @@ export class UpgradeSystem {
         isWeapon: true,
         apply: (_player, combat) => {
           combat.firewallPulseLevel += 1;
-          combat.firewallPulseDamage += 14;
+          combat.firewallPulseDamage += 8;
           combat.firewallPulseMaxRadius += 28;
-          combat.firewallPulseCooldown = Math.max(1.4, combat.firewallPulseCooldown * 0.86);
+          combat.firewallPulseCooldown = Math.max(1.8, combat.firewallPulseCooldown * 0.86);
         },
       },
       {
@@ -167,7 +167,7 @@ export class UpgradeSystem {
         isWeapon: true,
         apply: (_player, combat) => {
           combat.sqlBeamLevel += 1;
-          combat.sqlBeamDamage += 18;
+          combat.sqlBeamDamage += 12;
           combat.sqlBeamThickness += 5;
           combat.sqlBeamCooldown = Math.max(1.0, combat.sqlBeamCooldown * 0.85);
         },
@@ -177,13 +177,13 @@ export class UpgradeSystem {
         name: 'OVERCLOCKING.exe',
         category: 'PASIVA // CADENCIA',
         description:
-          'Mejora tu Ráfaga de Firewall aumentando la cadencia de disparo (+22%) y velocidad de proyectil.',
+          'Mejora tu Ráfaga de Firewall aumentando la cadencia de disparo (-14% cooldown) y velocidad de proyectil.',
         color: '#00f0ff',
         level: 0,
         maxLevel: 6,
         isBasicShotOnly: true,
         apply: (_player, combat) => {
-          combat.fireCooldown = Math.max(0.1, combat.fireCooldown * 0.82);
+          combat.fireCooldown = Math.max(0.18, combat.fireCooldown * 0.86);
           combat.projectileSpeed += 45;
         },
       },
@@ -192,10 +192,10 @@ export class UpgradeSystem {
         name: 'MULTITHREADING.dll',
         category: 'PASIVA // MULTIDISPARO BASE',
         description:
-          'Añade +1 proyectil simultáneo a tu Ráfaga de Firewall inicial para cubrir múltiples ángulos.',
+          'Añade +1 proyectil simultáneo a tu Ráfaga de Firewall inicial para cubrir múltiples ángulos (máx. 4 proyectiles).',
         color: '#c084fc',
         level: 0,
-        maxLevel: 5,
+        maxLevel: 3,
         isBasicShotOnly: true,
         apply: (_player, combat) => {
           combat.multiShotCount += 1;
@@ -206,13 +206,13 @@ export class UpgradeSystem {
         name: 'HEURISTIC_SCAN.bat',
         category: 'PASIVA // POTENCIA',
         description:
-          'Incrementa el daño de la Ráfaga de Firewall (+15) y amplía el radio del escáner (+60px).',
+          'Incrementa el daño de la Ráfaga de Firewall (+10) y amplía el radio del escáner (+60px).',
         color: '#facc15',
         level: 0,
         maxLevel: 5,
         isBasicShotOnly: true,
         apply: (_player, combat) => {
-          combat.projectileDamage += 15;
+          combat.projectileDamage += 10;
           combat.attackRange += 60;
         },
       },
@@ -221,14 +221,14 @@ export class UpgradeSystem {
         name: 'SINAPSIS DE MASCOTA',
         category: 'MASCOTA // +DAÑO COMPAÑERO',
         description:
-          'Aumenta directamente el daño de tu Mascota Acompañante (+10 DMG de contacto/láser) en su rama evolutiva.',
+          'Aumenta directamente el daño de tu Mascota Acompañante (+5 DMG de contacto/láser) en su rama evolutiva.',
         color: '#ec4899',
         level: 0,
-        maxLevel: 8,
+        maxLevel: 5,
         isCompanionStatCard: true,
         apply: (player) => {
           if (player.companion) {
-            player.companion.upgradeBonusDamage(10);
+            player.companion.upgradeBonusDamage(5);
           }
         },
       },
@@ -237,12 +237,12 @@ export class UpgradeSystem {
         name: 'FIBER_OPTIC_BUS.drv',
         category: 'PASIVA // VELOCIDAD E IMÁN',
         description:
-          'Aumenta la velocidad de movimiento (+15%) y el radio magnético de recolección (+45px).',
+          'Aumenta la velocidad de movimiento (+10%) y el radio magnético de recolección (+45px).',
         color: '#38bdf8',
         level: 0,
         maxLevel: 5,
         apply: (player) => {
-          player.speed = Math.round(player.speed * 1.15);
+          player.speed = Math.round(player.speed * 1.1);
           player.pickupRadius += 45;
         },
       },

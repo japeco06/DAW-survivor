@@ -35,6 +35,9 @@ export class Spawner {
   public activeBossAlertTimer: number = 0;
   public lastBossSpawnedName: string = '';
 
+  private flankWaveTimer: number = 0;
+  private nextFlankWaveInterval: number = 17;
+
   public syncAfterMegaBoss(elapsedTime: number): void {
     this.timer = 0;
     this.nextBossTime = elapsedTime + this.bossSpawnInterval;
@@ -64,20 +67,17 @@ export class Spawner {
   }
 
   /**
-   * Escalado de vida no lineal:
-   * - En los primeros niveles (1 a 6) el incremento es muy suave para no frenar el early game.
-   * - En niveles altos (late game, nivel > 6 y tiempo avanzado) se activa una curva exponencial/potencial agresiva.
+   * Escalado de vida lineal y equilibrado (v0.11.0):
+   * - En los primeros niveles (1 a 6) el incremento es suave (+3.5% por nivel).
+   * - A partir del nivel 6, escala linealmente a un +8% de multiplicador global por nivel.
+   * - Escalado por tiempo moderado y predecible.
    */
   public getGlobalHpMultiplier(elapsedTime: number, playerLevel: number): number {
     const earlyLevelBonus = Math.max(0, playerLevel - 1) * 0.035;
-    const lateLevelLevels = Math.max(0, playerLevel - 6);
-    const lateLevelBonus = Math.pow(lateLevelLevels, 1.85) * 0.12;
+    const lateLevelBonus = Math.max(0, playerLevel - 6) * 0.08;
+    const timeBonus = Math.min(0.6, (elapsedTime / 60) * 0.08);
 
-    const earlyTimeBonus = Math.min(elapsedTime, 120) * 0.003;
-    const lateTimeMinutes = Math.max(0, (elapsedTime - 120) / 60);
-    const lateTimeBonus = Math.pow(lateTimeMinutes, 1.7) * 0.45;
-
-    return Number((1 + earlyLevelBonus + lateLevelBonus + earlyTimeBonus + lateTimeBonus).toFixed(2));
+    return Number((1 + earlyLevelBonus + lateLevelBonus + timeBonus).toFixed(2));
   }
 
   public update(
@@ -143,6 +143,14 @@ export class Spawner {
         this.triggerSwarmEvent(enemies, canvasWidth, canvasHeight);
         return;
       }
+    }
+
+    // 4. Micro-oleadas de flanco: cada 15-20s genera un grupo de 4-6 enemigos rojos por el mismo borde
+    this.flankWaveTimer += dt;
+    if (this.flankWaveTimer >= this.nextFlankWaveInterval) {
+      this.flankWaveTimer = 0;
+      this.nextFlankWaveInterval = 15 + Math.random() * 5;
+      this.spawnFlankMicroWave(hpMultiplier, enemies, canvasWidth, canvasHeight);
     }
 
     const currentSpawnInterval = Math.max(0.28, 0.92 * Math.pow(0.92, elapsedTime / 14));
@@ -253,10 +261,51 @@ export class Spawner {
       return null;
     }
 
+    const cappedRedHpMult = Math.min(2.5, hpMultiplier);
     const adware = new Adware(pos.x, pos.y);
-    adware.maxHp = Math.round(25 * hpMultiplier);
+    adware.maxHp = Math.round(25 * cappedRedHpMult);
     adware.hp = adware.maxHp;
     return adware;
+  }
+
+  private spawnFlankMicroWave(
+    hpMultiplier: number,
+    enemies: Adware[],
+    width: number,
+    height: number
+  ): void {
+    const edge = Math.floor(Math.random() * 4); // 0=Arriba, 1=Derecha, 2=Abajo, 3=Izquierda
+    const count = 4 + Math.floor(Math.random() * 3); // 4 a 6 enemigos
+    const cappedRedHpMult = Math.min(2.5, hpMultiplier);
+    const centerNorm = 0.2 + Math.random() * 0.6; // Entre 20% y 80% del borde
+
+    for (let i = 0; i < count; i++) {
+      const spread = (i - (count - 1) / 2) * 36;
+      let x = 0;
+      let y = 0;
+      switch (edge) {
+        case 0:
+          x = Math.max(35, Math.min(width - 35, width * centerNorm + spread));
+          y = -this.spawnMargin - Math.random() * 25;
+          break;
+        case 1:
+          x = width + this.spawnMargin + Math.random() * 25;
+          y = Math.max(35, Math.min(height - 35, height * centerNorm + spread));
+          break;
+        case 2:
+          x = Math.max(35, Math.min(width - 35, width * centerNorm + spread));
+          y = height + this.spawnMargin + Math.random() * 25;
+          break;
+        default:
+          x = -this.spawnMargin - Math.random() * 25;
+          y = Math.max(35, Math.min(height - 35, height * centerNorm + spread));
+          break;
+      }
+      const adware = new Adware(x, y);
+      adware.maxHp = Math.round(25 * cappedRedHpMult);
+      adware.hp = adware.maxHp;
+      enemies.push(adware);
+    }
   }
 
   private getRandomOutsidePosition(width: number, height: number): { x: number; y: number } {

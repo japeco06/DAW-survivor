@@ -465,7 +465,7 @@ export class CompanionPet {
         : this.branch === 'BOTNET'
         ? 18
         : this.branch === 'PINBALL'
-        ? 30
+        ? 22
         : 22) *
         player.damageMultiplier +
         this.bonusDamageStat
@@ -520,7 +520,7 @@ export class CompanionPet {
       if (!enemy.active) {
         killedEnemies.push(enemy);
         if (fromBruteImpact && this.branch === 'BRUTE' && playerLevel >= 20) {
-          this.shockwaves.push(new BruteShockwave(enemy.x, enemy.y, Math.round(finalDmg * 1.45)));
+          this.shockwaves.push(new BruteShockwave(enemy.x, enemy.y, Math.round(finalDmg * 1.0)));
           screenShakeIntensity = Math.max(screenShakeIntensity, 9);
         }
         // Propagación de Malware (Botnet Lvl 10): al matar a un enemigo con un cuadrado, explota en metralla digital en área
@@ -620,7 +620,7 @@ export class CompanionPet {
           spawnKineticBurst(
             unit.x,
             unit.y,
-            Math.max(14, Math.round(baseContactDamage * 0.65))
+            Math.max(10, Math.round(baseContactDamage * 0.45))
           );
         }
 
@@ -747,7 +747,7 @@ export class CompanionPet {
             spawnKineticBurst(
               unit.x,
               unit.y,
-              Math.max(14, Math.round(baseContactDamage * 0.65))
+              Math.max(10, Math.round(baseContactDamage * 0.45))
             );
           }
 
