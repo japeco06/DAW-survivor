@@ -3,7 +3,7 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCgn00PER7Kz3BiQ7ruMSigTRqw8PAmhb8",
+  apiKey: "AIzaSyCgnO0PER7Kz3BiQ7ruMSigTRqw8PAmhb8",
   authDomain: "survivor-daw.firebaseapp.com",
   projectId: "survivor-daw",
   storageBucket: "survivor-daw.firebasestorage.app",
