@@ -438,13 +438,120 @@ class CheatSheetMine {
   }
 }
 
+class DigitalGlitchClone {
+  public x: number;
+  public y: number;
+  public size: number = 32;
+  public speed: number = 148;
+  public damage: number = 12;
+  public lifeTime: number = 5.0;
+  public readonly maxLifeTime: number = 5.0;
+  public active: boolean = true;
+  private animTimer: number = 0;
+
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+
+  public update(dt: number, player: Player): boolean {
+    this.lifeTime -= dt;
+    this.animTimer += dt;
+    if (this.lifeTime <= 0) {
+      this.active = false;
+      return false;
+    }
+
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > 0) {
+      this.x += (dx / dist) * this.speed * dt;
+      this.y += (dy / dist) * this.speed * dt;
+    }
+
+    if (dist <= (this.size + player.size) * 0.45) {
+      const hit = player.takeDamage(this.damage);
+      if (hit) {
+        this.x -= (dx / (dist || 1)) * 18;
+        this.y -= (dy / (dist || 1)) * 18;
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  public draw(ctx: CanvasRenderingContext2D): void {
+    const alpha = Math.max(0.18, Math.min(1, this.lifeTime / 1.2));
+    const jitterX = (Math.random() - 0.5) * 3.5;
+    const jitterY = (Math.random() - 0.5) * 2.5;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(this.x + jitterX, this.y + jitterY);
+
+    // Aberración cromática digital (cian / magenta)
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.45)';
+    ctx.fillRect(-16 - 2, -12, 32, 24);
+    ctx.fillStyle = 'rgba(236, 72, 153, 0.45)';
+    ctx.fillRect(-16 + 2, -12, 32, 24);
+
+    // Silueta glitch de El Copiota
+    ctx.fillStyle = '#3b82f6';
+    ctx.strokeStyle = '#fde047';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#00f0ff';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 18, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#fcd34d';
+    ctx.beginPath();
+    ctx.arc(0, -8, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Gafas del clon
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(-8, -11, 7, 5);
+    ctx.fillRect(1, -11, 7, 5);
+
+    // Etiqueta superior y barra de tiempo restante (5s)
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 9px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`CTRL+V (${this.lifeTime.toFixed(1)}s)`, 0, -22);
+
+    ctx.restore();
+  }
+}
+
 export class CheaterBoss extends BaseBoss {
   public bossTitle = 'EL COPIOTA // EXAM PLAGIARIST';
   public specialAttackName = 'CHULETAS DE EXAMEN';
+  public override secondarySpecialAttackName = 'CTRL+C / CTRL+V';
   private mines: CheatSheetMine[] = [];
+  private clones: DigitalGlitchClone[] = [];
+  private cloneSpawnTimer: number = 0;
+  private readonly cloneSpawnInterval: number = 8.0;
 
   constructor(canvasWidth: number) {
     super(canvasWidth, 112, '#eab308');
+  }
+
+  private spawnGlitchClones(): void {
+    const offsets = [
+      { dx: -68, dy: 34 },
+      { dx: 0, dy: 52 },
+      { dx: 68, dy: 34 },
+    ];
+    for (const off of offsets) {
+      this.clones.push(new DigitalGlitchClone(this.x + off.dx, this.y + off.dy));
+    }
   }
 
   public override triggerUniqueSpecialAttack(
@@ -494,6 +601,14 @@ export class CheaterBoss extends BaseBoss {
     }
   }
 
+  public override triggerSecondarySpecialAttack(
+    player: Player,
+    canvasWidth: number,
+    canvasHeight: number
+  ): void {
+    this.triggerUniqueSpecialAttack(player, canvasWidth, canvasHeight);
+  }
+
   protected override updateUniqueMechanics(
     dt: number,
     player: Player,
@@ -502,12 +617,28 @@ export class CheaterBoss extends BaseBoss {
     canvasHeight: number
   ): boolean {
     let hit = false;
+
+    // Ataque "Ctrl+C / Ctrl+V": cada 8 segundos genera 3 clones digitales con glitch
+    this.cloneSpawnTimer += dt;
+    while (this.cloneSpawnTimer >= this.cloneSpawnInterval) {
+      this.cloneSpawnTimer -= this.cloneSpawnInterval;
+      this.spawnGlitchClones();
+    }
+
     for (const mine of this.mines) {
       if (mine.update(dt, player, canvasWidth, canvasHeight)) {
         hit = true;
       }
     }
+
+    for (const clone of this.clones) {
+      if (clone.update(dt, player)) {
+        hit = true;
+      }
+    }
+
     this.mines = this.mines.filter((m) => m.active);
+    this.clones = this.clones.filter((c) => c.active);
     return hit;
   }
 
@@ -515,10 +646,15 @@ export class CheaterBoss extends BaseBoss {
     for (const mine of this.mines) {
       mine.draw(ctx);
     }
+    for (const clone of this.clones) {
+      clone.draw(ctx);
+    }
   }
 
   protected override clearUniqueHazards(): void {
     this.mines = [];
+    this.clones = [];
+    this.cloneSpawnTimer = 0;
   }
 
   protected override drawBossCharacter(ctx: CanvasRenderingContext2D, isFlashing: boolean): void {

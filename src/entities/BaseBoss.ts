@@ -472,8 +472,8 @@ export interface MegaBossUpdateResult {
 }
 
 export abstract class BaseBoss extends Entity {
-  public maxHp: number = 1500;
-  public hp: number = 1500;
+  public maxHp: number = 1250;
+  public hp: number = 1250;
   public abstract bossTitle: string;
   public abstract specialAttackName: string;
   public secondarySpecialAttackName?: string;

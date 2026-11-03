@@ -325,6 +325,14 @@ export class CompanionPet {
     this.bonusDamageStat += amount;
   }
 
+  public clearActiveEffects(): void {
+    this.shrapnelFragments = [];
+    this.pinballTrails = [];
+    this.pinballProjectiles = [];
+    this.craters = [];
+    this.shockwaves = [];
+  }
+
   public getBranchDisplayName(_playerLevel: number = 1): string {
     if (this.branch === 'BRUTE') return 'Mascota: Fuerza Bruta';
     if (this.branch === 'BOTNET') return 'Mascota: La Botnet';

@@ -10,7 +10,8 @@ export type MalwareType =
   | 'EVASOR'
   | 'HARDWARE_BOX'
   | 'CRYPTO_MINER'
-  | 'RANSOMWARE';
+  | 'RANSOMWARE'
+  | 'FINAL_BOSS';
 
 /**
  * Clase base para todo el Malware (Fase 4).

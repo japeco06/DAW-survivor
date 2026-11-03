@@ -185,24 +185,52 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │       ├── Morcillita Rama 1: Onda de Choque de nivel 20 reducida del 145% al 100% del daño letal
 │       └── Morcillita Rama 3 (Pinball): daño base de contacto reducido a 22 DMG y proyectiles cinéticos al 45% (máx. 10 DMG)
 │
-└── v0.12.0 — Indicadores UI de Élite/Jefes, Barras de HP de Élites, Power-ups Raros y Screen Shake Táctico (ACTUAL)
-    ├── [Indicadores Fuera de Pantalla (`Game.ts`)]
-    │   ├── Flechas rojas parpadeantes en los bordes de la pantalla señalando enemigos Élite o Jefes fuera del viewport
-    │   └── Flecha dorada parpadeante apuntando hacia el 'Crypto Miner' cuando se encuentra fuera de pantalla
-    ├── [Barras de Vida de Élites (`Game.ts`)]
-    │   └── Barras de HP minimalistas renderizadas directamente sobre los sprites de Jefes Ransomware, Gusanos Blindados y Evasores
-    ├── [Power-ups Raros Temporales (`PowerUpItem.ts`, `Game.ts`)]
-    │   ├── Logic Bomb (Nuke): aniquila instantáneamente a todos los enemigos básicos en pantalla y suelta sus fragmentos de XP
-    │   ├── System Freeze (Congelación): congela el movimiento de todos los enemigos durante 4 segundos
-    │   └── Thermal Overclock (Frenesí): duplica la cadencia de disparo (2x) y otorga 100% de probabilidad de crítico durante 6 segundos
-    └── [Screen Shake Táctico / Game Feel (`CombatSystem.ts`, `Game.ts`)]
-        ├── Agitado de pantalla sutil activado ÚNICAMENTE cuando el jugador recibe daño o cuando explota un Dron Reactivo
-        └── Prohibición estricta: NO se activa Screen Shake con golpes críticos ni otros eventos no letales
+├── v0.12.0 — Indicadores UI de Élite/Jefes, Barras de HP de Élites, Power-ups Raros y Screen Shake Táctico
+│   ├── [Indicadores Fuera de Pantalla (`Game.ts`)]
+│   │   ├── Flechas rojas parpadeantes en los bordes de la pantalla señalando enemigos Élite o Jefes fuera del viewport
+│   │   └── Flecha dorada parpadeante apuntando hacia el 'Crypto Miner' cuando se encuentra fuera de pantalla
+│   ├── [Barras de Vida de Élites (`Game.ts`)]
+│   │   └── Barras de HP minimalistas renderizadas directamente sobre los sprites de Jefes Ransomware, Gusanos Blindados y Evasores
+│   ├── [Power-ups Raros Temporales (`PowerUpItem.ts`, `Game.ts`)]
+│   │   ├── Logic Bomb (Nuke): aniquila instantáneamente a todos los enemigos básicos en pantalla y suelta sus fragmentos de XP
+│   │   ├── System Freeze (Congelación): congela el movimiento de todos los enemigos durante 4 segundos
+│   │   └── Thermal Overclock (Frenesí): duplica la cadencia de disparo (2x) y otorga 100% de probabilidad de crítico durante 6 segundos
+│   └── [Screen Shake Táctico / Game Feel (`CombatSystem.ts`, `Game.ts`)]
+│       ├── Agitado de pantalla sutil activado ÚNICAMENTE cuando el jugador recibe daño o cuando explota un Dron Reactivo
+│       └── Prohibición estricta: NO se activa Screen Shake con golpes críticos ni otros eventos no letales
+│
+└── v0.13.0 — Rework de Mega-Jefes (5 Llaves, Pool Único), Clones de 'El Copiota' y Jefe Final Invencible 'El Toro' (ACTUAL)
+    ├── [Mecánicas Universales de Mega-Jefes (`BaseBoss.ts`, `Game.ts`, `CompanionPet.ts`)]
+    │   ├── Armas y ataques del jugador completamente desactivados durante cualquier combate de Mega-Jefe estándar
+    │   ├── Reducido el número de llaves necesarias para derrotar a un Mega-Jefe a exactamente 5 (1250 HP / 250 DMG por llave)
+    │   ├── Eliminado el atajo de teclado 'B' para invocación manual de jefes
+    │   └── Seguimiento de variantes derrotadas: cada aparición selecciona aleatoriamente solo entre los Mega-Jefes aún no derrotados (4 únicos)
+    ├── [Actualización de 'El Copiota' (`SpecialBosses.ts`)]
+    │   └── Nuevo ataque "Ctrl+C / Ctrl+V": cada 8 segundos genera 3 clones digitales glitch que persiguen al jugador, infligen daño de contacto y desaparecen tras 5 segundos
+    └── [Jefe Final Invencible: 'El Toro' (`ElToroBoss.ts`, `Spawner.ts`, `Game.ts`)]
+        ├── Al derrotar al 4.º Mega-Jefe único se detienen todos los temporizadores de élites/especiales/jefes y aparece inmediatamente "El Toro" en el mapa normal
+        ├── Mientras "El Toro" está activo solo pueden aparecer enemigos rojos básicos (Adware), limitados estrictamente a un máximo de 15 simultáneos en pantalla
+        ├── Armas del jugador habilitadas; "El Toro" es invencible (su HP nunca llega a 0), inflige exactamente el 50% del HP máximo por contacto, escala velocidad cada 15s y embiste cada 10s tras 1.5s de telegrafiado
+        └── UI exclusiva de Jefe Final que muestra en tiempo real el daño numérico total acumulado infligido al Toro
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.13.0] - 2026-11-03
+- **Mecánicas Universales de Mega-Jefes (`BaseBoss.ts`, `Game.ts`, `CompanionPet.ts`)**:
+  - Armas y efectos del jugador completamente deshabilitados durante cualquier Mega-Jefe estándar.
+  - Reducida la cantidad requerida de llaves recolectadas para derrotar a un Mega-Jefe a exactamente **5 llaves** (`1250 HP` / `250 DMG`).
+  - Eliminada la tecla `B` de invocación manual de jefes.
+  - Registro de variantes de Mega-Jefes derrotadas para garantizar apariciones únicas seleccionadas solo entre las variantes pendientes.
+- **Actualización de Mega-Jefe 'El Copiota' (`SpecialBosses.ts`)**:
+  - Añadido el ataque **"Ctrl+C / Ctrl+V"**: cada 8 segundos genera 3 clones digitales (`DigitalGlitchClone`) que persiguen al jugador, infligen daño de contacto estándar y se desvanecen automáticamente tras 5 segundos.
+- **Jefe Final Invencible "El Toro" (`ElToroBoss.ts`, `Spawner.ts`, `Game.ts`)**:
+  - En el instante exacto en que cae el 4.º Mega-Jefe único, se detienen todos los temporizadores de aparición de élites, especiales y jefes normales, e irrumpe inmediatamente **"El Toro"** en el mapa normal.
+  - Durante esta fase únicamente siguen apareciendo enemigos básicos rojos (`Adware`), con un tope estricto de **15 en pantalla simultáneamente**.
+  - Las armas del jugador están **habilitadas**; **El Toro** tiene tamaño colosal y rasgos visuales taurinos, es **invencible** (su HP no baja a 0 y no muere), inflige exactamente el **50% de la vida máxima del jugador** por contacto, aumenta su velocidad de movimiento cada **15 segundos** y cada **10 segundos** se detiene **1.5 segundos** para telegrafiar y ejecutar una embestida masiva a alta velocidad hacia la posición del jugador.
+  - Añadida interfaz dedicada (`drawBossHUD`) visible únicamente mientras el Jefe Final está activo, mostrando continuamente el **daño numérico total acumulado** infligido al Toro.
 
 ### [v0.12.0] - 2026-11-02
 - **Indicadores Fuera de Pantalla (`Game.ts`)**:

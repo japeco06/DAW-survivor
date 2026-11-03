@@ -37,10 +37,23 @@ export class Spawner {
 
   private flankWaveTimer: number = 0;
   private nextFlankWaveInterval: number = 17;
+  public finalBossMode: boolean = false;
 
   public syncAfterMegaBoss(elapsedTime: number): void {
     this.timer = 0;
     this.nextBossTime = elapsedTime + this.bossSpawnInterval;
+  }
+
+  public enableFinalBossMode(): void {
+    this.finalBossMode = true;
+    this.timer = 0;
+    this.boxCheckTimer = 0;
+    this.minerCheckTimer = 0;
+    this.swarmCheckTimer = 0;
+    this.swarmActiveTimer = 0;
+    this.flankWaveTimer = 0;
+    this.activeBossAlertTimer = 0;
+    this.nextBossTime = Number.POSITIVE_INFINITY;
   }
 
   public triggerSwarmEvent(
@@ -97,6 +110,28 @@ export class Spawner {
 
     this.currentThreatLevel = 1 + Math.floor(elapsedTime / 20);
     const hpMultiplier = this.getGlobalHpMultiplier(elapsedTime, playerLevel);
+
+    // Fase de Jefe Final ("El Toro"): TODOS los temporizadores de élites, especiales y jefes quedan detenidos.
+    // ÚNICAMENTE pueden aparecer enemigos básicos rojos (Adware) con un límite estricto de 15 en pantalla simultáneamente.
+    if (this.finalBossMode) {
+      const currentSpawnInterval = Math.max(0.28, 0.92 * Math.pow(0.92, elapsedTime / 14));
+      this.timer += dt;
+      while (this.timer >= currentSpawnInterval) {
+        this.timer -= currentSpawnInterval;
+        const activeRedAdwareCount = enemies.filter(
+          (e) => e.active && e.malwareType === 'ADWARE'
+        ).length;
+        if (activeRedAdwareCount < 15) {
+          const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
+          const cappedRedHpMult = Math.min(2.5, hpMultiplier);
+          const adware = new Adware(pos.x, pos.y);
+          adware.maxHp = Math.round(25 * cappedRedHpMult);
+          adware.hp = adware.maxHp;
+          enemies.push(adware);
+        }
+      }
+      return;
+    }
 
     // 1. Obstáculos: Cajas de Hardware (probabilidad media-baja, superior a los eventos)
     this.boxCheckTimer += dt;
