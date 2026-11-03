@@ -1,8 +1,24 @@
 import { HatItem, HATS_DATABASE, getHatById, rollGachaHat, RARITY_CONFIG } from './HatSystem';
 import { auth, db } from '../firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  setDoc,
+} from 'firebase/firestore';
 
 export type CharacterId = 'STANDARD' | 'ROOT' | 'PROXY' | 'MORCILLITA';
+
+export interface LeaderboardEntry {
+  uid: string;
+  displayName: string;
+  maxDamageToToro: number;
+  bestTimeSeconds: number;
+}
 
 export interface CharacterProfile {
   id: CharacterId;
@@ -18,6 +34,7 @@ export interface CharacterProfile {
 }
 
 interface SavedMetaState {
+  displayName?: string;
   coins: number;
   unlockedCharacters: CharacterId[];
   selectedCharacter: CharacterId;
@@ -25,6 +42,7 @@ interface SavedMetaState {
   equippedHatId?: string | null;
   highScore?: number;
   bestTimeSeconds?: number;
+  maxDamageToToro?: number;
 }
 
 export const STORAGE_KEY = 'cyber_survivor_meta_v020';
@@ -39,6 +57,7 @@ export interface GachaPullEntry {
 }
 
 export class MetaSystem {
+  public displayName: string = 'Survivor';
   public coins: number = 0;
   public unlockedCharacters: Set<CharacterId> = new Set(['STANDARD', 'MORCILLITA']);
   public selectedCharacter: CharacterId = 'STANDARD';
@@ -46,6 +65,7 @@ export class MetaSystem {
   public equippedHatId: string | null = null;
   public highScore: number = 0;
   public bestTimeSeconds: number = 0;
+  public maxDamageToToro: number = 0;
 
   public readonly characterOrder: CharacterId[] = ['STANDARD', 'ROOT', 'PROXY', 'MORCILLITA'];
 
@@ -109,7 +129,11 @@ export class MetaSystem {
     this.save();
   }
 
-  public updateHighScore(kills: number, elapsedSeconds: number): void {
+  public updateHighScore(
+    kills: number,
+    elapsedSeconds: number,
+    damageToToro: number = 0
+  ): void {
     let changed = false;
     if (kills > this.highScore) {
       this.highScore = kills;
@@ -118,6 +142,11 @@ export class MetaSystem {
     const flooredTime = Math.floor(elapsedSeconds);
     if (flooredTime > this.bestTimeSeconds) {
       this.bestTimeSeconds = flooredTime;
+      changed = true;
+    }
+    const flooredToroDamage = Math.floor(damageToToro);
+    if (flooredToroDamage > this.maxDamageToToro) {
+      this.maxDamageToToro = flooredToroDamage;
       changed = true;
     }
     if (changed) {
@@ -270,13 +299,40 @@ export class MetaSystem {
 
   public async loadFromCloud(uid: string): Promise<void> {
     try {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        this.displayName =
+          currentUser.displayName && currentUser.displayName.trim().length > 0
+            ? currentUser.displayName.trim()
+            : 'Survivor';
+      }
+
       const userDocRef = doc(db, 'users', uid);
       const snapshot = await getDoc(userDocRef);
 
       if (snapshot.exists()) {
         const cloudData = snapshot.data() as Partial<SavedMetaState>;
         this.applyParsedState(cloudData);
+        if (currentUser && currentUser.displayName && currentUser.displayName.trim().length > 0) {
+          this.displayName = currentUser.displayName.trim();
+        }
         this.save();
+        // Ensure displayName and leaderboard fields exist in Firestore document
+        if (
+          cloudData.displayName !== this.displayName ||
+          typeof cloudData.maxDamageToToro !== 'number' ||
+          typeof cloudData.bestTimeSeconds !== 'number'
+        ) {
+          await setDoc(
+            userDocRef,
+            {
+              displayName: this.displayName,
+              maxDamageToToro: this.maxDamageToToro,
+              bestTimeSeconds: this.bestTimeSeconds,
+            },
+            { merge: true }
+          );
+        }
       } else {
         await setDoc(userDocRef, this.getStatePayload());
       }
@@ -285,18 +341,146 @@ export class MetaSystem {
     }
   }
 
-  public async syncToCloud(): Promise<void> {
-    this.save();
+  public async syncToCloud(
+    runTimeSeconds: number = 0,
+    runDamageToToro: number = 0
+  ): Promise<void> {
+    const flooredTime = Math.floor(runTimeSeconds);
+    const flooredToroDmg = Math.floor(runDamageToToro);
+    if (flooredTime > this.bestTimeSeconds) {
+      this.bestTimeSeconds = flooredTime;
+    }
+    if (flooredToroDmg > this.maxDamageToToro) {
+      this.maxDamageToToro = flooredToroDmg;
+    }
+
     const currentUser = auth.currentUser;
+    if (currentUser) {
+      this.displayName =
+        currentUser.displayName && currentUser.displayName.trim().length > 0
+          ? currentUser.displayName.trim()
+          : 'Survivor';
+    }
+
+    this.save();
     if (!currentUser) {
       return;
     }
 
     try {
       const userDocRef = doc(db, 'users', currentUser.uid);
-      await setDoc(userDocRef, this.getStatePayload(), { merge: true });
+      const snapshot = await getDoc(userDocRef);
+      const existing = snapshot.exists()
+        ? (snapshot.data() as Partial<SavedMetaState>)
+        : null;
+
+      const savedMaxToro =
+        existing && typeof existing.maxDamageToToro === 'number'
+          ? existing.maxDamageToToro
+          : 0;
+      const savedBestTime =
+        existing && typeof existing.bestTimeSeconds === 'number'
+          ? existing.bestTimeSeconds
+          : 0;
+      const savedHighScore =
+        existing && typeof existing.highScore === 'number'
+          ? existing.highScore
+          : 0;
+
+      if (savedMaxToro > this.maxDamageToToro) {
+        this.maxDamageToToro = savedMaxToro;
+      }
+      if (savedBestTime > this.bestTimeSeconds) {
+        this.bestTimeSeconds = savedBestTime;
+      }
+      if (savedHighScore > this.highScore) {
+        this.highScore = savedHighScore;
+      }
+
+      const payload: Record<string, unknown> = {
+        displayName: this.displayName,
+        coins: this.coins,
+        unlockedCharacters: Array.from(this.unlockedCharacters),
+        selectedCharacter: this.selectedCharacter,
+        unlockedHats: Array.from(this.unlockedHats),
+        equippedHatId: this.equippedHatId,
+        highScore: this.highScore,
+      };
+
+      // Only overwrite maxDamageToToro / bestTimeSeconds if strictly greater than saved value (or if not yet present)
+      if (!existing || typeof existing.maxDamageToToro !== 'number' || flooredToroDmg > savedMaxToro || this.maxDamageToToro > savedMaxToro) {
+        payload.maxDamageToToro = Math.max(savedMaxToro, this.maxDamageToToro, flooredToroDmg);
+      }
+      if (!existing || typeof existing.bestTimeSeconds !== 'number' || flooredTime > savedBestTime || this.bestTimeSeconds > savedBestTime) {
+        payload.bestTimeSeconds = Math.max(savedBestTime, this.bestTimeSeconds, flooredTime);
+      }
+
+      this.save();
+      await setDoc(userDocRef, payload, { merge: true });
     } catch (err) {
       console.error('Error guardando datos en Firestore:', err);
+    }
+  }
+
+  public async fetchTopToroDamageLeaderboard(): Promise<LeaderboardEntry[]> {
+    try {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, orderBy('maxDamageToToro', 'desc'), limit(10));
+      const snap = await getDocs(q);
+      const entries: LeaderboardEntry[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as Partial<SavedMetaState>;
+        entries.push({
+          uid: docSnap.id,
+          displayName:
+            data.displayName && data.displayName.trim().length > 0
+              ? data.displayName.trim()
+              : 'Survivor',
+          maxDamageToToro:
+            typeof data.maxDamageToToro === 'number'
+              ? Math.floor(data.maxDamageToToro)
+              : 0,
+          bestTimeSeconds:
+            typeof data.bestTimeSeconds === 'number'
+              ? Math.floor(data.bestTimeSeconds)
+              : 0,
+        });
+      });
+      return entries;
+    } catch (err) {
+      console.error('Error al cargar clasificación de Daño al Toro:', err);
+      return [];
+    }
+  }
+
+  public async fetchTopSurvivalTimeLeaderboard(): Promise<LeaderboardEntry[]> {
+    try {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, orderBy('bestTimeSeconds', 'desc'), limit(10));
+      const snap = await getDocs(q);
+      const entries: LeaderboardEntry[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as Partial<SavedMetaState>;
+        entries.push({
+          uid: docSnap.id,
+          displayName:
+            data.displayName && data.displayName.trim().length > 0
+              ? data.displayName.trim()
+              : 'Survivor',
+          maxDamageToToro:
+            typeof data.maxDamageToToro === 'number'
+              ? Math.floor(data.maxDamageToToro)
+              : 0,
+          bestTimeSeconds:
+            typeof data.bestTimeSeconds === 'number'
+              ? Math.floor(data.bestTimeSeconds)
+              : 0,
+        });
+      });
+      return entries;
+    } catch (err) {
+      console.error('Error al cargar clasificación de Tiempo de Supervivencia:', err);
+      return [];
     }
   }
 
@@ -356,16 +540,23 @@ export class MetaSystem {
     } else {
       this.equippedHatId = null;
     }
+    if (typeof parsed.displayName === 'string' && parsed.displayName.trim().length > 0) {
+      this.displayName = parsed.displayName.trim();
+    }
     if (typeof parsed.highScore === 'number' && parsed.highScore >= 0) {
-      this.highScore = Math.floor(parsed.highScore);
+      this.highScore = Math.max(this.highScore, Math.floor(parsed.highScore));
     }
     if (typeof parsed.bestTimeSeconds === 'number' && parsed.bestTimeSeconds >= 0) {
-      this.bestTimeSeconds = Math.floor(parsed.bestTimeSeconds);
+      this.bestTimeSeconds = Math.max(this.bestTimeSeconds, Math.floor(parsed.bestTimeSeconds));
+    }
+    if (typeof parsed.maxDamageToToro === 'number' && parsed.maxDamageToToro >= 0) {
+      this.maxDamageToToro = Math.max(this.maxDamageToToro, Math.floor(parsed.maxDamageToToro));
     }
   }
 
   private getStatePayload(): SavedMetaState {
     return {
+      displayName: this.displayName,
       coins: this.coins,
       unlockedCharacters: Array.from(this.unlockedCharacters),
       selectedCharacter: this.selectedCharacter,
@@ -373,6 +564,7 @@ export class MetaSystem {
       equippedHatId: this.equippedHatId,
       highScore: this.highScore,
       bestTimeSeconds: this.bestTimeSeconds,
+      maxDamageToToro: this.maxDamageToToro,
     };
   }
 

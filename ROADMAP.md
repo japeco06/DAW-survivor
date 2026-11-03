@@ -223,21 +223,47 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   └── [Preparación de Firestore (`firebase.ts`, `Game.ts`)]
 │       └── Instancia `db` verificada y preparada para operaciones de lectura/escritura de guardado en la nube y clasificación global
 │
-└── v0.15.0 — Guardado en la Nube (Cloud Saving) con Firestore (ACTUAL)
-    ├── [Estructura de Datos en Firestore (`MetaSystem.ts`, `firebase.ts`)]
-    │   ├── Colección raíz `users` utilizando el `uid` del usuario autenticado como ID del documento
-    │   └── Almacenamiento completo del progreso persistente: High Score (`highScore`, `bestTimeSeconds`), Monedas (`coins`) y Mejoras/Desbloqueos de Tienda (`unlockedCharacters`, `selectedCharacter`, `unlockedHats`, `equippedHatId`)
-    ├── [Lógica de Carga / Sync Down (`MetaSystem.ts`, `Game.ts`)]
-    │   ├── Al iniciar sesión en `onAuthStateChanged`, obtención automática del documento desde `users/{uid}` y sincronización con el estado activo del juego
-    │   └── Si el documento no existe (primer inicio de sesión), creación automática en Firestore con los valores locales o por defecto actuales
-    └── [Lógica de Guardado / Sync Up & Fallback de Invitado (`MetaSystem.ts`, `Game.ts`)]
-        ├── Guardado automático en Firestore inmediatamente al morir el jugador (estado `GAMEOVER`) e inmediatamente tras comprar/equipar cualquier mejora o elemento en la Tienda/Gacha
-        └── Modo Invitado (Fallback): si no hay usuario autenticado, se omite Firestore por completo y se mantiene el uso normal de `localStorage`
+├── v0.15.0 — Guardado en la Nube (Cloud Saving) con Firestore
+│   ├── [Estructura de Datos en Firestore (`MetaSystem.ts`, `firebase.ts`)]
+│   │   ├── Colección raíz `users` utilizando el `uid` del usuario autenticado como ID del documento
+│   │   └── Almacenamiento completo del progreso persistente: High Score (`highScore`, `bestTimeSeconds`), Monedas (`coins`) y Mejoras/Desbloqueos de Tienda (`unlockedCharacters`, `selectedCharacter`, `unlockedHats`, `equippedHatId`)
+│   ├── [Lógica de Carga / Sync Down (`MetaSystem.ts`, `Game.ts`)]
+│   │   ├── Al iniciar sesión en `onAuthStateChanged`, obtención automática del documento desde `users/{uid}` y sincronización con el estado activo del juego
+│   │   └── Si el documento no existe (primer inicio de sesión), creación automática en Firestore con los valores locales o por defecto actuales
+│   └── [Lógica de Guardado / Sync Up & Fallback de Invitado (`MetaSystem.ts`, `Game.ts`)]
+│       ├── Guardado automático en Firestore inmediatamente al morir el jugador (estado `GAMEOVER`) e inmediatamente tras comprar/equipar cualquier mejora o elemento en la Tienda/Gacha
+│       └── Modo Invitado (Fallback): si no hay usuario autenticado, se omite Firestore por completo y se mantiene el uso normal de `localStorage`
+│
+└── v0.16.0 — Clasificación Mundial Dual (Dual Global Leaderboards: Daño al Toro y Tiempo de Supervivencia) (ACTUAL)
+    ├── [Seguimiento de Datos y Sincronización (`MetaSystem.ts`, `Game.ts`)]
+    │   ├── Seguimiento de `maxDamageToToro` (daño total infligido al Jefe Final "El Toro" en una misma partida)
+    │   ├── Actualización de `syncToCloud` para guardar `maxDamageToToro` y `bestTimeSeconds` sobrescribiendo únicamente cuando la nueva marca supera estrictamente al récord guardado
+    │   └── Escritura explícita del `displayName` de Google del usuario autenticado (con fallback `"Survivor"`) en el documento de Firestore
+    ├── [Consultas a Firestore (`MetaSystem.ts`)]
+    │   ├── `fetchTopToroDamageLeaderboard`: Top 10 jugadores ordenados por `maxDamageToToro` (descendente)
+    │   └── `fetchTopSurvivalTimeLeaderboard`: Top 10 jugadores ordenados por `bestTimeSeconds` (descendente)
+    └── [Interfaz de Clasificación Global (`Game.ts`)]
+        ├── Botón `"Global Rankings"` añadido al Menú Principal
+        ├── Overlay interactivo con pestañas `"Top Damage to Toro"` y `"Best Survival Time"` mostrando Rango (#1-#10), Nombre y Métrica
+        └── Botón `"Back"` para regresar al Menú Principal
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.16.0] - 2026-11-03
+- **Seguimiento de Datos y Sincronización (`src/systems/MetaSystem.ts`, `src/core/Game.ts`)**:
+  - Añadido registro de `maxDamageToToro` (daño total infligido al Jefe Final "El Toro" en una sola partida).
+  - Actualizado `syncToCloud` para almacenar `maxDamageToToro` y `bestTimeSeconds` en el documento `users/{uid}` de Firestore, sobrescribiendo únicamente si el valor de la nueva partida es estrictamente mayor que el valor guardado.
+  - Guardado explícito del `displayName` de Google del jugador autenticado (con fallback `"Survivor"`) en su documento de Firestore.
+- **Consultas de Clasificación en Firestore (`src/systems/MetaSystem.ts`)**:
+  - Creadas dos funciones de consulta independientes sobre la colección `users`:
+    - `fetchTopToroDamageLeaderboard()`: Top 10 jugadores ordenados por `maxDamageToToro` (`desc`).
+    - `fetchTopSurvivalTimeLeaderboard()`: Top 10 jugadores ordenados por `bestTimeSeconds` (`desc`).
+- **Interfaz de Clasificación Global (`src/core/Game.ts`)**:
+  - Añadido botón `"Global Rankings"` en el Menú Principal.
+  - Implementado overlay de Clasificación Global (`drawLeaderboardOverlay`) con dos pestañas (`"Top Damage to Toro"` y `"Best Survival Time"`), mostrando Puesto (`#1`–`#10`), Nombre (`displayName`) y la métrica correspondiente, junto con un botón `"Back"` para volver al Menú Principal.
 
 ### [v0.15.0] - 2026-11-03
 - **Estructura de Datos en Firestore (`src/systems/MetaSystem.ts`, `src/firebase.ts`)**:

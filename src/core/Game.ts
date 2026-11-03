@@ -29,6 +29,7 @@ import {
   GACHA_PULL_SINGLE_COST,
   GACHA_PULL_TEN_COST,
   GachaPullEntry,
+  LeaderboardEntry,
 } from '../systems/MetaSystem';
 import { HatItem, HATS_DATABASE, RARITY_CONFIG } from '../systems/HatSystem';
 import { auth, db, googleProvider } from '../firebase';
@@ -36,6 +37,7 @@ import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/aut
 
 type GameState = 'MENU' | 'PLAYING' | 'GAMEOVER';
 type MenuTab = 'SHOP' | 'GACHA' | 'INVENTORY';
+type LeaderboardCategory = 'TORO_DAMAGE' | 'SURVIVAL_TIME';
 
 interface CardRect {
   index: number;
@@ -62,7 +64,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.15.0';
+const GAME_VERSION = 'v0.16.0';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -102,6 +104,7 @@ export class Game {
   private elapsedTime: number = 0;
   private killCount: number = 0;
   private runCoinsCollected: number = 0;
+  private runDamageToToro: number = 0;
   private highScoreKills: number = 0;
   private showHitboxes: boolean = false;
   private hoveredCardIndex: number = -1;
@@ -113,6 +116,14 @@ export class Game {
   private hoveredHatId: string | null = null;
   private currentUser: User | null = null;
   private hoveredAuthBtn: boolean = false;
+  private showLeaderboardOverlay: boolean = false;
+  private activeLeaderboardCategory: LeaderboardCategory = 'TORO_DAMAGE';
+  private leaderboardLoading: boolean = false;
+  private toroDamageLeaderboard: LeaderboardEntry[] = [];
+  private survivalTimeLeaderboard: LeaderboardEntry[] = [];
+  private hoveredRankingsBtn: boolean = false;
+  private hoveredLeaderboardTab: LeaderboardCategory | null = null;
+  private hoveredLeaderboardBackBtn: boolean = false;
   public readonly firestoreDb = db;
   private menuFeedbackMessage: string =
     'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.';
@@ -196,6 +207,20 @@ export class Game {
       }
 
       if (this.gameState === 'MENU') {
+        if (this.showLeaderboardOverlay) {
+          if (key === 'escape' || key === 'b') {
+            this.showLeaderboardOverlay = false;
+            this.sound.playShoot(false);
+          } else if (key === '1') {
+            this.activeLeaderboardCategory = 'TORO_DAMAGE';
+            this.sound.playShoot(false);
+          } else if (key === '2') {
+            this.activeLeaderboardCategory = 'SURVIVAL_TIME';
+            this.sound.playShoot(false);
+          }
+          return;
+        }
+
         const keyMap: Record<string, CharacterId> = {
           '1': 'STANDARD',
           '2': 'ROOT',
@@ -209,6 +234,8 @@ export class Game {
         } else if (key === 'i') {
           this.activeMenuTab = 'INVENTORY';
           this.inventoryPage = 0;
+        } else if (key === 'l') {
+          this.openLeaderboardOverlay();
         } else if (this.activeMenuTab === 'SHOP' && keyMap[key]) {
           const res = this.metaSystem.selectOrBuyCharacter(keyMap[key]);
           this.menuFeedbackMessage = res.message;
@@ -270,12 +297,42 @@ export class Game {
         this.hoveredMenuChar = null;
         this.hoveredHatId = null;
 
+        if (this.showLeaderboardOverlay) {
+          this.hoveredLeaderboardTab = null;
+          for (const tabBtn of this.getLeaderboardTabRects()) {
+            if (
+              mx >= tabBtn.x &&
+              mx <= tabBtn.x + tabBtn.width &&
+              my >= tabBtn.y &&
+              my <= tabBtn.y + tabBtn.height
+            ) {
+              this.hoveredLeaderboardTab = tabBtn.category;
+              break;
+            }
+          }
+
+          const backBtn = this.getLeaderboardBackButtonRect();
+          this.hoveredLeaderboardBackBtn =
+            mx >= backBtn.x &&
+            mx <= backBtn.x + backBtn.width &&
+            my >= backBtn.y &&
+            my <= backBtn.y + backBtn.height;
+          return;
+        }
+
         const authBtn = this.getAuthActionButtonRect();
         this.hoveredAuthBtn =
           mx >= authBtn.x &&
           mx <= authBtn.x + authBtn.width &&
           my >= authBtn.y &&
           my <= authBtn.y + authBtn.height;
+
+        const rankingsBtn = this.getGlobalRankingsButtonRect();
+        this.hoveredRankingsBtn =
+          mx >= rankingsBtn.x &&
+          mx <= rankingsBtn.x + rankingsBtn.width &&
+          my >= rankingsBtn.y &&
+          my <= rankingsBtn.y + rankingsBtn.height;
 
         if (this.activeMenuTab === 'SHOP') {
           for (const charRect of this.getMenuCharacterRects()) {
@@ -346,6 +403,35 @@ export class Game {
       const my = e.clientY - rect.top;
 
       if (this.gameState === 'MENU') {
+        if (this.showLeaderboardOverlay) {
+          for (const tabBtn of this.getLeaderboardTabRects()) {
+            if (
+              mx >= tabBtn.x &&
+              mx <= tabBtn.x + tabBtn.width &&
+              my >= tabBtn.y &&
+              my <= tabBtn.y + tabBtn.height
+            ) {
+              this.activeLeaderboardCategory = tabBtn.category;
+              this.sound.playShoot(false);
+              void this.refreshLeaderboards();
+              return;
+            }
+          }
+
+          const backBtn = this.getLeaderboardBackButtonRect();
+          if (
+            mx >= backBtn.x &&
+            mx <= backBtn.x + backBtn.width &&
+            my >= backBtn.y &&
+            my <= backBtn.y + backBtn.height
+          ) {
+            this.showLeaderboardOverlay = false;
+            this.sound.playShoot(false);
+            return;
+          }
+          return;
+        }
+
         const authBtn = this.getAuthActionButtonRect();
         if (
           mx >= authBtn.x &&
@@ -354,6 +440,17 @@ export class Game {
           my <= authBtn.y + authBtn.height
         ) {
           this.handleAuthButtonClick();
+          return;
+        }
+
+        const rankingsBtn = this.getGlobalRankingsButtonRect();
+        if (
+          mx >= rankingsBtn.x &&
+          mx <= rankingsBtn.x + rankingsBtn.width &&
+          my >= rankingsBtn.y &&
+          my <= rankingsBtn.y + rankingsBtn.height
+        ) {
+          this.openLeaderboardOverlay();
           return;
         }
 
@@ -604,6 +701,7 @@ export class Game {
     this.elapsedTime = 0;
     this.killCount = 0;
     this.runCoinsCollected = 0;
+    this.runDamageToToro = 0;
     this.hoveredCardIndex = -1;
     this.damageVignetteAlpha = 0;
     this.gameState = 'PLAYING';
@@ -788,9 +886,9 @@ export class Game {
 
         if (!this.player.active) {
           this.gameState = 'GAMEOVER';
-          this.metaSystem.updateHighScore(this.killCount, this.elapsedTime);
+          this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
           this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
-          void this.metaSystem.syncToCloud();
+          void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
           this.sound.playExplosion(true);
           this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#00ff66', 45, true);
           this.addTerminalLog(`FATAL_ERROR: Agent defeated by ${this.megaBoss.bossTitle}.`);
@@ -978,7 +1076,10 @@ export class Game {
 
     const prevKillCount = this.killCount;
     this.killCount += combatEvents.enemiesKilled;
-    this.metaSystem.updateHighScore(this.killCount, this.elapsedTime);
+    if (this.finalBoss) {
+      this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
+    }
+    this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
     this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
 
     // Mecánica de Vampirismo / Robo de Ancho de Banda: 5% de probabilidad de activar curación al cumplir la condición de bajas
@@ -1193,9 +1294,12 @@ export class Game {
 
       if (!this.player.active) {
         this.gameState = 'GAMEOVER';
-        this.metaSystem.updateHighScore(this.killCount, this.elapsedTime);
+        if (this.finalBoss) {
+          this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
+        }
+        this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
         this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
-        void this.metaSystem.syncToCloud();
+        void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
         this.sound.playExplosion(true);
         this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#00ff66', 45, true);
         this.addTerminalLog('FATAL_ERROR: Antivirus Agent terminated.');
@@ -2045,24 +2149,109 @@ export class Game {
     const cy = this.canvas.height / 2;
     const py = cy - 305;
     if (this.currentUser) {
-      const width = 160;
+      const width = 148;
       const height = 28;
       return {
-        x: cx + 80,
+        x: cx - 94,
         y: py + 140,
         width,
         height,
       };
     } else {
-      const width = 340;
+      const width = 406;
       const height = 28;
       return {
-        x: cx - width / 2,
+        x: cx - 351,
         y: py + 140,
         width,
         height,
       };
     }
+  }
+
+  private getGlobalRankingsButtonRect(): { x: number; y: number; width: number; height: number } {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const py = cy - 305;
+    const width = 282;
+    const height = 28;
+    return {
+      x: cx + 69,
+      y: py + 140,
+      width,
+      height,
+    };
+  }
+
+  private openLeaderboardOverlay(): void {
+    this.showLeaderboardOverlay = true;
+    this.sound.playCoinPickup();
+    void this.refreshLeaderboards();
+  }
+
+  private async refreshLeaderboards(): Promise<void> {
+    this.leaderboardLoading = true;
+    try {
+      const [toroTop, timeTop] = await Promise.all([
+        this.metaSystem.fetchTopToroDamageLeaderboard(),
+        this.metaSystem.fetchTopSurvivalTimeLeaderboard(),
+      ]);
+      this.toroDamageLeaderboard = toroTop;
+      this.survivalTimeLeaderboard = timeTop;
+    } finally {
+      this.leaderboardLoading = false;
+    }
+  }
+
+  private getLeaderboardTabRects(): {
+    category: LeaderboardCategory;
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const py = cy - 290;
+    const tabW = 310;
+    const tabH = 36;
+    const gap = 16;
+    const startX = cx - tabW - gap / 2;
+    const y = py + 62;
+
+    return [
+      {
+        category: 'TORO_DAMAGE',
+        label: '🐂 TOP DAMAGE TO TORO',
+        x: startX,
+        y,
+        width: tabW,
+        height: tabH,
+      },
+      {
+        category: 'SURVIVAL_TIME',
+        label: '⏱️ BEST SURVIVAL TIME',
+        x: startX + tabW + gap,
+        y,
+        width: tabW,
+        height: tabH,
+      },
+    ];
+  }
+
+  private getLeaderboardBackButtonRect(): { x: number; y: number; width: number; height: number } {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const py = cy - 290;
+    const width = 260;
+    const height = 38;
+    return {
+      x: cx - width / 2,
+      y: py + 518,
+      width,
+      height,
+    };
   }
 
   private handleAuthButtonClick(): void {
@@ -2146,9 +2335,9 @@ export class Game {
     // Panel / Botón de Autenticación de Google (Firebase Auth)
     const authBtn = this.getAuthActionButtonRect();
     if (this.currentUser) {
-      const displayName = this.currentUser.displayName || this.currentUser.email || 'Agente';
-      const statusBoxX = cx - 240;
-      const statusBoxW = 310;
+      const displayName = this.currentUser.displayName || this.currentUser.email || 'Survivor';
+      const statusBoxX = cx - 351;
+      const statusBoxW = 248;
       this.ctx.fillStyle = 'rgba(0, 40, 26, 0.9)';
       this.ctx.strokeStyle = '#00ff66';
       this.ctx.lineWidth = 1.5;
@@ -2158,7 +2347,7 @@ export class Game {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = '#00ff66';
       this.ctx.font = 'bold 12px "Courier New", monospace';
-      const truncatedName = displayName.length > 22 ? displayName.slice(0, 21) + '…' : displayName;
+      const truncatedName = displayName.length > 18 ? displayName.slice(0, 17) + '…' : displayName;
       this.ctx.fillText(
         `🟢 AGENTE: ${truncatedName}`,
         statusBoxX + statusBoxW / 2,
@@ -2198,6 +2387,25 @@ export class Game {
         authBtn.y + 18
       );
     }
+
+    // Botón de Clasificación Global (Global Rankings)
+    const rankingsBtn = this.getGlobalRankingsButtonRect();
+    this.ctx.fillStyle = this.hoveredRankingsBtn
+      ? 'rgba(85, 50, 5, 0.96)'
+      : 'rgba(42, 24, 4, 0.92)';
+    this.ctx.strokeStyle = this.hoveredRankingsBtn ? '#fde047' : '#fbbf24';
+    this.ctx.lineWidth = this.hoveredRankingsBtn ? 2.2 : 1.5;
+    this.ctx.fillRect(rankingsBtn.x, rankingsBtn.y, rankingsBtn.width, rankingsBtn.height);
+    this.ctx.strokeRect(rankingsBtn.x, rankingsBtn.y, rankingsBtn.width, rankingsBtn.height);
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = this.hoveredRankingsBtn ? '#ffffff' : '#fde047';
+    this.ctx.font = 'bold 12px "Courier New", monospace';
+    this.ctx.fillText(
+      '🏆 GLOBAL RANKINGS',
+      rankingsBtn.x + rankingsBtn.width / 2,
+      rankingsBtn.y + 18
+    );
 
     if (this.activeMenuTab === 'SHOP') {
       const charRects = this.getMenuCharacterRects();
@@ -2532,6 +2740,187 @@ export class Game {
       '> PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR <',
       cx,
       startBtn.y + 28
+    );
+
+    if (this.showLeaderboardOverlay) {
+      this.drawLeaderboardOverlay();
+    }
+
+    this.ctx.restore();
+  }
+
+  private drawLeaderboardOverlay(): void {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    const panelW = Math.min(720, this.canvas.width - 32);
+    const panelH = 576;
+    const px = cx - panelW / 2;
+    const py = cy - 290;
+
+    this.ctx.fillStyle = 'rgba(4, 16, 22, 0.98)';
+    this.ctx.strokeStyle = '#fbbf24';
+    this.ctx.lineWidth = 2.5;
+    this.ctx.shadowColor = '#fbbf24';
+    this.ctx.shadowBlur = 22;
+    this.ctx.fillRect(px, py, panelW, panelH);
+    this.ctx.strokeRect(px, py, panelW, panelH);
+
+    this.ctx.shadowBlur = 0;
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#fde047';
+    this.ctx.font = 'bold 24px "Courier New", monospace';
+    this.ctx.fillText('🏆 GLOBAL RANKINGS // TOP 10 SURVIVORS 🏆', cx, py + 38);
+
+    // Tabs: Top Damage to Toro | Best Survival Time
+    for (const tabBtn of this.getLeaderboardTabRects()) {
+      const isSelected = this.activeLeaderboardCategory === tabBtn.category;
+      const isHovered = this.hoveredLeaderboardTab === tabBtn.category;
+
+      this.ctx.fillStyle = isSelected
+        ? tabBtn.category === 'TORO_DAMAGE'
+          ? 'rgba(127, 29, 29, 0.95)'
+          : 'rgba(12, 74, 110, 0.95)'
+        : isHovered
+        ? 'rgba(20, 40, 56, 0.92)'
+        : 'rgba(8, 22, 32, 0.9)';
+      this.ctx.strokeStyle = isSelected
+        ? tabBtn.category === 'TORO_DAMAGE'
+          ? '#ef4444'
+          : '#38bdf8'
+        : isHovered
+        ? '#fde047'
+        : '#475569';
+      this.ctx.lineWidth = isSelected || isHovered ? 2.2 : 1.5;
+      this.ctx.fillRect(tabBtn.x, tabBtn.y, tabBtn.width, tabBtn.height);
+      this.ctx.strokeRect(tabBtn.x, tabBtn.y, tabBtn.width, tabBtn.height);
+
+      this.ctx.fillStyle = isSelected ? '#ffffff' : '#cbd5e1';
+      this.ctx.font = 'bold 14px "Courier New", monospace';
+      this.ctx.fillText(tabBtn.label, tabBtn.x + tabBtn.width / 2, tabBtn.y + 23);
+    }
+
+    const tableX = cx - 318;
+    const tableW = 636;
+    const headerY = py + 112;
+
+    this.ctx.fillStyle = 'rgba(15, 35, 50, 0.95)';
+    this.ctx.strokeStyle = '#38bdf8';
+    this.ctx.lineWidth = 1.5;
+    this.ctx.fillRect(tableX, headerY, tableW, 30);
+    this.ctx.strokeRect(tableX, headerY, tableW, 30);
+
+    this.ctx.font = 'bold 13px "Courier New", monospace';
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.textAlign = 'left';
+    this.ctx.fillText('RANK', tableX + 18, headerY + 20);
+    this.ctx.fillText('DISPLAY NAME', tableX + 115, headerY + 20);
+    this.ctx.textAlign = 'right';
+    this.ctx.fillText(
+      this.activeLeaderboardCategory === 'TORO_DAMAGE'
+        ? 'MAX DAMAGE TO TORO'
+        : 'BEST SURVIVAL TIME',
+      tableX + tableW - 18,
+      headerY + 20
+    );
+
+    const entries =
+      this.activeLeaderboardCategory === 'TORO_DAMAGE'
+        ? this.toroDamageLeaderboard
+        : this.survivalTimeLeaderboard;
+
+    if (this.leaderboardLoading) {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#fde047';
+      this.ctx.font = 'bold 16px "Courier New", monospace';
+      this.ctx.fillText('⏳ Sincronizando Clasificación Global desde Firestore...', cx, py + 290);
+    } else if (entries.length === 0) {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#94a3b8';
+      this.ctx.font = '15px "Courier New", monospace';
+      this.ctx.fillText('Aún no hay registros en esta categoría.', cx, py + 290);
+    } else {
+      const rowH = 34;
+      const startRowY = headerY + 36;
+
+      for (let i = 0; i < Math.min(10, entries.length); i++) {
+        const entry = entries[i];
+        const rowY = startRowY + i * rowH;
+        const isCurrentUser = Boolean(this.currentUser && this.currentUser.uid === entry.uid);
+
+        this.ctx.fillStyle = isCurrentUser
+          ? 'rgba(0, 65, 40, 0.92)'
+          : i % 2 === 0
+          ? 'rgba(8, 22, 32, 0.85)'
+          : 'rgba(12, 30, 44, 0.85)';
+        this.ctx.strokeStyle = isCurrentUser ? '#00ff66' : 'rgba(56, 189, 248, 0.25)';
+        this.ctx.lineWidth = isCurrentUser ? 1.8 : 1;
+        this.ctx.fillRect(tableX, rowY, tableW, rowH - 3);
+        this.ctx.strokeRect(tableX, rowY, tableW, rowH - 3);
+
+        const rankColor =
+          i === 0 ? '#fbbf24' : i === 1 ? '#e2e8f0' : i === 2 ? '#f97316' : '#94a3b8';
+        const rankBadge = i === 0 ? '🥇 #1' : i === 1 ? '🥈 #2' : i === 2 ? '🥉 #3' : `#${i + 1}`;
+
+        this.ctx.textAlign = 'left';
+        this.ctx.fillStyle = rankColor;
+        this.ctx.font = 'bold 13px "Courier New", monospace';
+        this.ctx.fillText(rankBadge, tableX + 18, rowY + 21);
+
+        this.ctx.fillStyle = isCurrentUser ? '#00ff66' : '#ffffff';
+        this.ctx.font = isCurrentUser
+          ? 'bold 14px "Courier New", monospace'
+          : '14px "Courier New", monospace';
+        const rawName = entry.displayName || 'Survivor';
+        const shownName = rawName.length > 26 ? rawName.slice(0, 25) + '…' : rawName;
+        this.ctx.fillText(
+          isCurrentUser ? `${shownName} (TÚ)` : shownName,
+          tableX + 115,
+          rowY + 21
+        );
+
+        this.ctx.textAlign = 'right';
+        if (this.activeLeaderboardCategory === 'TORO_DAMAGE') {
+          this.ctx.fillStyle = '#f87171';
+          this.ctx.font = 'bold 14px "Courier New", monospace';
+          this.ctx.fillText(
+            `${entry.maxDamageToToro.toLocaleString('en-US')} DMG`,
+            tableX + tableW - 18,
+            rowY + 21
+          );
+        } else {
+          this.ctx.fillStyle = '#38bdf8';
+          this.ctx.font = 'bold 14px "Courier New", monospace';
+          this.ctx.fillText(
+            `${this.formatTimeMMSS(entry.bestTimeSeconds)} (${entry.bestTimeSeconds}s)`,
+            tableX + tableW - 18,
+            rowY + 21
+          );
+        }
+      }
+    }
+
+    // Back button
+    const backBtn = this.getLeaderboardBackButtonRect();
+    this.ctx.fillStyle = this.hoveredLeaderboardBackBtn
+      ? 'rgba(0, 68, 40, 0.96)'
+      : 'rgba(10, 32, 24, 0.94)';
+    this.ctx.strokeStyle = this.hoveredLeaderboardBackBtn ? '#ffffff' : '#00ff66';
+    this.ctx.lineWidth = this.hoveredLeaderboardBackBtn ? 2.5 : 1.8;
+    this.ctx.fillRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
+    this.ctx.strokeRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = this.hoveredLeaderboardBackBtn ? '#ffffff' : '#00ff66';
+    this.ctx.font = 'bold 15px "Courier New", monospace';
+    this.ctx.fillText(
+      '<< BACK / VOLVER AL MENÚ',
+      backBtn.x + backBtn.width / 2,
+      backBtn.y + 24
     );
 
     this.ctx.restore();
