@@ -33,7 +33,13 @@ import {
 } from '../systems/MetaSystem';
 import { HatItem, HATS_DATABASE, RARITY_CONFIG } from '../systems/HatSystem';
 import { auth, db, googleProvider } from '../firebase';
-import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+  User,
+} from 'firebase/auth';
 
 type GameState = 'MENU' | 'PLAYING' | 'GAMEOVER';
 type MenuTab = 'SHOP' | 'GACHA' | 'INVENTORY';
@@ -235,6 +241,8 @@ export class Game {
           this.activeMenuTab = 'INVENTORY';
           this.inventoryPage = 0;
         } else if (key === 'l') {
+          this.handleAuthButtonClick();
+        } else if (key === 'r') {
           this.openLeaderboardOverlay();
         } else if (this.activeMenuTab === 'SHOP' && keyMap[key]) {
           const res = this.metaSystem.selectOrBuyCharacter(keyMap[key]);
@@ -1759,10 +1767,9 @@ export class Game {
   private drawEliteHpBars(): void {
     for (const enemy of this.enemies) {
       if (!enemy.active) continue;
-      const isElite =
-        enemy.malwareType === 'RANSOMWARE' ||
-        enemy instanceof ArmoredWorm ||
-        enemy instanceof Evasor;
+      // Los mini-jefes (RansomwareBoss) ya tienen su propia barra roja de vida;
+      // solo dibujamos barra minimalista sobre los otros élites (Gusano Blindado y Evasor).
+      const isElite = enemy instanceof ArmoredWorm || enemy instanceof Evasor;
 
       if (isElite) {
         const hpRatio = Math.max(0, Math.min(1, enemy.hp / enemy.maxHp));
@@ -2267,15 +2274,33 @@ export class Game {
           this.menuFeedbackMessage = 'Error al cerrar sesión.';
         });
     } else {
+      googleProvider.setCustomParameters({ prompt: 'select_account' });
+      this.menuFeedbackMessage = 'Abriendo ventana de inicio de sesión con Google...';
       signInWithPopup(auth, googleProvider)
         .then((result) => {
           this.sound.playCoinPickup();
-          const name = result.user.displayName || result.user.email || 'Agente';
+          const name = result.user.displayName || result.user.email || 'Survivor';
           this.menuFeedbackMessage = `¡Bienvenido, ${name}! Autenticación completada.`;
         })
-        .catch((err) => {
+        .catch((err: { code?: string; message?: string }) => {
           console.error('Error en Google Login:', err);
-          this.menuFeedbackMessage = 'Inicio de sesión cancelado o fallido.';
+          const code = err?.code || '';
+          if (code === 'auth/popup-blocked') {
+            this.menuFeedbackMessage = 'Popup bloqueado. Redirigiendo a Google Login...';
+            void signInWithRedirect(auth, googleProvider);
+          } else if (code === 'auth/unauthorized-domain') {
+            this.menuFeedbackMessage = `Añade "${window.location.hostname}" en Firebase > Auth > Settings > Dominios autorizados.`;
+          } else if (
+            code === 'auth/operation-not-allowed' ||
+            code === 'auth/configuration-not-found'
+          ) {
+            this.menuFeedbackMessage =
+              'Activa el proveedor Google en Firebase > Authentication > Sign-in method.';
+          } else if (code === 'auth/popup-closed-by-user') {
+            this.menuFeedbackMessage = 'Ventana de inicio de sesión cerrada por el usuario.';
+          } else {
+            this.menuFeedbackMessage = `Error de inicio de sesión (${code || 'verifica Firebase Auth'}).`;
+          }
         });
     }
   }
@@ -2365,7 +2390,7 @@ export class Game {
       this.ctx.fillStyle = '#fecaca';
       this.ctx.font = 'bold 12px "Courier New", monospace';
       this.ctx.fillText(
-        '[ CERRAR SESIÓN ]',
+        '[L] CERRAR SESIÓN',
         authBtn.x + authBtn.width / 2,
         authBtn.y + 18
       );
@@ -2382,7 +2407,7 @@ export class Game {
       this.ctx.fillStyle = this.hoveredAuthBtn ? '#00ff66' : '#e0f2fe';
       this.ctx.font = 'bold 12px "Courier New", monospace';
       this.ctx.fillText(
-        '🔐 [G] INICIAR SESIÓN CON GOOGLE',
+        '🔐 [L] INICIAR SESIÓN CON GOOGLE',
         authBtn.x + authBtn.width / 2,
         authBtn.y + 18
       );
@@ -2402,7 +2427,7 @@ export class Game {
     this.ctx.fillStyle = this.hoveredRankingsBtn ? '#ffffff' : '#fde047';
     this.ctx.font = 'bold 12px "Courier New", monospace';
     this.ctx.fillText(
-      '🏆 GLOBAL RANKINGS',
+      '🏆 [R] GLOBAL RANKINGS',
       rankingsBtn.x + rankingsBtn.width / 2,
       rankingsBtn.y + 18
     );
