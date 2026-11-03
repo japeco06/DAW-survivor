@@ -213,20 +213,42 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │       ├── Armas del jugador habilitadas; "El Toro" es invencible (su HP nunca llega a 0), inflige exactamente el 50% del HP máximo por contacto, escala velocidad cada 15s y embiste cada 10s tras 1.5s de telegrafiado
 │       └── UI exclusiva de Jefe Final que muestra en tiempo real el daño numérico total acumulado infligido al Toro
 │
-└── v0.14.0 — Autenticación con Google vía Firebase y Conexión a Firestore (ACTUAL)
-    ├── [Configuración e Instancias Globales de Firebase (`firebase.ts`)]
-    │   └── Inicialización y exportación global de `app`, `auth` (`getAuth`), `db` (`getFirestore`) y `googleProvider` (`GoogleAuthProvider`)
-    ├── [Autenticación con Google en el Menú Principal (`Game.ts`)]
-    │   ├── Botón de inicio de sesión con Google en el Menú Principal mediante `signInWithPopup`
-    │   ├── Persistencia de sesión automática al recargar la página mediante `onAuthStateChanged`
-    │   └── Actualización dinámica de la UI del Menú Principal mostrando el `displayName` del usuario autenticado y botón para cerrar sesión (`signOut`)
-    └── [Preparación de Firestore (`firebase.ts`, `Game.ts`)]
-        └── Instancia `db` verificada y preparada para operaciones de lectura/escritura de guardado en la nube y clasificación global
+├── v0.14.0 — Autenticación con Google vía Firebase y Conexión a Firestore
+│   ├── [Configuración e Instancias Globales de Firebase (`firebase.ts`)]
+│   │   └── Inicialización y exportación global de `app`, `auth` (`getAuth`), `db` (`getFirestore`) y `googleProvider` (`GoogleAuthProvider`)
+│   ├── [Autenticación con Google en el Menú Principal (`Game.ts`)]
+│   │   ├── Botón de inicio de sesión con Google en el Menú Principal mediante `signInWithPopup`
+│   │   ├── Persistencia de sesión automática al recargar la página mediante `onAuthStateChanged`
+│   │   └── Actualización dinámica de la UI del Menú Principal mostrando el `displayName` del usuario autenticado y botón para cerrar sesión (`signOut`)
+│   └── [Preparación de Firestore (`firebase.ts`, `Game.ts`)]
+│       └── Instancia `db` verificada y preparada para operaciones de lectura/escritura de guardado en la nube y clasificación global
+│
+└── v0.15.0 — Guardado en la Nube (Cloud Saving) con Firestore (ACTUAL)
+    ├── [Estructura de Datos en Firestore (`MetaSystem.ts`, `firebase.ts`)]
+    │   ├── Colección raíz `users` utilizando el `uid` del usuario autenticado como ID del documento
+    │   └── Almacenamiento completo del progreso persistente: High Score (`highScore`, `bestTimeSeconds`), Monedas (`coins`) y Mejoras/Desbloqueos de Tienda (`unlockedCharacters`, `selectedCharacter`, `unlockedHats`, `equippedHatId`)
+    ├── [Lógica de Carga / Sync Down (`MetaSystem.ts`, `Game.ts`)]
+    │   ├── Al iniciar sesión en `onAuthStateChanged`, obtención automática del documento desde `users/{uid}` y sincronización con el estado activo del juego
+    │   └── Si el documento no existe (primer inicio de sesión), creación automática en Firestore con los valores locales o por defecto actuales
+    └── [Lógica de Guardado / Sync Up & Fallback de Invitado (`MetaSystem.ts`, `Game.ts`)]
+        ├── Guardado automático en Firestore inmediatamente al morir el jugador (estado `GAMEOVER`) e inmediatamente tras comprar/equipar cualquier mejora o elemento en la Tienda/Gacha
+        └── Modo Invitado (Fallback): si no hay usuario autenticado, se omite Firestore por completo y se mantiene el uso normal de `localStorage`
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.15.0] - 2026-11-03
+- **Estructura de Datos en Firestore (`src/systems/MetaSystem.ts`, `src/firebase.ts`)**:
+  - Uso directo de las instancias globales `db` y `auth` exportadas desde `src/firebase.ts`.
+  - Colección raíz `users` indexada por el `uid` del usuario autenticado (`users/{uid}`), almacenando `highScore`, `bestTimeSeconds`, `coins`, `unlockedCharacters`, `selectedCharacter`, `unlockedHats` y `equippedHatId`.
+- **Sincronización de Bajada / Load Logic (`src/systems/MetaSystem.ts`, `src/core/Game.ts`)**:
+  - Dentro del listener `onAuthStateChanged`, al autenticarse un usuario se descarga su documento de `users/{uid}` (`loadFromCloud`) y se aplica directamente al estado activo de la partida y del menú.
+  - Si el documento aún no existe (primer login del usuario), se crea automáticamente en Firestore inicializándolo con el progreso local actual o los valores por defecto.
+- **Sincronización de Subida / Save Logic & Modo Invitado (`src/systems/MetaSystem.ts`, `src/core/Game.ts`)**:
+  - Actualización automática del documento de Firestore en dos disparadores específicos: inmediatamente al morir el jugador (`GAMEOVER`) e inmediatamente tras adquirir o cambiar cualquier mejora/agente/sombrero en la Tienda.
+  - Fallback para invitados: cuando no hay sesión iniciada (`!auth.currentUser`), se omite Firestore por completo y el juego opera con normalidad mediante `localStorage`.
 
 ### [v0.14.0] - 2026-11-03
 - **Configuración de Firebase y Dependencias (`package.json`, `src/firebase.ts`)**:

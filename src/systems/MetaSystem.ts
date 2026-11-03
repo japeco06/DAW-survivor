@@ -1,4 +1,6 @@
 import { HatItem, HATS_DATABASE, getHatById, rollGachaHat, RARITY_CONFIG } from './HatSystem';
+import { auth, db } from '../firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 export type CharacterId = 'STANDARD' | 'ROOT' | 'PROXY' | 'MORCILLITA';
 
@@ -137,6 +139,7 @@ export class MetaSystem {
     if (this.unlockedCharacters.has(id)) {
       this.selectedCharacter = id;
       this.save();
+      void this.syncToCloud();
       return {
         success: true,
         message: `> Operador activo cambiado a: ${profile.name}`,
@@ -148,6 +151,7 @@ export class MetaSystem {
       this.unlockedCharacters.add(id);
       this.selectedCharacter = id;
       this.save();
+      void this.syncToCloud();
       return {
         success: true,
         message: `> ¡${profile.name} DESBLOQUEADO Y EQUIPADO! (-${profile.cost} Crypto)`,
@@ -208,6 +212,7 @@ export class MetaSystem {
     }
 
     this.save();
+    void this.syncToCloud();
 
     if (count === 1) {
       const entry = results[0];
@@ -247,6 +252,7 @@ export class MetaSystem {
     if (this.equippedHatId === hatId) {
       this.equippedHatId = null;
       this.save();
+      void this.syncToCloud();
       return {
         success: true,
         message: `> Sombrero desequipado: ${hat.name}.`,
@@ -255,10 +261,43 @@ export class MetaSystem {
 
     this.equippedHatId = hatId;
     this.save();
+    void this.syncToCloud();
     return {
       success: true,
       message: `> EQUIPADO: ${hat.icon} ${hat.name} [${hat.statsLabel}]`,
     };
+  }
+
+  public async loadFromCloud(uid: string): Promise<void> {
+    try {
+      const userDocRef = doc(db, 'users', uid);
+      const snapshot = await getDoc(userDocRef);
+
+      if (snapshot.exists()) {
+        const cloudData = snapshot.data() as Partial<SavedMetaState>;
+        this.applyParsedState(cloudData);
+        this.save();
+      } else {
+        await setDoc(userDocRef, this.getStatePayload());
+      }
+    } catch (err) {
+      console.error('Error sincronizando datos desde Firestore:', err);
+    }
+  }
+
+  public async syncToCloud(): Promise<void> {
+    this.save();
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      return;
+    }
+
+    try {
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      await setDoc(userDocRef, this.getStatePayload(), { merge: true });
+    } catch (err) {
+      console.error('Error guardando datos en Firestore:', err);
+    }
   }
 
   public getEquippedHat(): HatItem | null {
@@ -289,44 +328,60 @@ export class MetaSystem {
     }
   }
 
+  private applyParsedState(parsed: Partial<SavedMetaState>): void {
+    if (typeof parsed.coins === 'number' && parsed.coins >= 0) {
+      this.coins = Math.floor(parsed.coins);
+    }
+    if (Array.isArray(parsed.unlockedCharacters)) {
+      const validUnlocked = parsed.unlockedCharacters.filter(
+        (id): id is CharacterId => Boolean(this.characters[id as CharacterId])
+      );
+      this.unlockedCharacters = new Set(['STANDARD', 'MORCILLITA', ...validUnlocked]);
+    }
+    if (
+      parsed.selectedCharacter &&
+      this.characters[parsed.selectedCharacter] &&
+      this.unlockedCharacters.has(parsed.selectedCharacter)
+    ) {
+      this.selectedCharacter = parsed.selectedCharacter;
+    } else {
+      this.selectedCharacter = 'STANDARD';
+    }
+    if (Array.isArray(parsed.unlockedHats)) {
+      const validHats = parsed.unlockedHats.filter((id) => Boolean(getHatById(id)));
+      this.unlockedHats = new Set(validHats);
+    }
+    if (parsed.equippedHatId && this.unlockedHats.has(parsed.equippedHatId)) {
+      this.equippedHatId = parsed.equippedHatId;
+    } else {
+      this.equippedHatId = null;
+    }
+    if (typeof parsed.highScore === 'number' && parsed.highScore >= 0) {
+      this.highScore = Math.floor(parsed.highScore);
+    }
+    if (typeof parsed.bestTimeSeconds === 'number' && parsed.bestTimeSeconds >= 0) {
+      this.bestTimeSeconds = Math.floor(parsed.bestTimeSeconds);
+    }
+  }
+
+  private getStatePayload(): SavedMetaState {
+    return {
+      coins: this.coins,
+      unlockedCharacters: Array.from(this.unlockedCharacters),
+      selectedCharacter: this.selectedCharacter,
+      unlockedHats: Array.from(this.unlockedHats),
+      equippedHatId: this.equippedHatId,
+      highScore: this.highScore,
+      bestTimeSeconds: this.bestTimeSeconds,
+    };
+  }
+
   private load(): void {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw) as Partial<SavedMetaState>;
-      if (typeof parsed.coins === 'number' && parsed.coins >= 0) {
-        this.coins = Math.floor(parsed.coins);
-      }
-      if (Array.isArray(parsed.unlockedCharacters)) {
-        const validUnlocked = parsed.unlockedCharacters.filter(
-          (id): id is CharacterId => Boolean(this.characters[id as CharacterId])
-        );
-        this.unlockedCharacters = new Set(['STANDARD', 'MORCILLITA', ...validUnlocked]);
-      }
-      if (
-        parsed.selectedCharacter &&
-        this.characters[parsed.selectedCharacter] &&
-        this.unlockedCharacters.has(parsed.selectedCharacter)
-      ) {
-        this.selectedCharacter = parsed.selectedCharacter;
-      } else {
-        this.selectedCharacter = 'STANDARD';
-      }
-      if (Array.isArray(parsed.unlockedHats)) {
-        const validHats = parsed.unlockedHats.filter((id) => Boolean(getHatById(id)));
-        this.unlockedHats = new Set(validHats);
-      }
-      if (parsed.equippedHatId && this.unlockedHats.has(parsed.equippedHatId)) {
-        this.equippedHatId = parsed.equippedHatId;
-      } else {
-        this.equippedHatId = null;
-      }
-      if (typeof parsed.highScore === 'number' && parsed.highScore >= 0) {
-        this.highScore = Math.floor(parsed.highScore);
-      }
-      if (typeof parsed.bestTimeSeconds === 'number' && parsed.bestTimeSeconds >= 0) {
-        this.bestTimeSeconds = Math.floor(parsed.bestTimeSeconds);
-      }
+      this.applyParsedState(parsed);
     } catch {
       // Ignorar errores de almacenamiento restringido
     }
@@ -334,16 +389,7 @@ export class MetaSystem {
 
   private save(): void {
     try {
-      const state: SavedMetaState = {
-        coins: this.coins,
-        unlockedCharacters: Array.from(this.unlockedCharacters),
-        selectedCharacter: this.selectedCharacter,
-        unlockedHats: Array.from(this.unlockedHats),
-        equippedHatId: this.equippedHatId,
-        highScore: this.highScore,
-        bestTimeSeconds: this.bestTimeSeconds,
-      };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.getStatePayload()));
     } catch {
       // Ignorar errores de almacenamiento restringido
     }

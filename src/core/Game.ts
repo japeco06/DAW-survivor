@@ -62,7 +62,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.14.0';
+const GAME_VERSION = 'v0.15.0';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -156,12 +156,22 @@ export class Game {
     this.upgradeSystem = new UpgradeSystem();
     this.particleSystem = new ParticleSystem();
 
-    onAuthStateChanged(auth, (user) => {
+    onAuthStateChanged(auth, async (user) => {
       this.currentUser = user;
       if (user) {
         const displayName = user.displayName || user.email || 'Agente';
-        this.menuFeedbackMessage = `Sesión iniciada como ${displayName}. Nube lista.`;
-        this.addTerminalLog(`AUTH: Google Session Active (${displayName})`);
+        this.menuFeedbackMessage = `Sincronizando datos en la nube de ${displayName}...`;
+        await this.metaSystem.loadFromCloud(user.uid);
+        this.highScoreKills = this.metaSystem.highScore;
+        if (this.gameState === 'MENU') {
+          this.player = new Player(
+            this.canvas.width / 2,
+            this.canvas.height / 2,
+            this.metaSystem.getSelectedProfile()
+          );
+        }
+        this.menuFeedbackMessage = `Sesión iniciada como ${displayName}. Progreso sincronizado con la nube.`;
+        this.addTerminalLog(`AUTH: Cloud Save synced (${displayName})`);
       }
     });
 
@@ -778,6 +788,9 @@ export class Game {
 
         if (!this.player.active) {
           this.gameState = 'GAMEOVER';
+          this.metaSystem.updateHighScore(this.killCount, this.elapsedTime);
+          this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
+          void this.metaSystem.syncToCloud();
           this.sound.playExplosion(true);
           this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#00ff66', 45, true);
           this.addTerminalLog(`FATAL_ERROR: Agent defeated by ${this.megaBoss.bossTitle}.`);
@@ -1180,6 +1193,9 @@ export class Game {
 
       if (!this.player.active) {
         this.gameState = 'GAMEOVER';
+        this.metaSystem.updateHighScore(this.killCount, this.elapsedTime);
+        this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
+        void this.metaSystem.syncToCloud();
         this.sound.playExplosion(true);
         this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#00ff66', 45, true);
         this.addTerminalLog('FATAL_ERROR: Antivirus Agent terminated.');
