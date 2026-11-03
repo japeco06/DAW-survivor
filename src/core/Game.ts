@@ -31,6 +31,8 @@ import {
   GachaPullEntry,
 } from '../systems/MetaSystem';
 import { HatItem, HATS_DATABASE, RARITY_CONFIG } from '../systems/HatSystem';
+import { auth, db, googleProvider } from '../firebase';
+import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 
 type GameState = 'MENU' | 'PLAYING' | 'GAMEOVER';
 type MenuTab = 'SHOP' | 'GACHA' | 'INVENTORY';
@@ -60,7 +62,7 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.13.0';
+const GAME_VERSION = 'v0.14.0';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -109,6 +111,9 @@ export class Game {
   private gachaRevealTimer: number = 0;
   private inventoryPage: number = 0;
   private hoveredHatId: string | null = null;
+  private currentUser: User | null = null;
+  private hoveredAuthBtn: boolean = false;
+  public readonly firestoreDb = db;
   private menuFeedbackMessage: string =
     'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.';
   private damageVignetteAlpha: number = 0;
@@ -150,6 +155,15 @@ export class Game {
     this.combatSystem = new CombatSystem();
     this.upgradeSystem = new UpgradeSystem();
     this.particleSystem = new ParticleSystem();
+
+    onAuthStateChanged(auth, (user) => {
+      this.currentUser = user;
+      if (user) {
+        const displayName = user.displayName || user.email || 'Agente';
+        this.menuFeedbackMessage = `Sesión iniciada como ${displayName}. Nube lista.`;
+        this.addTerminalLog(`AUTH: Google Session Active (${displayName})`);
+      }
+    });
 
     this.setupEventListeners();
   }
@@ -246,6 +260,13 @@ export class Game {
         this.hoveredMenuChar = null;
         this.hoveredHatId = null;
 
+        const authBtn = this.getAuthActionButtonRect();
+        this.hoveredAuthBtn =
+          mx >= authBtn.x &&
+          mx <= authBtn.x + authBtn.width &&
+          my >= authBtn.y &&
+          my <= authBtn.y + authBtn.height;
+
         if (this.activeMenuTab === 'SHOP') {
           for (const charRect of this.getMenuCharacterRects()) {
             if (
@@ -315,6 +336,17 @@ export class Game {
       const my = e.clientY - rect.top;
 
       if (this.gameState === 'MENU') {
+        const authBtn = this.getAuthActionButtonRect();
+        if (
+          mx >= authBtn.x &&
+          mx <= authBtn.x + authBtn.width &&
+          my >= authBtn.y &&
+          my <= authBtn.y + authBtn.height
+        ) {
+          this.handleAuthButtonClick();
+          return;
+        }
+
         // Pestañas superiores del Menú Principal (AGENTES | GACHA | INVENTARIO)
         for (const tabRect of this.getMenuTabRects()) {
           if (
@@ -1992,6 +2024,57 @@ export class Game {
     };
   }
 
+  private getAuthActionButtonRect(): { x: number; y: number; width: number; height: number } {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const py = cy - 305;
+    if (this.currentUser) {
+      const width = 160;
+      const height = 28;
+      return {
+        x: cx + 80,
+        y: py + 140,
+        width,
+        height,
+      };
+    } else {
+      const width = 340;
+      const height = 28;
+      return {
+        x: cx - width / 2,
+        y: py + 140,
+        width,
+        height,
+      };
+    }
+  }
+
+  private handleAuthButtonClick(): void {
+    if (this.currentUser) {
+      signOut(auth)
+        .then(() => {
+          this.sound.playShoot(false);
+          this.menuFeedbackMessage = 'Sesión de Google cerrada correctamente.';
+          this.addTerminalLog('AUTH: Google Session Terminated.');
+        })
+        .catch((err) => {
+          console.error('Error al cerrar sesión:', err);
+          this.menuFeedbackMessage = 'Error al cerrar sesión.';
+        });
+    } else {
+      signInWithPopup(auth, googleProvider)
+        .then((result) => {
+          this.sound.playCoinPickup();
+          const name = result.user.displayName || result.user.email || 'Agente';
+          this.menuFeedbackMessage = `¡Bienvenido, ${name}! Autenticación completada.`;
+        })
+        .catch((err) => {
+          console.error('Error en Google Login:', err);
+          this.menuFeedbackMessage = 'Inicio de sesión cancelado o fallido.';
+        });
+    }
+  }
+
   private drawStartMenuWithShop(): void {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
@@ -2042,6 +2125,62 @@ export class Game {
       this.ctx.fillStyle = isActive ? '#00ff66' : '#bae6fd';
       this.ctx.font = 'bold 13px "Courier New", monospace';
       this.ctx.fillText(tabRect.label, tabRect.x + tabRect.width / 2, tabRect.y + 22);
+    }
+
+    // Panel / Botón de Autenticación de Google (Firebase Auth)
+    const authBtn = this.getAuthActionButtonRect();
+    if (this.currentUser) {
+      const displayName = this.currentUser.displayName || this.currentUser.email || 'Agente';
+      const statusBoxX = cx - 240;
+      const statusBoxW = 310;
+      this.ctx.fillStyle = 'rgba(0, 40, 26, 0.9)';
+      this.ctx.strokeStyle = '#00ff66';
+      this.ctx.lineWidth = 1.5;
+      this.ctx.fillRect(statusBoxX, authBtn.y, statusBoxW, authBtn.height);
+      this.ctx.strokeRect(statusBoxX, authBtn.y, statusBoxW, authBtn.height);
+
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#00ff66';
+      this.ctx.font = 'bold 12px "Courier New", monospace';
+      const truncatedName = displayName.length > 22 ? displayName.slice(0, 21) + '…' : displayName;
+      this.ctx.fillText(
+        `🟢 AGENTE: ${truncatedName}`,
+        statusBoxX + statusBoxW / 2,
+        authBtn.y + 18
+      );
+
+      this.ctx.fillStyle = this.hoveredAuthBtn
+        ? 'rgba(127, 29, 29, 0.95)'
+        : 'rgba(69, 10, 10, 0.9)';
+      this.ctx.strokeStyle = this.hoveredAuthBtn ? '#f87171' : '#ef4444';
+      this.ctx.lineWidth = this.hoveredAuthBtn ? 2 : 1.5;
+      this.ctx.fillRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
+      this.ctx.strokeRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
+
+      this.ctx.fillStyle = '#fecaca';
+      this.ctx.font = 'bold 12px "Courier New", monospace';
+      this.ctx.fillText(
+        '[ CERRAR SESIÓN ]',
+        authBtn.x + authBtn.width / 2,
+        authBtn.y + 18
+      );
+    } else {
+      this.ctx.fillStyle = this.hoveredAuthBtn
+        ? 'rgba(14, 55, 85, 0.96)'
+        : 'rgba(8, 28, 46, 0.92)';
+      this.ctx.strokeStyle = this.hoveredAuthBtn ? '#00ff66' : '#38bdf8';
+      this.ctx.lineWidth = this.hoveredAuthBtn ? 2.2 : 1.5;
+      this.ctx.fillRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
+      this.ctx.strokeRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
+
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = this.hoveredAuthBtn ? '#00ff66' : '#e0f2fe';
+      this.ctx.font = 'bold 12px "Courier New", monospace';
+      this.ctx.fillText(
+        '🔐 [G] INICIAR SESIÓN CON GOOGLE',
+        authBtn.x + authBtn.width / 2,
+        authBtn.y + 18
+      );
     }
 
     if (this.activeMenuTab === 'SHOP') {

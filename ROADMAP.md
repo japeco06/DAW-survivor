@@ -199,24 +199,45 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │       ├── Agitado de pantalla sutil activado ÚNICAMENTE cuando el jugador recibe daño o cuando explota un Dron Reactivo
 │       └── Prohibición estricta: NO se activa Screen Shake con golpes críticos ni otros eventos no letales
 │
-└── v0.13.0 — Rework de Mega-Jefes (5 Llaves, Pool Único), Clones de 'El Copiota' y Jefe Final Invencible 'El Toro' (ACTUAL)
-    ├── [Mecánicas Universales de Mega-Jefes (`BaseBoss.ts`, `Game.ts`, `CompanionPet.ts`)]
-    │   ├── Armas y ataques del jugador completamente desactivados durante cualquier combate de Mega-Jefe estándar
-    │   ├── Reducido el número de llaves necesarias para derrotar a un Mega-Jefe a exactamente 5 (1250 HP / 250 DMG por llave)
-    │   ├── Eliminado el atajo de teclado 'B' para invocación manual de jefes
-    │   └── Seguimiento de variantes derrotadas: cada aparición selecciona aleatoriamente solo entre los Mega-Jefes aún no derrotados (4 únicos)
-    ├── [Actualización de 'El Copiota' (`SpecialBosses.ts`)]
-    │   └── Nuevo ataque "Ctrl+C / Ctrl+V": cada 8 segundos genera 3 clones digitales glitch que persiguen al jugador, infligen daño de contacto y desaparecen tras 5 segundos
-    └── [Jefe Final Invencible: 'El Toro' (`ElToroBoss.ts`, `Spawner.ts`, `Game.ts`)]
-        ├── Al derrotar al 4.º Mega-Jefe único se detienen todos los temporizadores de élites/especiales/jefes y aparece inmediatamente "El Toro" en el mapa normal
-        ├── Mientras "El Toro" está activo solo pueden aparecer enemigos rojos básicos (Adware), limitados estrictamente a un máximo de 15 simultáneos en pantalla
-        ├── Armas del jugador habilitadas; "El Toro" es invencible (su HP nunca llega a 0), inflige exactamente el 50% del HP máximo por contacto, escala velocidad cada 15s y embiste cada 10s tras 1.5s de telegrafiado
-        └── UI exclusiva de Jefe Final que muestra en tiempo real el daño numérico total acumulado infligido al Toro
+├── v0.13.0 — Rework de Mega-Jefes (5 Llaves, Pool Único), Clones de 'El Copiota' y Jefe Final Invencible 'El Toro'
+│   ├── [Mecánicas Universales de Mega-Jefes (`BaseBoss.ts`, `Game.ts`, `CompanionPet.ts`)]
+│   │   ├── Armas y ataques del jugador completamente desactivados durante cualquier combate de Mega-Jefe estándar
+│   │   ├── Reducido el número de llaves necesarias para derrotar a un Mega-Jefe a exactamente 5 (1250 HP / 250 DMG por llave)
+│   │   ├── Eliminado el atajo de teclado 'B' para invocación manual de jefes
+│   │   └── Seguimiento de variantes derrotadas: cada aparición selecciona aleatoriamente solo entre los Mega-Jefes aún no derrotados (4 únicos)
+│   ├── [Actualización de 'El Copiota' (`SpecialBosses.ts`)]
+│   │   └── Nuevo ataque "Ctrl+C / Ctrl+V": cada 8 segundos genera 3 clones digitales glitch que persiguen al jugador, infligen daño de contacto y desaparecen tras 5 segundos
+│   └── [Jefe Final Invencible: 'El Toro' (`ElToroBoss.ts`, `Spawner.ts`, `Game.ts`)]
+│       ├── Al derrotar al 4.º Mega-Jefe único se detienen todos los temporizadores de élites/especiales/jefes y aparece inmediatamente "El Toro" en el mapa normal
+│       ├── Mientras "El Toro" está activo solo pueden aparecer enemigos rojos básicos (Adware), limitados estrictamente a un máximo de 15 simultáneos en pantalla
+│       ├── Armas del jugador habilitadas; "El Toro" es invencible (su HP nunca llega a 0), inflige exactamente el 50% del HP máximo por contacto, escala velocidad cada 15s y embiste cada 10s tras 1.5s de telegrafiado
+│       └── UI exclusiva de Jefe Final que muestra en tiempo real el daño numérico total acumulado infligido al Toro
+│
+└── v0.14.0 — Autenticación con Google vía Firebase y Conexión a Firestore (ACTUAL)
+    ├── [Configuración e Instancias Globales de Firebase (`firebase.ts`)]
+    │   └── Inicialización y exportación global de `app`, `auth` (`getAuth`), `db` (`getFirestore`) y `googleProvider` (`GoogleAuthProvider`)
+    ├── [Autenticación con Google en el Menú Principal (`Game.ts`)]
+    │   ├── Botón de inicio de sesión con Google en el Menú Principal mediante `signInWithPopup`
+    │   ├── Persistencia de sesión automática al recargar la página mediante `onAuthStateChanged`
+    │   └── Actualización dinámica de la UI del Menú Principal mostrando el `displayName` del usuario autenticado y botón para cerrar sesión (`signOut`)
+    └── [Preparación de Firestore (`firebase.ts`, `Game.ts`)]
+        └── Instancia `db` verificada y preparada para operaciones de lectura/escritura de guardado en la nube y clasificación global
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.14.0] - 2026-11-03
+- **Configuración de Firebase y Dependencias (`package.json`, `src/firebase.ts`)**:
+  - Instalada la dependencia oficial `firebase`.
+  - Creado el módulo `src/firebase.ts` con la configuración del proyecto `survivor-daw` e inicializadas y exportadas globalmente las instancias `app`, `auth` (`getAuth`), `db` (`getFirestore`) y `googleProvider` (`GoogleAuthProvider`).
+- **Autenticación con Google en el Menú Principal (`src/core/Game.ts`)**:
+  - Implementado botón de inicio de sesión con Google en el Menú Principal utilizando `signInWithPopup`.
+  - Suscripción a `onAuthStateChanged` para mantener la sesión activa automáticamente tras recargar la página.
+  - Actualización dinámica de la interfaz del Menú Principal para mostrar el nombre (`displayName`) del agente autenticado y un botón interactivo de cierre de sesión (`signOut`).
+- **Preparación de Firestore (`src/firebase.ts`, `src/core/Game.ts`)**:
+  - Verificada la instancia exportada `db` lista para operaciones de lectura y escritura en las próximas fases del roadmap (Cloud Save y Leaderboards).
 
 ### [v0.13.0] - 2026-11-03
 - **Mecánicas Universales de Mega-Jefes (`BaseBoss.ts`, `Game.ts`, `CompanionPet.ts`)**:
