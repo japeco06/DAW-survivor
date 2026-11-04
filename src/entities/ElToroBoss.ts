@@ -19,7 +19,7 @@ export class ElToroBoss extends Adware {
   public speedTier: number = 0;
   public state: ElToroState = 'CHASE';
 
-  private baseChaseSpeed: number = 122;
+  private baseChaseSpeed: number = 175;
   private speedScaleTimer: number = 0;
   private readonly speedScaleInterval: number = 15.0;
 
@@ -34,7 +34,7 @@ export class ElToroBoss extends Adware {
   private animTimer: number = 0;
 
   constructor(x: number, y: number) {
-    super(x, y, 116, 122, '#dc2626', 1000000, 50, 0);
+    super(x, y, 116, 175, '#dc2626', 1000000, 50, 0);
     this.malwareType = 'FINAL_BOSS';
     this.knockbackResistance = 1.0;
   }
@@ -88,7 +88,7 @@ export class ElToroBoss extends Adware {
       if (this.stateTimer <= 0) {
         this.state = 'DASH';
         this.stateTimer = this.dashDuration;
-        this.dashSpeed = Math.max(780, this.baseChaseSpeed * 4.8);
+        this.dashSpeed = 780;
       }
     } else if (this.state === 'DASH') {
       // Embestida masiva de alta velocidad en la dirección fijada
@@ -96,8 +96,8 @@ export class ElToroBoss extends Adware {
       this.y += Math.sin(this.dashAngle) * this.dashSpeed * dt;
 
       const margin = this.size * 0.45;
-      const maxW = typeof window !== 'undefined' ? window.innerWidth : 1920;
-      const maxH = typeof window !== 'undefined' ? window.innerHeight : 1080;
+      const maxW = 1920;
+      const maxH = 1080;
       this.x = Math.max(margin, Math.min(maxW - margin, this.x));
       this.y = Math.max(margin, Math.min(maxH - margin, this.y));
 

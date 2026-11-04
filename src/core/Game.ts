@@ -70,7 +70,10 @@ interface PauseButtonRect {
   height: number;
 }
 
-const GAME_VERSION = 'v0.16.0';
+export const LOGICAL_WIDTH = 1920;
+export const LOGICAL_HEIGHT = 1080;
+
+const GAME_VERSION = 'v0.16.1';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -123,7 +126,7 @@ export class Game {
   private currentUser: User | null = null;
   private hoveredAuthBtn: boolean = false;
   private showLeaderboardOverlay: boolean = false;
-  private activeLeaderboardCategory: LeaderboardCategory = 'TORO_DAMAGE';
+  private activeLeaderboardCategory: LeaderboardCategory = 'SURVIVAL_TIME';
   private leaderboardLoading: boolean = false;
   private toroDamageLeaderboard: LeaderboardEntry[] = [];
   private survivalTimeLeaderboard: LeaderboardEntry[] = [];
@@ -201,6 +204,33 @@ export class Game {
     if (this.terminalLogs.length > 5) {
       this.terminalLogs.shift();
     }
+  }
+
+  private getCanvasMousePos(e: MouseEvent): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    const canvasAspect = this.canvas.width / this.canvas.height;
+    const rectAspect = rect.width / rect.height;
+
+    let renderW = rect.width;
+    let renderH = rect.height;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (rectAspect > canvasAspect) {
+      renderW = rect.height * canvasAspect;
+      offsetX = (rect.width - renderW) / 2;
+    } else if (rectAspect < canvasAspect) {
+      renderH = rect.width / canvasAspect;
+      offsetY = (rect.height - renderH) / 2;
+    }
+
+    const clientX = e.clientX - rect.left - offsetX;
+    const clientY = e.clientY - rect.top - offsetY;
+
+    return {
+      x: Math.max(0, Math.min(this.canvas.width, clientX * (this.canvas.width / renderW))),
+      y: Math.max(0, Math.min(this.canvas.height, clientY * (this.canvas.height / renderH))),
+    };
   }
 
   private setupEventListeners(): void {
@@ -297,9 +327,9 @@ export class Game {
     });
 
     this.canvas.addEventListener('mousemove', (e) => {
-      const rect = this.canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      const pos = this.getCanvasMousePos(e);
+      const mx = pos.x;
+      const my = pos.y;
 
       if (this.gameState === 'MENU') {
         this.hoveredMenuChar = null;
@@ -406,9 +436,9 @@ export class Game {
     });
 
     this.canvas.addEventListener('click', (e) => {
-      const rect = this.canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      const pos = this.getCanvasMousePos(e);
+      const mx = pos.x;
+      const my = pos.y;
 
       if (this.gameState === 'MENU') {
         if (this.showLeaderboardOverlay) {
@@ -673,8 +703,8 @@ export class Game {
   }
 
   private resize(): void {
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
+    this.canvas.width = LOGICAL_WIDTH;
+    this.canvas.height = LOGICAL_HEIGHT;
   }
 
   private startNewRun(): void {
@@ -2191,6 +2221,7 @@ export class Game {
   }
 
   private openLeaderboardOverlay(): void {
+    this.activeLeaderboardCategory = 'SURVIVAL_TIME';
     this.showLeaderboardOverlay = true;
     this.sound.playCoinPickup();
     void this.refreshLeaderboards();

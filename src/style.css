@@ -12,11 +12,15 @@ body {
   overflow: hidden;
   font-family: 'Courier New', Courier, monospace;
   user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #gameCanvas {
   display: block;
   width: 100vw;
   height: 100vh;
+  object-fit: contain;
   background-color: #000000;
 }

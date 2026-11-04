@@ -123,10 +123,7 @@ export class Spawner {
         ).length;
         if (activeRedAdwareCount < 15) {
           const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
-          const cappedRedHpMult = Math.min(2.5, hpMultiplier);
-          const adware = new Adware(pos.x, pos.y);
-          adware.maxHp = Math.round(25 * cappedRedHpMult);
-          adware.hp = adware.maxHp;
+          const adware = this.createScaledRedAdware(pos.x, pos.y, elapsedTime, hpMultiplier);
           enemies.push(adware);
         }
       }
@@ -185,7 +182,7 @@ export class Spawner {
     if (this.flankWaveTimer >= this.nextFlankWaveInterval) {
       this.flankWaveTimer = 0;
       this.nextFlankWaveInterval = 15 + Math.random() * 5;
-      this.spawnFlankMicroWave(hpMultiplier, enemies, canvasWidth, canvasHeight);
+      this.spawnFlankMicroWave(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight);
     }
 
     const currentSpawnInterval = Math.max(0.28, 0.92 * Math.pow(0.92, elapsedTime / 14));
@@ -296,14 +293,32 @@ export class Spawner {
       return null;
     }
 
-    const cappedRedHpMult = Math.min(2.5, hpMultiplier);
-    const adware = new Adware(pos.x, pos.y);
-    adware.maxHp = Math.round(25 * cappedRedHpMult);
+    return this.createScaledRedAdware(pos.x, pos.y, elapsedTime, hpMultiplier);
+  }
+
+  private createScaledRedAdware(
+    x: number,
+    y: number,
+    elapsedTime: number,
+    hpMultiplier: number
+  ): Adware {
+    const adware = new Adware(x, y);
+    const timeMinutes = elapsedTime / 60;
+    // Escalado progresivo leve en mid-to-late game: incremento suave de vida y velocidad
+    const progressiveHpMult = Math.min(
+      3.8,
+      Math.min(2.5, hpMultiplier) * (1 + timeMinutes * 0.07)
+    );
+    adware.maxHp = Math.round(25 * progressiveHpMult);
     adware.hp = adware.maxHp;
+
+    const speedBonus = Math.min(48, timeMinutes * 4.5);
+    adware.speed = Math.round(115 + speedBonus);
     return adware;
   }
 
   private spawnFlankMicroWave(
+    elapsedTime: number,
     hpMultiplier: number,
     enemies: Adware[],
     width: number,
@@ -311,7 +326,6 @@ export class Spawner {
   ): void {
     const edge = Math.floor(Math.random() * 4); // 0=Arriba, 1=Derecha, 2=Abajo, 3=Izquierda
     const count = 4 + Math.floor(Math.random() * 3); // 4 a 6 enemigos
-    const cappedRedHpMult = Math.min(2.5, hpMultiplier);
     const centerNorm = 0.2 + Math.random() * 0.6; // Entre 20% y 80% del borde
 
     for (let i = 0; i < count; i++) {
@@ -336,9 +350,7 @@ export class Spawner {
           y = Math.max(35, Math.min(height - 35, height * centerNorm + spread));
           break;
       }
-      const adware = new Adware(x, y);
-      adware.maxHp = Math.round(25 * cappedRedHpMult);
-      adware.hp = adware.maxHp;
+      const adware = this.createScaledRedAdware(x, y, elapsedTime, hpMultiplier);
       enemies.push(adware);
     }
   }

@@ -35,33 +35,64 @@ export class CryptoMiner extends Adware {
       return;
     }
 
-    // Huye constantemente en dirección opuesta al jugador
+    // Huye constantemente en dirección opuesta al jugador con desvío y ondulación
     const dx = this.x - player.x;
     const dy = this.y - player.y;
     const fleeAngle = Math.atan2(dy, dx) + Math.sin(this.wobbleTimer) * 0.35 + this.wanderAngle;
 
-    this.x += Math.cos(fleeAngle) * this.speed * dt;
-    this.y += Math.sin(fleeAngle) * this.speed * dt;
+    let vx = Math.cos(fleeAngle) * this.speed;
+    let vy = Math.sin(fleeAngle) * this.speed;
 
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    const margin = 44;
+    const minX = 44;
+    const maxX = 1920 - 44;
+    const minY = 64;
+    const maxY = 1080 - 44;
 
-    if (this.x < margin) {
-      this.x = margin;
-      this.wanderAngle = 0.9;
-    } else if (this.x > w - margin) {
-      this.x = w - margin;
-      this.wanderAngle = -0.9;
+    const atLeft = this.x <= minX;
+    const atRight = this.x >= maxX;
+    const atTop = this.y <= minY;
+    const atBottom = this.y >= maxY;
+
+    // Deslizamiento por bordes y deflexión angular en esquinas para no quedarse atascado
+    if (atLeft && vx < 0) {
+      vx = 0;
+      if (Math.abs(vy) < 25 || (atTop && vy < 0) || (atBottom && vy > 0)) {
+        vy = (player.y < (minY + maxY) / 2 ? 1 : -1) * this.speed;
+      }
+      this.wanderAngle = player.y > this.y ? -0.85 : 0.85;
+    } else if (atRight && vx > 0) {
+      vx = 0;
+      if (Math.abs(vy) < 25 || (atTop && vy < 0) || (atBottom && vy > 0)) {
+        vy = (player.y < (minY + maxY) / 2 ? 1 : -1) * this.speed;
+      }
+      this.wanderAngle = player.y > this.y ? 0.85 : -0.85;
     }
 
-    if (this.y < margin + 30) {
-      this.y = margin + 30;
-      this.wanderAngle = -0.9;
-    } else if (this.y > h - margin) {
-      this.y = h - margin;
-      this.wanderAngle = 0.9;
+    if (atTop && vy < 0) {
+      vy = 0;
+      if (Math.abs(vx) < 25 || (atLeft && vx < 0) || (atRight && vx > 0)) {
+        vx = (player.x < (minX + maxX) / 2 ? 1 : -1) * this.speed;
+      }
+      this.wanderAngle = player.x > this.x ? 0.85 : -0.85;
+    } else if (atBottom && vy > 0) {
+      vy = 0;
+      if (Math.abs(vx) < 25 || (atLeft && vx < 0) || (atRight && vx > 0)) {
+        vx = (player.x < (minX + maxX) / 2 ? 1 : -1) * this.speed;
+      }
+      this.wanderAngle = player.x > this.x ? -0.85 : 0.85;
     }
+
+    const currentSpd = Math.hypot(vx, vy);
+    if (currentSpd > 0) {
+      vx = (vx / currentSpd) * this.speed;
+      vy = (vy / currentSpd) * this.speed;
+    }
+
+    this.x += vx * dt;
+    this.y += vy * dt;
+
+    this.x = Math.max(minX, Math.min(maxX, this.x));
+    this.y = Math.max(minY, Math.min(maxY, this.y));
   }
 
   public override draw(ctx: CanvasRenderingContext2D): void {

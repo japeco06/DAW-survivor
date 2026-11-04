@@ -453,8 +453,8 @@ export class CompanionPet {
     player: Player,
     playerLevel: number,
     enemies: Adware[],
-    canvasWidth: number = window.innerWidth,
-    canvasHeight: number = window.innerHeight
+    canvasWidth: number = 1920,
+    canvasHeight: number = 1080
   ): CompanionUpdateOutput {
     const damagedEnemies: { x: number; y: number; damage: number; color: string; isCrit?: boolean }[] = [];
     const killedEnemies: Adware[] = [];

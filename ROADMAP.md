@@ -234,7 +234,7 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │       ├── Guardado automático en Firestore inmediatamente al morir el jugador (estado `GAMEOVER`) e inmediatamente tras comprar/equipar cualquier mejora o elemento en la Tienda/Gacha
 │       └── Modo Invitado (Fallback): si no hay usuario autenticado, se omite Firestore por completo y se mantiene el uso normal de `localStorage`
 │
-└── v0.16.0 — Clasificación Mundial Dual (Dual Global Leaderboards: Daño al Toro y Tiempo de Supervivencia) (ACTUAL)
+├── v0.16.0 — Clasificación Mundial Dual (Dual Global Leaderboards: Daño al Toro y Tiempo de Supervivencia)
     ├── [Seguimiento de Datos y Sincronización (`MetaSystem.ts`, `Game.ts`)]
     │   ├── Seguimiento de `maxDamageToToro` (daño total infligido al Jefe Final "El Toro" en una misma partida)
     │   ├── Actualización de `syncToCloud` para guardar `maxDamageToToro` y `bestTimeSeconds` sobrescribiendo únicamente cuando la nueva marca supera estrictamente al récord guardado
@@ -246,11 +246,41 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
         ├── Botón `"Global Rankings"` añadido al Menú Principal
         ├── Overlay interactivo con pestañas `"Top Damage to Toro"` y `"Best Survival Time"` mostrando Rango (#1-#10), Nombre y Métrica
         └── Botón `"Back"` para regresar al Menú Principal
+│
+└── v0.16.1 — Normalización de Viewport (1080p), Tab por Defecto en Rankings y Balanceo de Enemigos (ACTUAL)
+    ├── [Normalización de Viewport y Spawns (`Game.ts`, `style.css`)]
+    │   ├── Resolución lógica fija de 1920x1080 en el canvas y escalado CSS con `object-fit: contain`
+    │   ├── Mapeo preciso de coordenadas de ratón considerando letterbox/pillarbox para cualquier relación de aspecto
+    │   └── Spawns de enemigos y límites de pantalla estandarizados a las dimensiones lógicas fijas
+    ├── [Actualización de UI de Clasificación (`Game.ts`)]
+    │   └── Pestaña "Best Survival Time" configurada como pestaña activa predeterminada al abrir los Rankings Globales
+    ├── [IA y Balanceo de Enemigos (`CryptoMiner.ts`, `ElToroBoss.ts`, `Spawner.ts`)]
+    │   ├── Minero de Criptos (Loot Goblin): deslizamiento por bordes y deflexión angular para evitar atascos en esquinas
+    │   ├── Jefe Final "El Toro": velocidad base de persecución a pie aumentada (122 -> 175 px/s) sin alterar embestida ni telegrafiado
+    │   └── Enemigos Rojos (Adware): escalado progresivo de vida (+7%/min hasta 3.8x) y velocidad (+4.5 px/s/min hasta +48) a lo largo de la partida
+    └── [Optimizaciones Autónomas (`CompanionPet.ts`, `ElToroBoss.ts`)]
+        └── Eliminadas dependencias residuales de `window.innerWidth/innerHeight` en las entidades del juego
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v0.16.1] - 2026-11-04
+- **Normalización de Viewport y Spawns (`src/core/Game.ts`, `src/style.css`)**:
+  - Fijada la resolución lógica interna del canvas en 1920x1080 (`LOGICAL_WIDTH` y `LOGICAL_HEIGHT`) para garantizar equidad competitiva.
+  - Implementado escalado CSS (`100vw`, `100vh`, `object-fit: contain`) centrado con fondo negro para adaptarse a cualquier resolución física.
+  - Añadido cálculo matemático de compensación de letterbox/pillarbox en `getCanvasMousePos()` para que los clics y el cursor coincidan píxel a píxel independientemente de la relación de aspecto del monitor.
+  - Estandarizadas las fronteras de spawn y patrulla de enemigos a los límites lógicos de 1920x1080.
+- **Pestaña por Defecto en Clasificación Global (`src/core/Game.ts`)**:
+  - Modificado el estado inicial y el método `openLeaderboardOverlay()` para que la pestaña `"Best Survival Time"` sea estrictamente la activa por defecto cada vez que se abre el panel de Rankings Globales.
+- **IA y Balanceo de Enemigos (`src/entities/CryptoMiner.ts`, `src/entities/ElToroBoss.ts`, `src/systems/Spawner.ts`)**:
+  - **Loot Goblin (`CryptoMiner.ts`)**: Actualizada la física de huida incorporando deflexión en esquinas y deslizamiento suave sobre bordes para impedir que quede bloqueado en los ángulos del mapa.
+  - **Jefe Final 'El Toro' (`src/entities/ElToroBoss.ts`)**: Incrementada la velocidad base de persecución a pie de 122 px/s a 175 px/s para aumentar la presión constante, manteniendo intactos el telegrafiado de 1.5s, la velocidad de embestida de 780 px/s y sus mecánicas de ataque.
+  - **Enemigos Rojos (`src/systems/Spawner.ts`)**: Implementado escalado progresivo de Adware rojo en función del tiempo transcurrido (multiplicador de vida hasta 3.8x y bonificación de velocidad de hasta +48 px/s) para que mantengan relevancia en mid y late game.
+- **Optimizaciones Autónomas (`src/entities/CompanionPet.ts`, `src/entities/ElToroBoss.ts`)**:
+  - Reemplazadas todas las referencias a `window.innerWidth/innerHeight` en entidades por las fronteras lógicas fijas de 1920x1080.
+  - Versión actualizada a `v0.16.1` en `package.json`, `src/core/Game.ts` y `ROADMAP.md`.
 
 ### [v0.16.0] - 2026-11-03
 - **Seguimiento de Datos y Sincronización (`src/systems/MetaSystem.ts`, `src/core/Game.ts`)**:
