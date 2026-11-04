@@ -299,6 +299,52 @@ export class CombatSystem {
   // 7. Proyectiles enemigos (disparados por el Troyano Tirador)
   public enemyProjectiles: EnemyProjectile[] = [];
 
+  // 8. Estadísticas de Daño por Arma y Bajas (v1.0.0)
+  public weaponDamageStats: Record<string, number> = {
+    'Ráfaga Firewall': 0,
+    'Ping Tracker': 0,
+    'Zona Cuarentena': 0,
+    'Cortafuegos': 0,
+    'Rayo SQL': 0,
+    'Drones Antivirus': 0,
+    'Mascota Morcillita': 0,
+  };
+
+  public killsByTypeStats: Record<string, number> = {
+    'Adware': 0,
+    'Trojan': 0,
+    'Worm': 0,
+    'Evasor': 0,
+    'Hardware Box': 0,
+    'Mega-Jefes': 0,
+    'Otros': 0,
+  };
+
+  public resetStats(): void {
+    this.weaponDamageStats = {
+      'Ráfaga Firewall': 0,
+      'Ping Tracker': 0,
+      'Zona Cuarentena': 0,
+      'Cortafuegos': 0,
+      'Rayo SQL': 0,
+      'Drones Antivirus': 0,
+      'Mascota Morcillita': 0,
+    };
+    this.killsByTypeStats = {
+      'Adware': 0,
+      'Trojan': 0,
+      'Worm': 0,
+      'Evasor': 0,
+      'Hardware Box': 0,
+      'Mega-Jefes': 0,
+      'Otros': 0,
+    };
+  }
+
+  public recordCompanionDamage(amount: number): void {
+    this.weaponDamageStats['Mascota Morcillita'] += amount;
+  }
+
   public update(
     dt: number,
     player: Player,
@@ -348,6 +394,17 @@ export class CombatSystem {
           malwareType: enemy.malwareType,
           enemyRef: enemy,
         });
+
+        if (enemy.malwareType === 'ADWARE') this.killsByTypeStats['Adware']++;
+        else if (enemy.malwareType === 'TROJAN' || enemy.malwareType === 'TROJAN_SHOOTER')
+          this.killsByTypeStats['Trojan']++;
+        else if (enemy.malwareType === 'WORM' || enemy.malwareType === 'ARMORED_WORM')
+          this.killsByTypeStats['Worm']++;
+        else if (enemy.malwareType === 'EVASOR') this.killsByTypeStats['Evasor']++;
+        else if (enemy.malwareType === 'HARDWARE_BOX') this.killsByTypeStats['Hardware Box']++;
+        else if (enemy.malwareType === 'RANSOMWARE' || enemy.malwareType === 'FINAL_BOSS')
+          this.killsByTypeStats['Mega-Jefes']++;
+        else this.killsByTypeStats['Otros']++;
       }
     };
 
@@ -532,6 +589,7 @@ export class CombatSystem {
           const dist = Math.hypot(dx, dy) || 1;
           const critRoll = rollCritHit(proj.damage);
           enemy.takeDamage(critRoll.dmg, (dx / dist) * 6, (dy / dist) * 6);
+          this.weaponDamageStats['Ráfaga Firewall'] += critRoll.dmg;
           tryTriggerVampirism();
 
           damagedEnemies.push({
@@ -575,6 +633,7 @@ export class CombatSystem {
           const dist = Math.hypot(dx, dy) || 1;
           const critRoll = rollCritHit(ping.damage);
           enemy.takeDamage(critRoll.dmg, (dx / dist) * 8, (dy / dist) * 8);
+          this.weaponDamageStats['Ping Tracker'] += critRoll.dmg;
           tryTriggerVampirism();
 
           damagedEnemies.push({
@@ -600,6 +659,7 @@ export class CombatSystem {
         if (!hit.enemy.active) continue;
         const critRoll = rollCritHit(hit.damage);
         hit.enemy.takeDamage(critRoll.dmg, 0, 0);
+        this.weaponDamageStats['Zona Cuarentena'] += critRoll.dmg;
 
         damagedEnemies.push({
           x: hit.enemy.x,
@@ -624,6 +684,7 @@ export class CombatSystem {
         const dist = Math.hypot(dx, dy) || 1;
         const critRoll = rollCritHit(hit.damage);
         hit.enemy.takeDamage(critRoll.dmg, (dx / dist) * 18, (dy / dist) * 18);
+        this.weaponDamageStats['Cortafuegos'] += critRoll.dmg;
         tryTriggerVampirism();
 
         damagedEnemies.push({
@@ -659,6 +720,7 @@ export class CombatSystem {
         const dist = Math.hypot(dx, dy) || 1;
         const critRoll = rollCritHit(hit.damage);
         hit.enemy.takeDamage(critRoll.dmg, (dx / dist) * 10, (dy / dist) * 10);
+        this.weaponDamageStats['Rayo SQL'] += critRoll.dmg;
         tryTriggerVampirism();
 
         damagedEnemies.push({
@@ -716,6 +778,7 @@ export class CombatSystem {
               const ky = ((target.y - nodeY) / (d || 1)) * 28;
               const critRoll = rollCritHit(baseAoeDamage);
               target.takeDamage(critRoll.dmg, kx, ky);
+              this.weaponDamageStats['Drones Antivirus'] += critRoll.dmg;
               damagedEnemies.push({
                 x: target.x,
                 y: target.y,
@@ -757,6 +820,7 @@ export class CombatSystem {
               (dx / dist) * pushDist,
               (dy / dist) * pushDist
             );
+            this.weaponDamageStats['Drones Antivirus'] += critRoll.dmg;
             this.firewallHitCooldowns.set(enemy, 0.28);
 
             damagedEnemies.push({

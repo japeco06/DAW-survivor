@@ -23,6 +23,7 @@ import { Spawner } from '../systems/Spawner';
 import { CombatSystem } from '../systems/CombatSystem';
 import { UpgradeSystem } from '../systems/UpgradeSystem';
 import { ParticleSystem } from '../systems/ParticleSystem';
+import { AchievementSystem } from '../systems/AchievementSystem';
 import {
   MetaSystem,
   CharacterId,
@@ -62,7 +63,7 @@ interface MenuCharacterRect {
 }
 
 interface PauseButtonRect {
-  action: 'RESUME' | 'EXIT_TO_MENU';
+  action: 'RESUME' | 'SETTINGS' | 'EXIT_TO_MENU';
   label: string;
   x: number;
   y: number;
@@ -73,7 +74,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v0.16.1';
+const GAME_VERSION = 'v1.0.0';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -98,7 +99,7 @@ export class Game {
   private particleSystem: ParticleSystem;
 
   private isPaused: boolean = false;
-  private hoveredPauseAction: 'RESUME' | 'EXIT_TO_MENU' | null = null;
+  private hoveredPauseAction: 'RESUME' | 'SETTINGS' | 'EXIT_TO_MENU' | null = null;
 
   private normalBossesKilledCount: number = 0;
   private megaBoss: BaseBoss | null = null;
@@ -133,6 +134,14 @@ export class Game {
   private hoveredRankingsBtn: boolean = false;
   private hoveredLeaderboardTab: LeaderboardCategory | null = null;
   private hoveredLeaderboardBackBtn: boolean = false;
+  private achievementSystem: AchievementSystem;
+  private showAchievementsOverlay: boolean = false;
+  private showSettingsOverlay: boolean = false;
+  private showHelpOverlay: boolean = false;
+  private hoveredAchievementsBtn: boolean = false;
+  private hoveredSettingsBtn: boolean = false;
+  private hoveredHelpBtn: boolean = false;
+  private hoveredOverlayBackBtn: boolean = false;
   public readonly firestoreDb = db;
   private menuFeedbackMessage: string =
     'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.';
@@ -175,6 +184,14 @@ export class Game {
     this.combatSystem = new CombatSystem();
     this.upgradeSystem = new UpgradeSystem();
     this.particleSystem = new ParticleSystem();
+    this.achievementSystem = new AchievementSystem();
+    this.achievementSystem.onUnlockCallback = (ach) => {
+      this.sound.playAchievement();
+      this.metaSystem.coins += ach.rewardCoins;
+      this.metaSystem.save();
+      void this.metaSystem.syncToCloud();
+      this.addTerminalLog(`HITO DESBLOQUEADO: ${ach.title} (+${ach.rewardCoins} 🪙)`);
+    };
 
     onAuthStateChanged(auth, async (user) => {
       this.currentUser = user;
@@ -257,6 +274,30 @@ export class Game {
           return;
         }
 
+        if (this.showAchievementsOverlay) {
+          if (key === 'escape' || key === 'b' || key === 'a') {
+            this.showAchievementsOverlay = false;
+            this.sound.playShoot(false);
+          }
+          return;
+        }
+
+        if (this.showSettingsOverlay) {
+          if (key === 'escape' || key === 'b' || key === 'o') {
+            this.showSettingsOverlay = false;
+            this.sound.playShoot(false);
+          }
+          return;
+        }
+
+        if (this.showHelpOverlay) {
+          if (key === 'escape' || key === 'b' || key === 'h') {
+            this.showHelpOverlay = false;
+            this.sound.playShoot(false);
+          }
+          return;
+        }
+
         const keyMap: Record<string, CharacterId> = {
           '1': 'STANDARD',
           '2': 'ROOT',
@@ -274,6 +315,15 @@ export class Game {
           this.handleAuthButtonClick();
         } else if (key === 'r') {
           this.openLeaderboardOverlay();
+        } else if (key === 'a') {
+          this.showAchievementsOverlay = true;
+          this.sound.playCoinPickup();
+        } else if (key === 'o') {
+          this.showSettingsOverlay = true;
+          this.sound.playShoot(false);
+        } else if (key === 'h') {
+          this.showHelpOverlay = true;
+          this.sound.playShoot(false);
         } else if (this.activeMenuTab === 'SHOP' && keyMap[key]) {
           const res = this.metaSystem.selectOrBuyCharacter(keyMap[key]);
           this.menuFeedbackMessage = res.message;
@@ -299,8 +349,18 @@ export class Game {
       }
 
       if (this.isPaused) {
+        if (this.showSettingsOverlay) {
+          if (key === 'escape' || key === 'b' || key === 'o') {
+            this.showSettingsOverlay = false;
+            this.sound.playShoot(false);
+          }
+          return;
+        }
         if (key === '1' || key === 'enter') {
           this.togglePause();
+        } else if (key === 'o') {
+          this.showSettingsOverlay = true;
+          this.sound.playShoot(false);
         } else if (key === '2' || key === 'escape') {
           this.exitToMainMenu();
         }
@@ -358,6 +418,28 @@ export class Game {
           return;
         }
 
+        if (this.showAchievementsOverlay || this.showHelpOverlay) {
+          const panelH = this.showAchievementsOverlay ? 610 : 590;
+          const py = this.canvas.height / 2 - panelH / 2;
+          const backBtn = this.getOverlayBackButtonRect(py, panelH);
+          this.hoveredOverlayBackBtn =
+            mx >= backBtn.x &&
+            mx <= backBtn.x + backBtn.width &&
+            my >= backBtn.y &&
+            my <= backBtn.y + backBtn.height;
+          return;
+        }
+
+        if (this.showSettingsOverlay) {
+          const backBtn = this.getOverlayBackButtonRect(this.canvas.height / 2 - 270, 540);
+          this.hoveredOverlayBackBtn =
+            mx >= backBtn.x &&
+            mx <= backBtn.x + backBtn.width &&
+            my >= backBtn.y &&
+            my <= backBtn.y + backBtn.height;
+          return;
+        }
+
         const authBtn = this.getAuthActionButtonRect();
         this.hoveredAuthBtn =
           mx >= authBtn.x &&
@@ -371,6 +453,27 @@ export class Game {
           mx <= rankingsBtn.x + rankingsBtn.width &&
           my >= rankingsBtn.y &&
           my <= rankingsBtn.y + rankingsBtn.height;
+
+        const achBtn = this.getAchievementsButtonRect();
+        this.hoveredAchievementsBtn =
+          mx >= achBtn.x &&
+          mx <= achBtn.x + achBtn.width &&
+          my >= achBtn.y &&
+          my <= achBtn.y + achBtn.height;
+
+        const setBtn = this.getSettingsButtonRect();
+        this.hoveredSettingsBtn =
+          mx >= setBtn.x &&
+          mx <= setBtn.x + setBtn.width &&
+          my >= setBtn.y &&
+          my <= setBtn.y + setBtn.height;
+
+        const helpBtn = this.getHelpButtonRect();
+        this.hoveredHelpBtn =
+          mx >= helpBtn.x &&
+          mx <= helpBtn.x + helpBtn.width &&
+          my >= helpBtn.y &&
+          my <= helpBtn.y + helpBtn.height;
 
         if (this.activeMenuTab === 'SHOP') {
           for (const charRect of this.getMenuCharacterRects()) {
@@ -436,6 +539,11 @@ export class Game {
     });
 
     this.canvas.addEventListener('click', (e) => {
+      this.sound.ensureContext();
+      if (this.gameState === 'MENU' && this.sound.getCurrentTrack() === 'NONE') {
+        this.sound.setTrack('MENU');
+      }
+
       const pos = this.getCanvasMousePos(e);
       const mx = pos.x;
       const my = pos.y;
@@ -467,6 +575,75 @@ export class Game {
             this.sound.playShoot(false);
             return;
           }
+          return;
+        }
+
+        if (this.showAchievementsOverlay) {
+          const backBtn = this.getOverlayBackButtonRect(this.canvas.height / 2 - 305, 610);
+          if (
+            mx >= backBtn.x &&
+            mx <= backBtn.x + backBtn.width &&
+            my >= backBtn.y &&
+            my <= backBtn.y + backBtn.height
+          ) {
+            this.showAchievementsOverlay = false;
+            this.sound.playShoot(false);
+          }
+          return;
+        }
+
+        if (this.showSettingsOverlay) {
+          this.handleSettingsClick(mx, my);
+          return;
+        }
+
+        if (this.showHelpOverlay) {
+          const backBtn = this.getOverlayBackButtonRect(this.canvas.height / 2 - 295, 590);
+          if (
+            mx >= backBtn.x &&
+            mx <= backBtn.x + backBtn.width &&
+            my >= backBtn.y &&
+            my <= backBtn.y + backBtn.height
+          ) {
+            this.showHelpOverlay = false;
+            this.sound.playShoot(false);
+          }
+          return;
+        }
+
+        const achBtn = this.getAchievementsButtonRect();
+        if (
+          mx >= achBtn.x &&
+          mx <= achBtn.x + achBtn.width &&
+          my >= achBtn.y &&
+          my <= achBtn.y + achBtn.height
+        ) {
+          this.showAchievementsOverlay = true;
+          this.sound.playCoinPickup();
+          return;
+        }
+
+        const setBtn = this.getSettingsButtonRect();
+        if (
+          mx >= setBtn.x &&
+          mx <= setBtn.x + setBtn.width &&
+          my >= setBtn.y &&
+          my <= setBtn.y + setBtn.height
+        ) {
+          this.showSettingsOverlay = true;
+          this.sound.playShoot(false);
+          return;
+        }
+
+        const helpBtn = this.getHelpButtonRect();
+        if (
+          mx >= helpBtn.x &&
+          mx <= helpBtn.x + helpBtn.width &&
+          my >= helpBtn.y &&
+          my <= helpBtn.y + helpBtn.height
+        ) {
+          this.showHelpOverlay = true;
+          this.sound.playShoot(false);
           return;
         }
 
@@ -604,6 +781,11 @@ export class Game {
       }
 
       if (this.isPaused) {
+        if (this.showSettingsOverlay) {
+          this.handleSettingsClick(mx, my);
+          return;
+        }
+
         for (const btn of this.getPauseButtonRects()) {
           if (
             mx >= btn.x &&
@@ -613,6 +795,9 @@ export class Game {
           ) {
             if (btn.action === 'RESUME') {
               this.togglePause();
+            } else if (btn.action === 'SETTINGS') {
+              this.showSettingsOverlay = true;
+              this.sound.playShoot(false);
             } else if (btn.action === 'EXIT_TO_MENU') {
               this.exitToMainMenu();
             }
@@ -699,6 +884,7 @@ export class Game {
       this.metaSystem.getSelectedProfile()
     );
     this.gameState = 'MENU';
+    this.sound.setTrack('MENU');
     this.lastTime = performance.now();
   }
 
@@ -743,6 +929,7 @@ export class Game {
     this.hoveredCardIndex = -1;
     this.damageVignetteAlpha = 0;
     this.gameState = 'PLAYING';
+    this.sound.setTrack('INGAME');
     this.lastTime = performance.now();
     this.sound.playShoot(false);
     this.terminalLogs = [
@@ -870,6 +1057,7 @@ export class Game {
 
   private update(dt: number): void {
     this.particleSystem.update(dt);
+    this.achievementSystem.updateToasts(dt);
     if (this.gachaRevealTimer > 0) {
       this.gachaRevealTimer = Math.max(0, this.gachaRevealTimer - dt);
     }
@@ -883,6 +1071,24 @@ export class Game {
     }
 
     this.elapsedTime += dt;
+
+    if (this.finalBoss && this.finalBoss.active) {
+      if (this.sound.getCurrentTrack() !== 'FINAL_BOSS') {
+        this.sound.setTrack('FINAL_BOSS');
+      }
+    } else if (this.megaBoss && this.megaBoss.active) {
+      if (this.sound.getCurrentTrack() !== 'BOSS') {
+        this.sound.setTrack('BOSS');
+      }
+    } else {
+      if (this.sound.getCurrentTrack() !== 'INGAME') {
+        this.sound.setTrack('INGAME');
+      }
+    }
+
+    this.achievementSystem.reportProgress('survivor_3min', this.elapsedTime, true);
+    this.achievementSystem.reportProgress('survivor_6min', this.elapsedTime, true);
+    this.achievementSystem.reportProgress('level_20', this.upgradeSystem.level, true);
 
     this.player.update(dt, this.input, this.canvas.width, this.canvas.height);
     for (const block of this.encryptedBlocks) {
@@ -924,6 +1130,7 @@ export class Game {
 
         if (!this.player.active) {
           this.gameState = 'GAMEOVER';
+          this.sound.setTrack('NONE');
           this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
           this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
           void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
@@ -1065,6 +1272,9 @@ export class Game {
       );
       combatEvents.enemiesKilled += compEvents.killedEnemies.length;
       combatEvents.damagedEnemies.push(...compEvents.damagedEnemies);
+      for (const d of compEvents.damagedEnemies) {
+        this.combatSystem.recordCompanionDamage(d.damage);
+      }
       if (this.player.vampirismChance > 0) {
         const healAmount = Math.max(2, this.player.vampirismHealAmount);
         for (let h = 0; h < compEvents.damagedEnemies.length; h++) {
@@ -1114,8 +1324,13 @@ export class Game {
 
     const prevKillCount = this.killCount;
     this.killCount += combatEvents.enemiesKilled;
+    this.achievementSystem.reportProgress('first_patch', this.killCount, true);
+    this.achievementSystem.reportProgress('mass_purge', this.killCount, true);
+
     if (this.finalBoss) {
       this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
+      this.achievementSystem.reportProgress('toro_damage_10k', this.runDamageToToro, true);
+      this.achievementSystem.reportProgress('toro_damage_50k', this.runDamageToToro, true);
     }
     this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
     this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
@@ -1197,6 +1412,10 @@ export class Game {
       const isBoss = drop.malwareType === 'RANSOMWARE';
       this.sound.playExplosion(isBoss || drop.malwareType === 'CRYPTO_MINER');
 
+      if (drop.malwareType === 'CRYPTO_MINER') {
+        this.achievementSystem.reportProgress('crypto_miner_slayer', 1);
+      }
+
       this.particleSystem.spawnExplosion(
         drop.x,
         drop.y,
@@ -1206,6 +1425,7 @@ export class Game {
       );
 
       if (drop.malwareType === 'HARDWARE_BOX') {
+        this.achievementSystem.reportProgress('hardware_collector', 1);
         this.player.heal(25);
         for (let c = 0; c < 3; c++) {
           this.cryptoCoins.push(
@@ -1332,6 +1552,7 @@ export class Game {
 
       if (!this.player.active) {
         this.gameState = 'GAMEOVER';
+        this.sound.setTrack('NONE');
         if (this.finalBoss) {
           this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
         }
@@ -1460,6 +1681,13 @@ export class Game {
       this.activeMegaBossVariant = -1;
     }
 
+    this.achievementSystem.reportProgress('first_boss_killed', 1);
+    this.achievementSystem.reportProgress(
+      'all_four_bosses',
+      this.defeatedMegaBossVariants.size,
+      true
+    );
+
     this.killCount++;
     this.highScoreKills = Math.max(this.highScoreKills, this.killCount);
     this.decryptionKeys = [];
@@ -1491,6 +1719,7 @@ export class Game {
     // En el instante exacto en que se derrota al 4.º Mega-Jefe único:
     // Detener todos los temporizadores de élites/especiales/jefes e invocar inmediatamente al Jefe Final ("El Toro")
     if (this.defeatedMegaBossVariants.size >= 4) {
+      this.achievementSystem.reportProgress('toro_arrival', 1);
       this.spawner.enableFinalBossMode();
       this.enemies = [];
       const spawnY =
@@ -1551,7 +1780,9 @@ export class Game {
     this.ctx.fillStyle = '#000000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const shake = this.particleSystem.getShakeOffset();
+    const shake = this.sound.screenShakeEnabled
+      ? this.particleSystem.getShakeOffset()
+      : { x: 0, y: 0 };
     this.ctx.save();
     this.ctx.translate(shake.x, shake.y);
 
@@ -1663,6 +1894,7 @@ export class Game {
       }
     }
 
+    this.achievementSystem.drawToasts(this.ctx, this.canvas.width);
     this.drawCRTScanlines();
     this.drawVersionBadge();
   }
@@ -1670,15 +1902,23 @@ export class Game {
   private getPauseButtonRects(): PauseButtonRect[] {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
-    const btnW = 360;
-    const btnH = 50;
+    const btnW = 380;
+    const btnH = 46;
 
     return [
       {
         action: 'RESUME',
         label: '> [1 / P] REANUDAR PARTIDA',
         x: cx - btnW / 2,
-        y: cy - 10,
+        y: cy - 35,
+        width: btnW,
+        height: btnH,
+      },
+      {
+        action: 'SETTINGS',
+        label: '> [O] AJUSTES Y VOLUMEN',
+        x: cx - btnW / 2,
+        y: cy + 20,
         width: btnW,
         height: btnH,
       },
@@ -1686,7 +1926,7 @@ export class Game {
         action: 'EXIT_TO_MENU',
         label: '> [2 / ESC] SALIR AL MENÚ PRINCIPAL',
         x: cx - btnW / 2,
-        y: cy + 58,
+        y: cy + 75,
         width: btnW,
         height: btnH,
       },
@@ -1701,8 +1941,8 @@ export class Game {
     this.ctx.fillStyle = 'rgba(0, 6, 4, 0.82)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const boxW = 480;
-    const boxH = 260;
+    const boxW = 500;
+    const boxH = 320;
     this.ctx.fillStyle = 'rgba(4, 18, 12, 0.96)';
     this.ctx.strokeStyle = '#00ff66';
     this.ctx.lineWidth = 2;
@@ -1715,20 +1955,23 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#00ff66';
     this.ctx.font = 'bold 28px "Courier New", monospace';
-    this.ctx.fillText('// SISTEMA EN PAUSA //', cx, cy - 75);
+    this.ctx.fillText('// SISTEMA EN PAUSA //', cx, cy - 95);
 
     this.ctx.fillStyle = '#00f0ff';
     this.ctx.font = '13px "Courier New", monospace';
-    this.ctx.fillText('Simulación y temporizadores detenidos.', cx, cy - 44);
+    this.ctx.fillText('Simulación y temporizadores detenidos.', cx, cy - 64);
 
     for (const btn of this.getPauseButtonRects()) {
       const hovered = this.hoveredPauseAction === btn.action;
       const isExit = btn.action === 'EXIT_TO_MENU';
-      const baseColor = isExit ? '#ff1e42' : '#00ff66';
+      const isSettings = btn.action === 'SETTINGS';
+      const baseColor = isExit ? '#ff1e42' : isSettings ? '#38bdf8' : '#00ff66';
 
       this.ctx.fillStyle = hovered
         ? isExit
           ? 'rgba(60, 10, 20, 0.95)'
+          : isSettings
+          ? 'rgba(10, 35, 60, 0.95)'
           : 'rgba(0, 55, 32, 0.95)'
         : 'rgba(8, 22, 16, 0.92)';
       this.ctx.strokeStyle = hovered ? '#ffffff' : baseColor;
@@ -1738,7 +1981,11 @@ export class Game {
 
       this.ctx.fillStyle = hovered ? '#ffffff' : baseColor;
       this.ctx.font = 'bold 15px "Courier New", monospace';
-      this.ctx.fillText(btn.label, cx, btn.y + 30);
+      this.ctx.fillText(btn.label, cx, btn.y + 28);
+    }
+
+    if (this.showSettingsOverlay) {
+      this.drawSettingsOverlay();
     }
 
     this.ctx.restore();
@@ -2220,6 +2467,73 @@ export class Game {
     };
   }
 
+  private getAchievementsButtonRect(): { x: number; y: number; width: number; height: number } {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const py = cy - 305;
+    return { x: cx - 351, y: py + 174, width: 226, height: 26 };
+  }
+
+  private getSettingsButtonRect(): { x: number; y: number; width: number; height: number } {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const py = cy - 305;
+    return { x: cx - 113, y: py + 174, width: 226, height: 26 };
+  }
+
+  private getHelpButtonRect(): { x: number; y: number; width: number; height: number } {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const py = cy - 305;
+    return { x: cx + 125, y: py + 174, width: 226, height: 26 };
+  }
+
+  private toggleFullscreen(): void {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  private getSettingsControlRects(): {
+    id:
+      | 'MASTER_DOWN'
+      | 'MASTER_UP'
+      | 'MUSIC_DOWN'
+      | 'MUSIC_UP'
+      | 'SFX_DOWN'
+      | 'SFX_UP'
+      | 'TOGGLE_MUTE'
+      | 'TOGGLE_SHAKE'
+      | 'TOGGLE_FULLSCREEN'
+      | 'BACK';
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const panelH = 540;
+    const py = cy - panelH / 2;
+    const rowStartY = py + 110;
+    const rowGap = 52;
+
+    return [
+      { id: 'MASTER_DOWN', x: cx + 70, y: rowStartY, width: 44, height: 32 },
+      { id: 'MASTER_UP', x: cx + 200, y: rowStartY, width: 44, height: 32 },
+      { id: 'MUSIC_DOWN', x: cx + 70, y: rowStartY + rowGap, width: 44, height: 32 },
+      { id: 'MUSIC_UP', x: cx + 200, y: rowStartY + rowGap, width: 44, height: 32 },
+      { id: 'SFX_DOWN', x: cx + 70, y: rowStartY + rowGap * 2, width: 44, height: 32 },
+      { id: 'SFX_UP', x: cx + 200, y: rowStartY + rowGap * 2, width: 44, height: 32 },
+      { id: 'TOGGLE_MUTE', x: cx - 240, y: rowStartY + rowGap * 3 + 10, width: 230, height: 38 },
+      { id: 'TOGGLE_SHAKE', x: cx + 10, y: rowStartY + rowGap * 3 + 10, width: 230, height: 38 },
+      { id: 'TOGGLE_FULLSCREEN', x: cx - 240, y: rowStartY + rowGap * 4 + 18, width: 480, height: 40 },
+      { id: 'BACK', x: cx - 140, y: py + panelH - 52, width: 280, height: 38 },
+    ];
+  }
+
   private openLeaderboardOverlay(): void {
     this.activeLeaderboardCategory = 'SURVIVAL_TIME';
     this.showLeaderboardOverlay = true;
@@ -2461,6 +2775,59 @@ export class Game {
       '🏆 [R] GLOBAL RANKINGS',
       rankingsBtn.x + rankingsBtn.width / 2,
       rankingsBtn.y + 18
+    );
+
+    // Botón de Logros / Hitos
+    const achBtn = this.getAchievementsButtonRect();
+    const achUnlocked = this.achievementSystem.getUnlockedCount();
+    const totalAch = this.achievementSystem.achievements.length;
+    this.ctx.fillStyle = this.hoveredAchievementsBtn
+      ? 'rgba(30, 50, 15, 0.96)'
+      : 'rgba(15, 26, 8, 0.92)';
+    this.ctx.strokeStyle = this.hoveredAchievementsBtn ? '#a3e635' : '#84cc16';
+    this.ctx.lineWidth = this.hoveredAchievementsBtn ? 2 : 1.5;
+    this.ctx.fillRect(achBtn.x, achBtn.y, achBtn.width, achBtn.height);
+    this.ctx.strokeRect(achBtn.x, achBtn.y, achBtn.width, achBtn.height);
+    this.ctx.fillStyle = this.hoveredAchievementsBtn ? '#ffffff' : '#bef264';
+    this.ctx.font = 'bold 11px "Courier New", monospace';
+    this.ctx.fillText(
+      `🏆 [A] LOGROS (${achUnlocked}/${totalAch})`,
+      achBtn.x + achBtn.width / 2,
+      achBtn.y + 17
+    );
+
+    // Botón de Ajustes y Audio
+    const setBtn = this.getSettingsButtonRect();
+    this.ctx.fillStyle = this.hoveredSettingsBtn
+      ? 'rgba(12, 40, 65, 0.96)'
+      : 'rgba(6, 22, 36, 0.92)';
+    this.ctx.strokeStyle = this.hoveredSettingsBtn ? '#38bdf8' : '#0284c7';
+    this.ctx.lineWidth = this.hoveredSettingsBtn ? 2 : 1.5;
+    this.ctx.fillRect(setBtn.x, setBtn.y, setBtn.width, setBtn.height);
+    this.ctx.strokeRect(setBtn.x, setBtn.y, setBtn.width, setBtn.height);
+    this.ctx.fillStyle = this.hoveredSettingsBtn ? '#ffffff' : '#7dd3fc';
+    this.ctx.font = 'bold 11px "Courier New", monospace';
+    this.ctx.fillText(
+      '⚙️ [O] AJUSTES',
+      setBtn.x + setBtn.width / 2,
+      setBtn.y + 17
+    );
+
+    // Botón de Cómo Jugar (Tutorial)
+    const helpBtn = this.getHelpButtonRect();
+    this.ctx.fillStyle = this.hoveredHelpBtn
+      ? 'rgba(45, 16, 55, 0.96)'
+      : 'rgba(24, 8, 32, 0.92)';
+    this.ctx.strokeStyle = this.hoveredHelpBtn ? '#d946ef' : '#a855f7';
+    this.ctx.lineWidth = this.hoveredHelpBtn ? 2 : 1.5;
+    this.ctx.fillRect(helpBtn.x, helpBtn.y, helpBtn.width, helpBtn.height);
+    this.ctx.strokeRect(helpBtn.x, helpBtn.y, helpBtn.width, helpBtn.height);
+    this.ctx.fillStyle = this.hoveredHelpBtn ? '#ffffff' : '#f0abfc';
+    this.ctx.font = 'bold 11px "Courier New", monospace';
+    this.ctx.fillText(
+      '📖 [H] CÓMO JUGAR',
+      helpBtn.x + helpBtn.width / 2,
+      helpBtn.y + 17
     );
 
     if (this.activeMenuTab === 'SHOP') {
@@ -2800,6 +3167,12 @@ export class Game {
 
     if (this.showLeaderboardOverlay) {
       this.drawLeaderboardOverlay();
+    } else if (this.showAchievementsOverlay) {
+      this.drawAchievementsOverlay();
+    } else if (this.showSettingsOverlay) {
+      this.drawSettingsOverlay();
+    } else if (this.showHelpOverlay) {
+      this.drawHelpOverlay();
     }
 
     this.ctx.restore();
@@ -2978,6 +3351,447 @@ export class Game {
       backBtn.x + backBtn.width / 2,
       backBtn.y + 24
     );
+
+    this.ctx.restore();
+  }
+
+  private getOverlayBackButtonRect(
+    panelY: number,
+    panelH: number
+  ): { x: number; y: number; width: number; height: number } {
+    const cx = this.canvas.width / 2;
+    const width = 280;
+    const height = 38;
+    return {
+      x: cx - width / 2,
+      y: panelY + panelH - 52,
+      width,
+      height,
+    };
+  }
+
+  private handleSettingsClick(mx: number, my: number): boolean {
+    for (const ctrl of this.getSettingsControlRects()) {
+      if (
+        mx >= ctrl.x &&
+        mx <= ctrl.x + ctrl.width &&
+        my >= ctrl.y &&
+        my <= ctrl.y + ctrl.height
+      ) {
+        if (ctrl.id === 'MASTER_DOWN') {
+          this.sound.masterVolume = Math.max(0, Number((this.sound.masterVolume - 0.1).toFixed(1)));
+          this.sound.saveSettings();
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'MASTER_UP') {
+          this.sound.masterVolume = Math.min(1.0, Number((this.sound.masterVolume + 0.1).toFixed(1)));
+          this.sound.saveSettings();
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'MUSIC_DOWN') {
+          this.sound.musicVolume = Math.max(0, Number((this.sound.musicVolume - 0.1).toFixed(1)));
+          this.sound.saveSettings();
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'MUSIC_UP') {
+          this.sound.musicVolume = Math.min(1.0, Number((this.sound.musicVolume + 0.1).toFixed(1)));
+          this.sound.saveSettings();
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'SFX_DOWN') {
+          this.sound.sfxVolume = Math.max(0, Number((this.sound.sfxVolume - 0.1).toFixed(1)));
+          this.sound.saveSettings();
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'SFX_UP') {
+          this.sound.sfxVolume = Math.min(1.0, Number((this.sound.sfxVolume + 0.1).toFixed(1)));
+          this.sound.saveSettings();
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'TOGGLE_MUTE') {
+          this.sound.muted = !this.sound.muted;
+          this.sound.saveSettings();
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'TOGGLE_SHAKE') {
+          this.sound.screenShakeEnabled = !this.sound.screenShakeEnabled;
+          this.sound.saveSettings();
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'TOGGLE_FULLSCREEN') {
+          this.toggleFullscreen();
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'BACK') {
+          this.showSettingsOverlay = false;
+          this.sound.playShoot(false);
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private drawAchievementsOverlay(): void {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    const panelW = 860;
+    const panelH = 610;
+    const px = cx - panelW / 2;
+    const py = cy - panelH / 2;
+
+    this.ctx.fillStyle = 'rgba(4, 16, 22, 0.98)';
+    this.ctx.strokeStyle = '#84cc16';
+    this.ctx.lineWidth = 2.5;
+    this.ctx.shadowColor = '#84cc16';
+    this.ctx.shadowBlur = 22;
+    this.ctx.fillRect(px, py, panelW, panelH);
+    this.ctx.strokeRect(px, py, panelW, panelH);
+
+    this.ctx.shadowBlur = 0;
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#bef264';
+    this.ctx.font = 'bold 24px "Courier New", monospace';
+    this.ctx.fillText(
+      `🏆 PROTOCOLO DE HITOS // LOGROS (${this.achievementSystem.getUnlockedCount()}/${this.achievementSystem.achievements.length})`,
+      cx,
+      py + 36
+    );
+
+    this.ctx.fillStyle = '#94a3b8';
+    this.ctx.font = '12px "Courier New", monospace';
+    this.ctx.fillText(
+      'Recompensas en Criptomonedas acreditadas automáticamente al desbloquear cada hito.',
+      cx,
+      py + 58
+    );
+
+    const cardW = 390;
+    const cardH = 68;
+    const startY = py + 74;
+    const col1X = cx - cardW - 10;
+    const col2X = cx + 10;
+
+    for (let i = 0; i < this.achievementSystem.achievements.length; i++) {
+      const ach = this.achievementSystem.achievements[i];
+      const col = i % 2 === 0 ? col1X : col2X;
+      const row = Math.floor(i / 2);
+      const cardY = startY + row * (cardH + 10);
+
+      this.ctx.fillStyle = ach.unlocked ? 'rgba(5, 46, 22, 0.92)' : 'rgba(8, 18, 28, 0.88)';
+      this.ctx.strokeStyle = ach.unlocked ? '#22c55e' : 'rgba(71, 85, 105, 0.4)';
+      this.ctx.lineWidth = ach.unlocked ? 1.8 : 1;
+      this.ctx.fillRect(col, cardY, cardW, cardH);
+      this.ctx.strokeRect(col, cardY, cardW, cardH);
+
+      // Icono
+      this.ctx.font = '24px sans-serif';
+      this.ctx.textAlign = 'left';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillText(ach.icon, col + 12, cardY + cardH / 2);
+
+      // Título y Recompensa
+      this.ctx.textBaseline = 'alphabetic';
+      this.ctx.fillStyle = ach.unlocked ? '#4ade80' : '#e2e8f0';
+      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.fillText(ach.title, col + 46, cardY + 20);
+
+      this.ctx.textAlign = 'right';
+      this.ctx.fillStyle = ach.unlocked ? '#86efac' : '#fbbf24';
+      this.ctx.font = 'bold 12px "Courier New", monospace';
+      this.ctx.fillText(`+${ach.rewardCoins} 🪙`, col + cardW - 12, cardY + 20);
+
+      // Descripción
+      this.ctx.textAlign = 'left';
+      this.ctx.fillStyle = '#94a3b8';
+      this.ctx.font = '11px "Courier New", monospace';
+      this.ctx.fillText(ach.description, col + 46, cardY + 38);
+
+      // Barra de Progreso
+      const progressRatio = Math.min(1, ach.current / ach.target);
+      const barX = col + 46;
+      const barY = cardY + 48;
+      const barW = cardW - 140;
+      const barH = 8;
+
+      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+      this.ctx.fillRect(barX, barY, barW, barH);
+      this.ctx.fillStyle = ach.unlocked ? '#22c55e' : '#38bdf8';
+      this.ctx.fillRect(barX, barY, barW * progressRatio, barH);
+
+      this.ctx.textAlign = 'right';
+      this.ctx.fillStyle = ach.unlocked ? '#4ade80' : '#38bdf8';
+      this.ctx.font = 'bold 10px "Courier New", monospace';
+      const progressText = ach.unlocked
+        ? 'COMPLETO'
+        : `${Math.floor(ach.current)}/${ach.target}`;
+      this.ctx.fillText(progressText, col + cardW - 12, cardY + 56);
+    }
+
+    // Botón Volver
+    const backBtn = this.getOverlayBackButtonRect(py, panelH);
+    this.ctx.fillStyle = this.hoveredOverlayBackBtn
+      ? 'rgba(0, 68, 40, 0.96)'
+      : 'rgba(10, 32, 24, 0.94)';
+    this.ctx.strokeStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
+    this.ctx.lineWidth = this.hoveredOverlayBackBtn ? 2.5 : 1.8;
+    this.ctx.fillRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
+    this.ctx.strokeRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
+    this.ctx.font = 'bold 15px "Courier New", monospace';
+    this.ctx.fillText('<< [ ESC / B ] VOLVER AL MENÚ', backBtn.x + backBtn.width / 2, backBtn.y + 24);
+
+    this.ctx.restore();
+  }
+
+  private drawSettingsOverlay(): void {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    const panelW = 660;
+    const panelH = 540;
+    const px = cx - panelW / 2;
+    const py = cy - panelH / 2;
+
+    this.ctx.fillStyle = 'rgba(4, 16, 26, 0.98)';
+    this.ctx.strokeStyle = '#38bdf8';
+    this.ctx.lineWidth = 2.5;
+    this.ctx.shadowColor = '#38bdf8';
+    this.ctx.shadowBlur = 22;
+    this.ctx.fillRect(px, py, panelW, panelH);
+    this.ctx.strokeRect(px, py, panelW, panelH);
+
+    this.ctx.shadowBlur = 0;
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#7dd3fc';
+    this.ctx.font = 'bold 24px "Courier New", monospace';
+    this.ctx.fillText('⚙️ CONFIGURACIÓN DEL SISTEMA // AJUSTES', cx, py + 42);
+
+    this.ctx.fillStyle = '#94a3b8';
+    this.ctx.font = '12px "Courier New", monospace';
+    this.ctx.fillText('Los cambios se guardan automáticamente en tu navegador.', cx, py + 68);
+
+    const rows = [
+      { label: 'VOLUMEN MAESTRO', value: Math.round(this.sound.masterVolume * 100) },
+      { label: 'MÚSICA PROCEDURAL (BGM)', value: Math.round(this.sound.musicVolume * 100) },
+      { label: 'EFECTOS DE SONIDO (SFX)', value: Math.round(this.sound.sfxVolume * 100) },
+    ];
+
+    const rowStartY = py + 110;
+    const rowGap = 52;
+
+    for (let r = 0; r < rows.length; r++) {
+      const y = rowStartY + r * rowGap;
+      this.ctx.textAlign = 'left';
+      this.ctx.fillStyle = '#e2e8f0';
+      this.ctx.font = 'bold 14px "Courier New", monospace';
+      this.ctx.fillText(rows[r].label, cx - 240, y + 21);
+
+      // Botón [-]
+      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      this.ctx.strokeStyle = '#38bdf8';
+      this.ctx.lineWidth = 1.5;
+      this.ctx.fillRect(cx + 70, y, 44, 32);
+      this.ctx.strokeRect(cx + 70, y, 44, 32);
+
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#38bdf8';
+      this.ctx.font = 'bold 18px monospace';
+      this.ctx.fillText('-', cx + 92, y + 22);
+
+      // Valor central
+      this.ctx.fillStyle = '#00ff66';
+      this.ctx.font = 'bold 15px "Courier New", monospace';
+      this.ctx.fillText(`${rows[r].value}%`, cx + 158, y + 21);
+
+      // Botón [+]
+      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      this.ctx.strokeStyle = '#38bdf8';
+      this.ctx.fillRect(cx + 200, y, 44, 32);
+      this.ctx.strokeRect(cx + 200, y, 44, 32);
+
+      this.ctx.fillStyle = '#38bdf8';
+      this.ctx.font = 'bold 18px monospace';
+      this.ctx.fillText('+', cx + 222, y + 22);
+    }
+
+    // Toggle Mute
+    const muteY = rowStartY + rowGap * 3 + 10;
+    const muteActive = this.sound.muted;
+    this.ctx.fillStyle = muteActive ? 'rgba(127, 29, 29, 0.92)' : 'rgba(10, 45, 30, 0.92)';
+    this.ctx.strokeStyle = muteActive ? '#ef4444' : '#00ff66';
+    this.ctx.lineWidth = 1.8;
+    this.ctx.fillRect(cx - 240, muteY, 230, 38);
+    this.ctx.strokeRect(cx - 240, muteY, 230, 38);
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = muteActive ? '#fca5a5' : '#86efac';
+    this.ctx.font = 'bold 13px "Courier New", monospace';
+    this.ctx.fillText(`MUTE: ${muteActive ? 'SILENCIADO' : 'SONIDO ON'}`, cx - 125, muteY + 24);
+
+    // Toggle Screen Shake
+    const shakeActive = this.sound.screenShakeEnabled;
+    this.ctx.fillStyle = shakeActive ? 'rgba(10, 45, 30, 0.92)' : 'rgba(30, 41, 59, 0.92)';
+    this.ctx.strokeStyle = shakeActive ? '#00ff66' : '#64748b';
+    this.ctx.lineWidth = 1.8;
+    this.ctx.fillRect(cx + 10, muteY, 230, 38);
+    this.ctx.strokeRect(cx + 10, muteY, 230, 38);
+
+    this.ctx.fillStyle = shakeActive ? '#86efac' : '#94a3b8';
+    this.ctx.fillText(`AGITADO PANTALLA: ${shakeActive ? 'ON' : 'OFF'}`, cx + 125, muteY + 24);
+
+    // Toggle Fullscreen
+    const fsY = rowStartY + rowGap * 4 + 18;
+    this.ctx.fillStyle = 'rgba(20, 35, 50, 0.92)';
+    this.ctx.strokeStyle = '#38bdf8';
+    this.ctx.lineWidth = 1.8;
+    this.ctx.fillRect(cx - 240, fsY, 480, 40);
+    this.ctx.strokeRect(cx - 240, fsY, 480, 40);
+
+    this.ctx.fillStyle = '#bae6fd';
+    this.ctx.font = 'bold 14px "Courier New", monospace';
+    this.ctx.fillText('⛶ CONMUTAR PANTALLA COMPLETA (F11)', cx, fsY + 25);
+
+    // Botón Volver
+    const backBtn = this.getOverlayBackButtonRect(py, panelH);
+    this.ctx.fillStyle = this.hoveredOverlayBackBtn
+      ? 'rgba(0, 68, 40, 0.96)'
+      : 'rgba(10, 32, 24, 0.94)';
+    this.ctx.strokeStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
+    this.ctx.lineWidth = this.hoveredOverlayBackBtn ? 2.5 : 1.8;
+    this.ctx.fillRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
+    this.ctx.strokeRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
+
+    this.ctx.fillStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
+    this.ctx.font = 'bold 15px "Courier New", monospace';
+    this.ctx.fillText('<< [ ESC / B ] GUARDAR Y VOLVER', backBtn.x + backBtn.width / 2, backBtn.y + 24);
+
+    this.ctx.restore();
+  }
+
+  private drawHelpOverlay(): void {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    const panelW = 860;
+    const panelH = 590;
+    const px = cx - panelW / 2;
+    const py = cy - panelH / 2;
+
+    this.ctx.fillStyle = 'rgba(12, 6, 22, 0.98)';
+    this.ctx.strokeStyle = '#d946ef';
+    this.ctx.lineWidth = 2.5;
+    this.ctx.shadowColor = '#d946ef';
+    this.ctx.shadowBlur = 22;
+    this.ctx.fillRect(px, py, panelW, panelH);
+    this.ctx.strokeRect(px, py, panelW, panelH);
+
+    this.ctx.shadowBlur = 0;
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#f0abfc';
+    this.ctx.font = 'bold 24px "Courier New", monospace';
+    this.ctx.fillText('📖 MANUAL DE OPERACIONES DEL KERNEL // CÓMO JUGAR', cx, py + 38);
+
+    const cards = [
+      {
+        title: '🎮 1. MOVIMIENTO Y CONTROLES',
+        lines: [
+          '• [WASD / Flechas]: Desplazamiento del Agente.',
+          '• [P]: Pausa táctica del sistema.',
+          '• [Ratón]: Clic para interactuar con menús y cartas.',
+          '• Disparo automático: Tus armas atacan solas',
+          '  al malware más prioritario en tu radio de acción.',
+        ],
+        color: '#00ff66',
+        border: 'rgba(0, 255, 102, 0.35)',
+      },
+      {
+        title: '⚡ 2. ARSENAL Y PROGRESIÓN',
+        lines: [
+          '• Recoge orbes de XP para instalar parches de nivel.',
+          '• Límite estricto de 4 ranuras de armas activas.',
+          '• Combina armas y pasivas para crear sinergias.',
+          '• Desbloquea y equipa sombreros en el Gacha [G]',
+          '  para obtener bonificaciones pasivas permanentes.',
+        ],
+        color: '#38bdf8',
+        border: 'rgba(56, 189, 248, 0.35)',
+      },
+      {
+        title: '🔑 3. PROTOCOLO MEGA-JEFES',
+        lines: [
+          '• Tras cada ciclo de élites aparece 1 de los 4 Mega-Jefes.',
+          '• ¡TUS ARMAS SE DESHABILITAN POR EL ENCRIPTADO!',
+          '• No puedes dañarlos disparando.',
+          '• Esquiva sus ataques y RECOGE 5 LLAVES',
+          '  de desencriptación en la arena para eliminarlos.',
+        ],
+        color: '#fbbf24',
+        border: 'rgba(251, 191, 36, 0.35)',
+      },
+      {
+        title: '🐂 4. JEFE FINAL: "EL TORO" (INVENCIBLE)',
+        lines: [
+          '• Despierta al derrotar a los 4 Mega-Jefes únicos.',
+          '• ¡TUS ARMAS SE REACTIVAN PARA ESTE COMBATE!',
+          '• "El Toro" es INVENCIBLE y acelera cada 15s.',
+          '• Cada embestida o contacto quita el 50% de HP.',
+          '• ¡Haz todo el daño posible para liderar el Ranking!',
+        ],
+        color: '#f87171',
+        border: 'rgba(248, 113, 113, 0.35)',
+      },
+    ];
+
+    const cardW = 390;
+    const cardH = 205;
+    const startY = py + 68;
+    const col1X = cx - cardW - 10;
+    const col2X = cx + 10;
+
+    for (let c = 0; c < cards.length; c++) {
+      const card = cards[c];
+      const colX = c % 2 === 0 ? col1X : col2X;
+      const rowY = startY + Math.floor(c / 2) * (cardH + 14);
+
+      this.ctx.fillStyle = 'rgba(6, 12, 20, 0.9)';
+      this.ctx.strokeStyle = card.border;
+      this.ctx.lineWidth = 1.5;
+      this.ctx.fillRect(colX, rowY, cardW, cardH);
+      this.ctx.strokeRect(colX, rowY, cardW, cardH);
+
+      this.ctx.textAlign = 'left';
+      this.ctx.fillStyle = card.color;
+      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.fillText(card.title, colX + 16, rowY + 28);
+
+      this.ctx.fillStyle = '#cbd5e1';
+      this.ctx.font = '12px "Courier New", monospace';
+      for (let l = 0; l < card.lines.length; l++) {
+        this.ctx.fillText(card.lines[l], colX + 16, rowY + 58 + l * 26);
+      }
+    }
+
+    // Botón Volver
+    const backBtn = this.getOverlayBackButtonRect(py, panelH);
+    this.ctx.fillStyle = this.hoveredOverlayBackBtn
+      ? 'rgba(0, 68, 40, 0.96)'
+      : 'rgba(10, 32, 24, 0.94)';
+    this.ctx.strokeStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
+    this.ctx.lineWidth = this.hoveredOverlayBackBtn ? 2.5 : 1.8;
+    this.ctx.fillRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
+    this.ctx.strokeRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
+    this.ctx.font = 'bold 15px "Courier New", monospace';
+    this.ctx.fillText('<< [ ESC / B ] ENTENDIDO // VOLVER', backBtn.x + backBtn.width / 2, backBtn.y + 24);
 
     this.ctx.restore();
   }
@@ -3388,53 +4202,148 @@ export class Game {
     const cy = this.canvas.height / 2;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(8, 0, 2, 0.86)';
+    this.ctx.fillStyle = 'rgba(8, 0, 2, 0.88)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const boxW = 640;
-    const boxH = 310;
-    this.ctx.fillStyle = 'rgba(18, 2, 6, 0.95)';
+    const boxW = 880;
+    const boxH = 580;
+    this.ctx.fillStyle = 'rgba(18, 2, 6, 0.96)';
     this.ctx.strokeStyle = '#ff1e42';
-    this.ctx.lineWidth = 2;
+    this.ctx.lineWidth = 2.5;
     this.ctx.shadowColor = '#ff1e42';
-    this.ctx.shadowBlur = 20;
+    this.ctx.shadowBlur = 24;
     this.ctx.fillRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
     this.ctx.strokeRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
 
+    this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#ff1e42';
-    this.ctx.font = 'bold 34px "Courier New", monospace';
-    this.ctx.fillText('KERNEL PANIC // SYSTEM COMPROMISED', cx, cy - 85);
+    this.ctx.font = 'bold 30px "Courier New", monospace';
+    this.ctx.fillText('KERNEL PANIC // SYSTEM COMPROMISED', cx, cy - 235);
 
-    this.ctx.shadowBlur = 0;
+    // Resumen General
     this.ctx.fillStyle = '#00ff66';
-    this.ctx.font = '16px "Courier New", monospace';
+    this.ctx.font = '14px "Courier New", monospace';
     this.ctx.fillText(
-      `Agente: ${this.player.profileName} (v${this.upgradeSystem.level}.0)  |  Amenaza: LVL ${this.spawner.currentThreatLevel}`,
+      `Agente: ${this.player.profileName} (v${this.upgradeSystem.level}.0)  |  Tiempo: ${this.formatTimeMMSS(this.elapsedTime)}  |  Bajas: ${this.killCount}  |  Cripto: +${this.runCoinsCollected} 🪙`,
       cx,
-      cy - 30
-    );
-    this.ctx.fillText(
-      `Malware Purgado: ${this.killCount} (Récord: ${this.highScoreKills})  |  Tiempo: ${this.formatTimeMMSS(this.elapsedTime)}`,
-      cx,
-      cy + 2
+      cy - 200
     );
 
-    this.ctx.fillStyle = '#fbbf24';
-    this.ctx.font = 'bold 16px "Courier New", monospace';
-    this.ctx.fillText(
-      `Criptomonedas recogidas: +${this.runCoinsCollected} (Total en Tienda: ${this.metaSystem.coins})`,
-      cx,
-      cy + 36
-    );
+    if (this.runDamageToToro > 0) {
+      this.ctx.fillStyle = '#fbbf24';
+      this.ctx.font = 'bold 14px "Courier New", monospace';
+      this.ctx.fillText(
+        `🐂 DAÑO AL JEFE FINAL (EL TORO): ${this.runDamageToToro.toLocaleString('en-US')} DMG`,
+        cx,
+        cy - 176
+      );
+    }
 
+    // Dos Paneles: Izquierda (Daño por Arma) | Derecha (Bajas por Tipo)
+    const panelY = cy - 150;
+    const subW = 405;
+    const subH = 320;
+    const leftX = cx - subW - 12;
+    const rightX = cx + 12;
+
+    // Panel Izquierdo: Rendimiento de Arsenal
+    this.ctx.fillStyle = 'rgba(10, 2, 6, 0.9)';
+    this.ctx.strokeStyle = '#f43f5e';
+    this.ctx.lineWidth = 1.5;
+    this.ctx.fillRect(leftX, panelY, subW, subH);
+    this.ctx.strokeRect(leftX, panelY, subW, subH);
+
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = '#fb7185';
+    this.ctx.font = 'bold 14px "Courier New", monospace';
+    this.ctx.fillText('⚔️ RENDIMIENTO DE ARSENAL (DAÑO)', leftX + 16, panelY + 28);
+
+    const weaponDamages = Object.entries(this.combatSystem.weaponDamageStats)
+      .filter(([_, dmg]) => dmg > 0)
+      .map(([name, damage]) => ({ name, damage }))
+      .sort((a, b) => b.damage - a.damage);
+    const totalDmg = weaponDamages.reduce((sum, w) => sum + w.damage, 0) || 1;
+
+    const rowColors = ['#00ff66', '#38bdf8', '#fbbf24', '#ff8800', '#d946ef', '#ec4899', '#a3e635'];
+
+    if (weaponDamages.length === 0) {
+      this.ctx.fillStyle = '#94a3b8';
+      this.ctx.font = '12px "Courier New", monospace';
+      this.ctx.fillText('Sin registros de daño con armas.', leftX + 16, panelY + 60);
+    } else {
+      for (let w = 0; w < Math.min(6, weaponDamages.length); w++) {
+        const item = weaponDamages[w];
+        const rowY = panelY + 54 + w * 42;
+        const pct = Math.round((item.damage / totalDmg) * 100);
+        const col = rowColors[w % rowColors.length];
+
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = 'bold 12px "Courier New", monospace';
+        this.ctx.fillText(item.name, leftX + 16, rowY + 12);
+
+        this.ctx.textAlign = 'right';
+        this.ctx.fillStyle = col;
+        this.ctx.fillText(`${item.damage.toLocaleString('en-US')} (${pct}%)`, leftX + subW - 16, rowY + 12);
+
+        this.ctx.textAlign = 'left';
+        // Barra
+        const barW = subW - 32;
+        this.ctx.fillStyle = 'rgba(30, 41, 59, 0.8)';
+        this.ctx.fillRect(leftX + 16, rowY + 18, barW, 8);
+        this.ctx.fillStyle = col;
+        this.ctx.fillRect(leftX + 16, rowY + 18, (item.damage / totalDmg) * barW, 8);
+      }
+    }
+
+    // Panel Derecho: Amenazas Purgadas
+    this.ctx.fillStyle = 'rgba(10, 2, 6, 0.9)';
+    this.ctx.strokeStyle = '#38bdf8';
+    this.ctx.lineWidth = 1.5;
+    this.ctx.fillRect(rightX, panelY, subW, subH);
+    this.ctx.strokeRect(rightX, panelY, subW, subH);
+
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = '#7dd3fc';
+    this.ctx.font = 'bold 14px "Courier New", monospace';
+    this.ctx.fillText('👾 REGISTRO DE AMENAZAS PURGADAS', rightX + 16, panelY + 28);
+
+    const enemyRows = [
+      { name: 'Adware Básico (Rojos)', count: this.combatSystem.killsByTypeStats['Adware'], color: '#ef4444' },
+      { name: 'Troyanos Rápidos (Amarillos)', count: this.combatSystem.killsByTypeStats['Trojan'], color: '#eab308' },
+      { name: 'Gusanos Divisibles (Morados)', count: this.combatSystem.killsByTypeStats['Worm'], color: '#a855f7' },
+      { name: 'Evasores (Ghost Scripts)', count: this.combatSystem.killsByTypeStats['Evasor'], color: '#06b6d4' },
+      { name: 'Cajas de Hardware Destruidas', count: this.combatSystem.killsByTypeStats['Hardware Box'], color: '#f97316' },
+      { name: 'Mega-Jefes Purgados', count: this.defeatedMegaBossVariants.size, color: '#22c55e' },
+    ];
+
+    for (let e = 0; e < enemyRows.length; e++) {
+      const er = enemyRows[e];
+      const rY = panelY + 58 + e * 40;
+
+      this.ctx.fillStyle = er.color;
+      this.ctx.fillRect(rightX + 16, rY + 3, 8, 8);
+
+      this.ctx.fillStyle = '#cbd5e1';
+      this.ctx.font = '12px "Courier New", monospace';
+      this.ctx.fillText(er.name, rightX + 32, rY + 12);
+
+      this.ctx.textAlign = 'right';
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.fillText(`${er.count}`, rightX + subW - 16, rY + 12);
+      this.ctx.textAlign = 'left';
+    }
+
+    // Pie de Acción
     const blink = Math.floor(performance.now() / 450) % 2 === 0;
+    this.ctx.textAlign = 'center';
     this.ctx.fillStyle = blink ? '#00f0ff' : '#ffffff';
     this.ctx.font = 'bold 16px "Courier New", monospace';
     this.ctx.fillText(
-      '[R / ENTER]: Reintentar  |  [T / ESC / CLIC]: Ir a Tienda Principal',
+      '[R / ENTER]: Reintentar Partida  |  [T / ESC / CLIC]: Ir a Tienda Principal',
       cx,
-      cy + 95
+      cy + 242
     );
     this.ctx.restore();
   }

@@ -1,12 +1,13 @@
 {
   "name": "cyber-survivor",
   "private": true,
-  "version": "0.16.1",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "npm run build && firebase deploy --only hosting"
   },
   "dependencies": {
     "firebase": "^13.2.0"

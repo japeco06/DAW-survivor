@@ -247,24 +247,64 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
         ├── Overlay interactivo con pestañas `"Top Damage to Toro"` y `"Best Survival Time"` mostrando Rango (#1-#10), Nombre y Métrica
         └── Botón `"Back"` para regresar al Menú Principal
 │
-└── v0.16.1 — Normalización de Viewport (1080p), Tab por Defecto en Rankings y Balanceo de Enemigos (ACTUAL)
-    ├── [Normalización de Viewport y Spawns (`Game.ts`, `style.css`)]
-    │   ├── Resolución lógica fija de 1920x1080 en el canvas y escalado CSS con `object-fit: contain`
-    │   ├── Mapeo preciso de coordenadas de ratón considerando letterbox/pillarbox para cualquier relación de aspecto
-    │   └── Spawns de enemigos y límites de pantalla estandarizados a las dimensiones lógicas fijas
-    ├── [Actualización de UI de Clasificación (`Game.ts`)]
-    │   └── Pestaña "Best Survival Time" configurada como pestaña activa predeterminada al abrir los Rankings Globales
-    ├── [IA y Balanceo de Enemigos (`CryptoMiner.ts`, `ElToroBoss.ts`, `Spawner.ts`)]
-    │   ├── Minero de Criptos (Loot Goblin): deslizamiento por bordes y deflexión angular para evitar atascos en esquinas
-    │   ├── Jefe Final "El Toro": velocidad base de persecución a pie aumentada (122 -> 175 px/s) sin alterar embestida ni telegrafiado
-    │   └── Enemigos Rojos (Adware): escalado progresivo de vida (+7%/min hasta 3.8x) y velocidad (+4.5 px/s/min hasta +48) a lo largo de la partida
-    └── [Optimizaciones Autónomas (`CompanionPet.ts`, `ElToroBoss.ts`)]
-        └── Eliminadas dependencias residuales de `window.innerWidth/innerHeight` en las entidades del juego
+├── v0.16.1 — Normalización de Viewport (1080p), Tab por Defecto en Rankings y Balanceo de Enemigos
+│   ├── [Normalización de Viewport y Spawns (`Game.ts`, `style.css`)]
+│   │   ├── Resolución lógica fija de 1920x1080 en el canvas y escalado CSS con `object-fit: contain`
+│   │   ├── Mapeo preciso de coordenadas de ratón considerando letterbox/pillarbox para cualquier relación de aspecto
+│   │   └── Spawns de enemigos y límites de pantalla estandarizados a las dimensiones lógicas fijas
+│   ├── [Actualización de UI de Clasificación (`Game.ts`)]
+│   │   └── Pestaña "Best Survival Time" configurada como pestaña activa predeterminada al abrir los Rankings Globales
+│   ├── [IA y Balanceo de Enemigos (`CryptoMiner.ts`, `ElToroBoss.ts`, `Spawner.ts`)]
+│   │   ├── Minero de Criptos (Loot Goblin): deslizamiento por bordes y deflexión angular para evitar atascos en esquinas
+│   │   ├── Jefe Final "El Toro": velocidad base de persecución a pie aumentada (122 -> 175 px/s) sin alterar embestida ni telegrafiado
+│   │   └── Enemigos Rojos (Adware): escalado progresivo de vida (+7%/min hasta 3.8x) y velocidad (+4.5 px/s/min hasta +48) a lo largo de la partida
+│   └── [Optimizaciones Autónomas (`CompanionPet.ts`, `ElToroBoss.ts`)]
+│       └── Eliminadas dependencias residuales de `window.innerWidth/innerHeight` en las entidades del juego
+│
+└── v1.0.0 — Versión Oficial 1.0 (BGM Procedimental, Desglose Estadístico, Logros, Ajustes y Deploy Hosting) (ACTUAL)
+    ├── [Música y Audio Web Audio API (`SoundSystem.ts`)]
+    │   ├── BGM procedimental sintetizado en tiempo real con 4 pistas dinámicas: MENÚ, EN PARTIDA, JEFE y JEFE FINAL
+    │   └── Controles independientes de volumen: Master, BGM y SFX con persistencia local
+    ├── [Pantalla Post-Partida Expandida (`Game.ts`, `CombatSystem.ts`)]
+    │   ├── Desglose exhaustivo de daño total y porcentaje relativo por cada una de las 7 armas
+    │   ├── Barras gráficas proporcionales codificadas por colores cibernéticos
+    │   └── Conteo detallado de bajas por familia de malware (Adware, Troyanos, Gusanos, Evasores, Jefes)
+    ├── [Sistema de Hitos y Logros (`AchievementSystem.ts`)]
+    │   ├── 12 logros con seguimiento de progreso, recompensas en Criptomonedas y notificaciones toast animadas
+    │   └── Overlay accesible con la tecla [A] o botón en el Menú Principal
+    ├── [Menús de Opciones y Tutorial (`Game.ts`)]
+    │   ├── Panel de Ajustes [O] con deslizadores de volumen, conmutador de Screen Shake y pantalla completa
+    │   └── Manual Ciber-Antivirus [H] con guía de controles, arsenal y reglas clave de jefes
+    └── [Despliegue y Hosting de Producción (`firebase.json`, `.firebaserc`, `package.json`)]
+        ├── Configuración oficial de Firebase Hosting para el proyecto `survivor-daw`
+        └── Script `npm run deploy` automatizado para compilación y despliegue
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.0.0] - 2026-11-04
+- **Música Procedimental y Sistema de Audio (`src/core/SoundSystem.ts`, `src/core/Game.ts`)**:
+  - Implementado motor de BGM sintetizado en tiempo real con Web Audio API (bombos con pitch glide, cajas de ruido blanco filtrado, charles estocásticos y líneas de bajo/arpegios synthwave).
+  - 4 pistas dinámicas sincronizadas con el flujo del juego: `MENU` (tema cibernético lento), `INGAME` (cyber-synth de 128 BPM), `BOSS` (ritmo tenso acelerado de 142 BPM con bajos pesados) y `FINAL_BOSS` (frenesí oscuro de 154 BPM con arpegios menores disonantes).
+  - Control de volumen granular e independiente (`Master`, `BGM`, `SFX`) y persistencia automática en `localStorage`.
+- **Desglose Estadístico Post-Partida (`src/systems/CombatSystem.ts`, `src/core/Game.ts`)**:
+  - Reemplazada la pantalla simple de Game Over por un informe de telemetría de 2 columnas.
+  - Columna 1: Desglose de daño total infligido y porcentaje relativo por arma (`Ráfaga Firewall`, `Ping Tracker`, `Zona Cuarentena`, `Cortafuegos`, `Rayo SQL`, `Drones Antivirus`, `Mascota Morcillita`) con barras de progreso de color.
+  - Columna 2: Censo de malware eliminado clasificado por tipología (Adware, Troyano, Gusano, Evasor, Caja de Hardware, Mega-Jefes).
+- **Sistema de Logros y Hitos (`src/systems/AchievementSystem.ts`)**:
+  - 12 logros desbloqueables con metas cuantitativas (ej. Primer Parche, Purgador Masivo, Coleccionista de Hardware, Caza-Minero, Derrota de Mega-Jefes, Encuentro con El Toro, Daño al Toro 10k y 50k, Supervivencia 3m y 6m, Nivel 20).
+  - Recompensas económicas en Criptomonedas integradas directamente con `MetaSystem` y persistidas local y remotamente.
+  - Sistema de notificaciones *toast* cibernéticas en pantalla con animaciones de entrada/salida y destellos de partículas.
+  - Overlay interactivo `[A] LOGROS` accesible desde el Menú Principal.
+- **Paneles de Ajustes y Guía Rápida (`src/core/Game.ts`)**:
+  - Overlay `[O] AJUSTES`: Controles interactivos con barra deslizadora para Volumen Maestro, Música y Efectos de Sonido, conmutador para Screen Shake y botón de alternancia a Pantalla Completa.
+  - Overlay `[H] CÓMO JUGAR`: Guía táctica detallada que documenta controles (WASD/Flechas, Pausa P), mecánicas de armas, la regla de las 5 llaves para Mega-Jefes y la naturaleza invencible de "El Toro".
+  - Barra de herramientas secundaria en el Menú Principal con botones interactivos `[A] LOGROS`, `[O] AJUSTES` y `[H] CÓMO JUGAR`.
+- **Despliegue y Producción (`firebase.json`, `.firebaserc`, `package.json`)**:
+  - Vinculación oficial del hosting de Firebase a `survivor-daw` con enrutamiento SPA (`index.html`) y caché optimizado para la carpeta `dist`.
+  - Añadido el comando `npm run deploy` en `package.json` para compilar y desplegar con una sola orden.
 
 ### [v0.16.1] - 2026-11-04
 - **Normalización de Viewport y Spawns (`src/core/Game.ts`, `src/style.css`)**:

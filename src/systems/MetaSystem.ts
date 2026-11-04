@@ -579,7 +579,7 @@ export class MetaSystem {
     }
   }
 
-  private save(): void {
+  public save(): void {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.getStatePayload()));
     } catch {
