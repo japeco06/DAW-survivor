@@ -75,7 +75,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.2';
+const GAME_VERSION = 'v1.1.3';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -118,6 +118,7 @@ export class Game {
   private runDamageToToro: number = 0;
   private highScoreKills: number = 0;
   private showHitboxes: boolean = false;
+  private showAttackRange: boolean = false;
   private hoveredCardIndex: number = -1;
   private hoveredMenuChar: CharacterId | null = null;
   private activeMenuTab: MenuTab = 'SHOP';
@@ -408,7 +409,11 @@ export class Game {
       }
 
       if (key === 'h') {
-        this.showHitboxes = !this.showHitboxes;
+        if (this.gameState === 'PLAYING') {
+          this.showAttackRange = !this.showAttackRange;
+        } else {
+          this.showHitboxes = !this.showHitboxes;
+        }
       }
     });
 
@@ -1918,7 +1923,7 @@ export class Game {
         zone.draw(this.ctx);
       }
 
-      if (this.player.active && !this.megaBoss) {
+      if (this.player.active && !this.megaBoss && this.showAttackRange) {
         this.drawScannerRange();
       }
 
@@ -4092,16 +4097,14 @@ export class Game {
             ? [
                 '• [WASD / Arrows]: Agent movement.',
                 '• [P]: Tactical system pause.',
-                '• [Mouse]: Click to interact with cards & tabs.',
-                '• Auto-fire: Your weapons target automatically',
-                '  the highest priority malware in range.',
+                '• [H in combat]: Toggle attack range circle.',
+                '• Auto-fire: Weapons target highest threat.',
               ]
             : [
                 '• [WASD / Flechas]: Desplazamiento del Agente.',
                 '• [P]: Pausa táctica del sistema.',
-                '• [Ratón]: Clic para interactuar con menús y cartas.',
-                '• Disparo automático: Tus armas atacan solas',
-                '  al malware más prioritario en tu radio de acción.',
+                '• [H en combate]: Alternar círculo de alcance.',
+                '• Disparo automático: Ataca al malware prioritario.',
               ],
         color: '#00ff66',
         border: 'rgba(0, 255, 102, 0.35)',
