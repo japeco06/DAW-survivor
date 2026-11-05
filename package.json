@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy --only hosting",
+    "deploy:itch": "npm run build && .\\butler.exe push dist japeco06/cyber-survivor:html5",
+    "deploy:all": "npm run build && firebase deploy --only hosting && .\\butler.exe push dist japeco06/cyber-survivor:html5",
     "package:itch": "npm run build && powershell -Command \"if (Test-Path cyber-survivor-itch.zip) { Remove-Item cyber-survivor-itch.zip }; Set-Location dist; tar.exe -a -c -f ../cyber-survivor-itch.zip *; Set-Location ..\""
   },
   "dependencies": {
