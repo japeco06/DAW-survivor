@@ -2448,10 +2448,10 @@ export class Game {
     const cy = this.canvas.height / 2;
     const py = cy - 290;
     const width = 500;
-    const height = 46;
+    const height = 48;
     return {
       x: cx - width / 2,
-      y: py + 508,
+      y: py + 504,
       width,
       height,
     };
@@ -2715,7 +2715,7 @@ export class Game {
       this.ctx.fillText(`AGENTE: ${truncatedName}`, statusBoxX + 14, statusBoxY + 20);
 
       this.ctx.fillStyle = '#38bdf8';
-      this.ctx.font = 'bold 10px "Courier New", monospace';
+      this.ctx.font = 'bold 11px Consolas, monospace';
       this.ctx.fillText('☁ NUBE SINCRONIZADA', statusBoxX + 14, statusBoxY + 34);
 
       // Botón Cerrar Sesión
@@ -3193,8 +3193,8 @@ export class Game {
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#a3e635';
-    this.ctx.font = '13px "Courier New", monospace';
-    this.ctx.fillText(this.menuFeedbackMessage, cx, cy + 220);
+    this.ctx.font = 'bold 13px Consolas, monospace';
+    this.ctx.fillText(this.menuFeedbackMessage, cx, py + 472);
 
     const startBtn = this.getStartButtonRect();
     const blink = Math.floor(performance.now() / 450) % 2 === 0;
@@ -3209,7 +3209,7 @@ export class Game {
     this.ctx.fillText(
       '> PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR <',
       cx,
-      startBtn.y + 28
+      startBtn.y + 29
     );
 
     if (this.showLeaderboardOverlay) {
