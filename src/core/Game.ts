@@ -2459,46 +2459,46 @@ export class Game {
 
   private getFullscreenButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1142,
+      x: 1010,
       y: 26,
-      width: 220,
-      height: 44,
-    };
-  }
-
-  private getGlobalRankingsButtonRect(): { x: number; y: number; width: number; height: number } {
-    return {
-      x: 1376,
-      y: 26,
-      width: 160,
-      height: 44,
-    };
-  }
-
-  private getAchievementsButtonRect(): { x: number; y: number; width: number; height: number } {
-    return {
-      x: 1550,
-      y: 26,
-      width: 180,
-      height: 44,
-    };
-  }
-
-  private getSettingsButtonRect(): { x: number; y: number; width: number; height: number } {
-    return {
-      x: 1744,
-      y: 26,
-      width: 140,
+      width: 210,
       height: 44,
     };
   }
 
   private getHelpButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: -9999,
-      y: -9999,
-      width: 0,
-      height: 0,
+      x: 1232,
+      y: 26,
+      width: 160,
+      height: 44,
+    };
+  }
+
+  private getGlobalRankingsButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 1404,
+      y: 26,
+      width: 150,
+      height: 44,
+    };
+  }
+
+  private getAchievementsButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 1566,
+      y: 26,
+      width: 170,
+      height: 44,
+    };
+  }
+
+  private getSettingsButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 1748,
+      y: 26,
+      width: 136,
+      height: 44,
     };
   }
 
@@ -2765,6 +2765,22 @@ export class Game {
     this.ctx.fillStyle = this.hoveredFullscreenBtn ? '#ffffff' : '#00f0ff';
     this.ctx.font = 'bold 12px "Courier New", monospace';
     this.ctx.fillText('⛶ [F] PANTALLA COMPLETA', fsBtn.x + fsBtn.width / 2, fsBtn.y + 27);
+
+    // Botón Cómo Jugar (Tutorial / Guía)
+    const helpBtn = this.getHelpButtonRect();
+    this.ctx.fillStyle = this.hoveredHelpBtn ? 'rgba(55, 18, 70, 0.96)' : 'rgba(32, 10, 42, 0.92)';
+    this.ctx.strokeStyle = this.hoveredHelpBtn ? '#ffffff' : '#d946ef';
+    this.ctx.lineWidth = this.hoveredHelpBtn ? 2.2 : 1.5;
+    this.ctx.shadowColor = '#d946ef';
+    this.ctx.shadowBlur = this.hoveredHelpBtn ? 14 : 6;
+    this.ctx.fillRect(helpBtn.x, helpBtn.y, helpBtn.width, helpBtn.height);
+    this.ctx.strokeRect(helpBtn.x, helpBtn.y, helpBtn.width, helpBtn.height);
+    this.ctx.shadowBlur = 0;
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = this.hoveredHelpBtn ? '#ffffff' : '#f0abfc';
+    this.ctx.font = 'bold 12px "Courier New", monospace';
+    this.ctx.fillText('📖 [H] CÓMO JUGAR', helpBtn.x + helpBtn.width / 2, helpBtn.y + 27);
 
     // Botón Clasificación Global (Rankings)
     const rankingsBtn = this.getGlobalRankingsButtonRect();
