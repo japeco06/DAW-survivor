@@ -1,5 +1,5 @@
 /**
- * Sistema de Logros e Hitos del Kernel (v1.1.0).
+ * Sistema de Logros e Hitos del Kernel (v1.1.2).
  * Registra objetivos desbloqueables durante la partida o el progreso global,
  * soporta 2 páginas de hitos (Fase I y Fase II Épica con altas recompensas),
  * textos bilingües (ES / EN) y notificaciones toast animadas.

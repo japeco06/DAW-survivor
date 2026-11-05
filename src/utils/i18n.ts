@@ -1,5 +1,5 @@
 /**
- * Sistema de Internacionalización (i18n) para Cyber Survivor (v1.1.0).
+ * Sistema de Internacionalización (i18n) para Cyber Survivor (v1.1.2).
  * Soporta alternancia reactiva entre Español (ES) e Inglés (EN)
  * con persistencia automática en localStorage.
  */
