@@ -1,14 +1,14 @@
 {
   "name": "cyber-survivor",
   "private": true,
-  "version": "1.1.4",
+  "version": "1.1.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy --only hosting",
-    "package:itch": "npm run build && powershell -Command \"Compress-Archive -Path dist/* -DestinationPath cyber-survivor-itch.zip -Force\""
+    "package:itch": "npm run build && powershell -Command \"if (Test-Path cyber-survivor-itch.zip) { Remove-Item cyber-survivor-itch.zip }; Set-Location dist; tar.exe -a -c -f ../cyber-survivor-itch.zip *; Set-Location ..\""
   },
   "dependencies": {
     "firebase": "^13.2.0"
