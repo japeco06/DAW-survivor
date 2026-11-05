@@ -279,21 +279,59 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
         ├── Configuración oficial de Firebase Hosting para el proyecto `survivor-daw`
         └── Script `npm run deploy` automatizado para compilación y despliegue
 │
-└── v1.0.1 — Rediseño HUD Menú, Pantalla Completa Destacada y Tarjetas de Mejora Sin Desborde (ACTUAL)
-    ├── [Rediseño Espacial del Menú Principal (`Game.ts`)]
-    │   ├── Esquina superior izquierda: Perfil de Agente y autenticación Google (eliminado emoji verde)
-    │   ├── Esquina superior derecha: Botón destacado de Pantalla Completa [F], Rankings [R], Logros [A] y Ajustes [O]
-    │   ├── Simplificación del menú: Eliminado el botón superfluo de "Cómo Jugar" para una interfaz minimalista y limpia
-    │   └── Caja central (Kernel Hub): Liberada de 6 botones comprimidos, ganando amplitud y espacio vertical óptimo
-    └── [Tarjetas de Mejora de Nivel (`UpgradeSystem.ts`, `Game.ts`)]
-        ├── Textos reducidos y concisos de descripción en las 17 tarjetas para lectura instantánea
-        ├── Nueva subcaja visual de estadísticas (`statBadge`) mostrando incrementos (▲) y reducciones de enfriamiento (▼)
-        └── Dimensiones ampliadas a 350x270px garantizando que ningún texto desborde ni tape los bordes de la tarjeta
+├── v1.0.1 — Rediseño HUD Menú, Pantalla Completa Destacada y Tarjetas de Mejora Sin Desborde
+│   ├── [Rediseño Espacial del Menú Principal (`Game.ts`)]
+│   │   ├── Esquina superior izquierda: Perfil de Agente y autenticación Google (eliminado emoji verde)
+│   │   ├── Esquina superior derecha: Botón destacado de Pantalla Completa [F], Rankings [R], Logros [A] y Ajustes [O]
+│   │   └── Caja central (Kernel Hub): Liberada de botones comprimidos, ganando amplitud y espacio vertical óptimo
+│   └── [Tarjetas de Mejora de Nivel (`UpgradeSystem.ts`, `Game.ts`)]
+│       ├── Textos reducidos y concisos de descripción en las 17 tarjetas para lectura instantánea
+│       ├── Nueva subcaja visual de estadísticas (`statBadge`) mostrando incrementos (▲) y reducciones de enfriamiento (▼)
+│       └── Dimensiones ampliadas a 350x270px garantizando que ningún texto desborde ni tape los bordes de la tarjeta
+│
+└── v1.1.0 — Segunda Página de Logros Difíciles, Selector de Idioma (ES/EN) y Badge Actualizado (ACTUAL)
+    ├── [Segunda Página de Logros Épicos (`AchievementSystem.ts`, `Game.ts`)]
+    │   ├── Expansión del sistema a 24 logros en total repartidos en 2 fases con selector de pestañas [1] y [2]
+    │   ├── Fase I (1 a 12): Protocolos del Kernel estándar
+    │   └── Fase II (13 a 24): Desafíos Épicos de alta dificultad (hasta 15 min, 1200 kills, 250k daño a El Toro, cosméticos míticos) con recompensas masivas (150 a 500 Criptomonedas)
+    ├── [Sistema de Internacionalización Reactivo (`i18n.ts`, `Game.ts`)]
+    │   ├── Apartado en Ajustes [O] para conmutar idioma entre Español [ES] e Inglés [EN]
+    │   ├── Persistencia automática en `localStorage` (`cyber_survivor_lang`)
+    │   └── Traducción reactiva en tiempo real de menús, botones, HUD, logros, ajustes, pausa y pantalla final
+    └── [Versionado y Visibilidad]
+        └── Identificador `v1.1.0` renderizado con badge de brillo en la esquina inferior derecha y sincronizado en git
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.1.0] - 2026-11-05
+- **Segunda Página de Logros y Desafíos Épicos (`src/systems/AchievementSystem.ts`, `src/core/Game.ts`)**:
+  - Ampliado el catálogo de logros de 12 a **24 logros únicos**:
+    - **Fase I // Protocolos (1 a 12)**: Hitos base de supervivencia, desbloqueo y primeros combates.
+    - **Fase II // Desafíos Épicos (13 a 24)**: Objetivos avanzados para jugadores experimentados con altas recompensas en Criptomonedas (150 a 500 🪙):
+      - `Purga Extrema` (1.200 malwares en una partida - +200 🪙).
+      - `Inmortal del Kernel` (10 minutos de supervivencia - +250 🪙).
+      - `Dios del Ciberespacio` (15 minutos de supervivencia - +500 🪙).
+      - `Overclock Supremo` (Nivel 30 en una partida - +200 🪙).
+      - `Domador Cibernético` (100.000 de daño infligido a El Toro - +300 🪙).
+      - `Pesadilla del Toro` (250.000 de daño infligido a El Toro - +500 🪙).
+      - `Cazador de Titanes` (10 jefes o mega-jefes derrotados en una partida - +250 🪙).
+      - `Avaricia de Silicio` (30 Cajas de Hardware destruidas - +150 🪙).
+      - `Magnate Cripto` (5 Mineros de Criptos eliminados - +200 🪙).
+      - `Coleccionista Cyber` (20 sombreros/máscaras en el inventario - +250 🪙).
+      - `Toque de Midas` (Obtener cosmético Mítico o Legendario en Gacha - +400 🪙).
+      - `Apocalipsis Binario` (500.000 de daño total infligido en una partida - +350 🪙).
+  - Modal de Logros rediseñado con sistema de paginación interactiva: pestañas superiores `[1] FASE I` y `[2] FASE II`, navegables tanto con clic de ratón como con teclado (`1`, `2`, flechas izquierda y derecha).
+  - Contador dinámico en el botón del HUD superior: `🏆 [A] LOGROS (X/24)`.
+- **Selector de Idioma (Español / Inglés) en Ajustes (`src/utils/i18n.ts`, `src/core/Game.ts`)**:
+  - Módulo `i18n` reactivo con persistencia local en `localStorage`.
+  - Nueva sección visual en el menú de Ajustes (`[O]`): botones interactivos `[ ESPAÑOL ]` y `[ ENGLISH ]` con indicador de selección activa y brillo de borde.
+  - Soporte bilingüe integral en: barra superior de herramientas, perfil de agente y autenticación, tabs de personajes/gacha/inventario, botón de despliegue, menú de pausa, pantalla de fallo de sistema (Game Over), manual de cómo jugar y descripciones de logros.
+- **Sincronización de Versión (`v1.1.0`)**:
+  - Actualizado el badge de versión en la esquina inferior derecha a `v1.1.0`.
+  - Actualizado `package.json` a `"version": "1.1.0"`.
 
 ### [v1.0.1] - 2026-11-05
 - **Rediseño Espacial del Menú Principal (`src/core/Game.ts`)**:

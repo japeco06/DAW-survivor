@@ -1,13 +1,18 @@
 /**
- * Sistema de Logros e Hitos del Kernel (v1.0.0).
+ * Sistema de Logros e Hitos del Kernel (v1.1.0).
  * Registra objetivos desbloqueables durante la partida o el progreso global,
- * otorga recompensas en Criptomonedas y muestra notificaciones toast animadas.
+ * soporta 2 páginas de hitos (Fase I y Fase II Épica con altas recompensas),
+ * textos bilingües (ES / EN) y notificaciones toast animadas.
  */
+
+import { i18n } from '../utils/i18n';
 
 export interface Achievement {
   id: string;
   title: string;
+  titleEn: string;
   description: string;
+  descriptionEn: string;
   icon: string;
   rewardCoins: number;
   target: number;
@@ -19,6 +24,7 @@ export interface Achievement {
 export interface AchievementToast {
   id: string;
   title: string;
+  titleEn: string;
   rewardCoins: number;
   icon: string;
   timer: number;
@@ -39,10 +45,15 @@ export class AchievementSystem {
 
   private initAchievements(): void {
     this.achievements = [
+      // ==========================================
+      // PÁGINA 1: FASE I // PROTOCOLOS (1 - 12)
+      // ==========================================
       {
         id: 'first_patch',
         title: 'PRIMER PARCHE',
+        titleEn: 'FIRST PATCH',
         description: 'Elimina a 50 malwares en combate.',
+        descriptionEn: 'Eliminate 50 malware units in combat.',
         icon: '🛡️',
         rewardCoins: 20,
         target: 50,
@@ -52,7 +63,9 @@ export class AchievementSystem {
       {
         id: 'mass_purge',
         title: 'PURGA MASIVA',
+        titleEn: 'MASS PURGE',
         description: 'Elimina a 500 malwares en total.',
+        descriptionEn: 'Eliminate 500 malware units in total.',
         icon: '💥',
         rewardCoins: 50,
         target: 500,
@@ -62,7 +75,9 @@ export class AchievementSystem {
       {
         id: 'hardware_collector',
         title: 'DESEMPAQUETADOR',
+        titleEn: 'UNPACKER',
         description: 'Destruye 10 Cajas de Hardware en el mapa.',
+        descriptionEn: 'Destroy 10 Hardware Crates on the map.',
         icon: '📦',
         rewardCoins: 25,
         target: 10,
@@ -72,7 +87,9 @@ export class AchievementSystem {
       {
         id: 'crypto_miner_slayer',
         title: 'CRIPTO-CAZADOR',
+        titleEn: 'CRYPTO HUNTER',
         description: 'Caza y destruye a un Minero de Criptos antes de que escape.',
+        descriptionEn: 'Hunt down and destroy a Crypto Miner before it escapes.',
         icon: '💰',
         rewardCoins: 35,
         target: 1,
@@ -82,7 +99,9 @@ export class AchievementSystem {
       {
         id: 'first_boss_killed',
         title: 'ANTI-RANSOMWARE',
+        titleEn: 'ANTI-RANSOMWARE',
         description: 'Derrota a tu primer Mega-Jefe recogiendo las 5 llaves.',
+        descriptionEn: 'Defeat your first Mega-Boss by collecting all 5 keys.',
         icon: '🔑',
         rewardCoins: 40,
         target: 1,
@@ -92,7 +111,9 @@ export class AchievementSystem {
       {
         id: 'all_four_bosses',
         title: 'CUATRO JINETES',
+        titleEn: 'FOUR HORSEMEN',
         description: 'Derrota a los 4 Mega-Jefes únicos en una misma partida.',
+        descriptionEn: 'Defeat all 4 unique Mega-Bosses in a single run.',
         icon: '👑',
         rewardCoins: 100,
         target: 4,
@@ -102,7 +123,9 @@ export class AchievementSystem {
       {
         id: 'toro_arrival',
         title: 'ALERTA ROJA: EL TORO',
+        titleEn: 'RED ALERT: EL TORO',
         description: 'Despierta al Jefe Final Invencible "El Toro".',
+        descriptionEn: 'Awaken the Invincible Final Boss "El Toro".',
         icon: '🐂',
         rewardCoins: 50,
         target: 1,
@@ -112,7 +135,9 @@ export class AchievementSystem {
       {
         id: 'toro_damage_10k',
         title: 'TOREADOR DIGITAL',
+        titleEn: 'DIGITAL MATADOR',
         description: 'Inflige más de 10.000 de daño al Toro en una partida.',
+        descriptionEn: 'Deal over 10,000 damage to El Toro in a single run.',
         icon: '⚔️',
         rewardCoins: 75,
         target: 10000,
@@ -122,7 +147,9 @@ export class AchievementSystem {
       {
         id: 'toro_damage_50k',
         title: 'MATADOR DEL KERNEL',
+        titleEn: 'KERNEL MATADOR',
         description: 'Inflige más de 50.000 de daño al Toro en una partida.',
+        descriptionEn: 'Deal over 50,000 damage to El Toro in a single run.',
         icon: '🏆',
         rewardCoins: 150,
         target: 50000,
@@ -132,7 +159,9 @@ export class AchievementSystem {
       {
         id: 'survivor_3min',
         title: 'TIEMPO DE ACTIVIDAD',
+        titleEn: 'UPTIME',
         description: 'Sobrevive al menos 3 minutos (03:00) en una partida.',
+        descriptionEn: 'Survive at least 3 minutes (03:00) in a single run.',
         icon: '⏱️',
         rewardCoins: 30,
         target: 180,
@@ -142,7 +171,9 @@ export class AchievementSystem {
       {
         id: 'survivor_6min',
         title: 'SERVIDOR RESILIENTE',
+        titleEn: 'RESILIENT SERVER',
         description: 'Sobrevive al menos 6 minutos (06:00) en una partida.',
+        descriptionEn: 'Survive at least 6 minutes (06:00) in a single run.',
         icon: '⚡',
         rewardCoins: 80,
         target: 360,
@@ -152,10 +183,160 @@ export class AchievementSystem {
       {
         id: 'level_20',
         title: 'KERNEL OVERCLOCK',
+        titleEn: 'KERNEL OVERCLOCK',
         description: 'Alcanza el Nivel 20 en una sola partida.',
+        descriptionEn: 'Reach Level 20 in a single run.',
         icon: '🚀',
         rewardCoins: 50,
         target: 20,
+        current: 0,
+        unlocked: false,
+      },
+
+      // ==============================================================
+      // PÁGINA 2: FASE II // DESAFÍOS ÉPICOS (13 - 24) [ALTA RECOMPENSA]
+      // ==============================================================
+      {
+        id: 'mass_purge_elite',
+        title: 'PURGA EXTREMA',
+        titleEn: 'EXTREME PURGE',
+        description: 'Elimina a 1.200 malwares en una sola partida.',
+        descriptionEn: 'Eliminate 1,200 malware units in a single run.',
+        icon: '⚡',
+        rewardCoins: 200,
+        target: 1200,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'survivor_10min',
+        title: 'INMORTAL DEL KERNEL',
+        titleEn: 'KERNEL IMMORTAL',
+        description: 'Sobrevive al menos 10 minutos (10:00) en una partida.',
+        descriptionEn: 'Survive at least 10 minutes (10:00) in a single run.',
+        icon: '⏳',
+        rewardCoins: 250,
+        target: 600,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'survivor_15min',
+        title: 'DIOS DEL CIBERESPACIO',
+        titleEn: 'CYBERSPACE GOD',
+        description: 'Sobrevive al menos 15 minutos (15:00) en una partida.',
+        descriptionEn: 'Survive at least 15 minutes (15:00) in a single run.',
+        icon: '🌌',
+        rewardCoins: 500,
+        target: 900,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'level_30',
+        title: 'OVERCLOCK SUPREMO',
+        titleEn: 'SUPREME OVERCLOCK',
+        description: 'Alcanza el Nivel 30 en una sola partida.',
+        descriptionEn: 'Reach Level 30 in a single run.',
+        icon: '🚀',
+        rewardCoins: 200,
+        target: 30,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'toro_damage_100k',
+        title: 'DOMADOR CIBERNÉTICO',
+        titleEn: 'CYBER TAMER',
+        description: 'Inflige más de 100.000 de daño al Toro en una partida.',
+        descriptionEn: 'Deal over 100,000 damage to El Toro in a single run.',
+        icon: '⚔️',
+        rewardCoins: 300,
+        target: 100000,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'toro_damage_250k',
+        title: 'PESADILLA DEL TORO',
+        titleEn: "TORO'S NIGHTMARE",
+        description: 'Inflige más de 250.000 de daño al Toro en una partida.',
+        descriptionEn: 'Deal over 250,000 damage to El Toro in a single run.',
+        icon: '🔥',
+        rewardCoins: 500,
+        target: 250000,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'boss_slayer_ten',
+        title: 'CAZADOR DE TITANES',
+        titleEn: 'TITAN HUNTER',
+        description: 'Derrota a 10 jefes o mega-jefes en una misma partida.',
+        descriptionEn: 'Defeat 10 bosses or mega-bosses in a single run.',
+        icon: '👑',
+        rewardCoins: 250,
+        target: 10,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'hardware_hoarder',
+        title: 'AVARICIA DE SILICIO',
+        titleEn: 'SILICON GREED',
+        description: 'Destruye 30 Cajas de Hardware en total.',
+        descriptionEn: 'Destroy 30 Hardware Crates in total.',
+        icon: '📦',
+        rewardCoins: 150,
+        target: 30,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'crypto_tycoon',
+        title: 'MAGNATE CRIPTO',
+        titleEn: 'CRYPTO TYCOON',
+        description: 'Destruye a 5 Mineros de Criptos antes de que escapen.',
+        descriptionEn: 'Destroy 5 Crypto Miners before they escape.',
+        icon: '💎',
+        rewardCoins: 200,
+        target: 5,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'gacha_collector_20',
+        title: 'COLECCIONISTA CYBER',
+        titleEn: 'CYBER COLLECTOR',
+        description: 'Colecciona al menos 20 sombreros/máscaras en tu inventario.',
+        descriptionEn: 'Collect at least 20 hats/masks in your inventory.',
+        icon: '🎭',
+        rewardCoins: 250,
+        target: 20,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'gacha_mythic',
+        title: 'TOQUE DE MIDAS',
+        titleEn: 'MIDAS TOUCH',
+        description: 'Obtén un cosmético de rareza Mítica o Legendaria en la Ruleta.',
+        descriptionEn: 'Obtain a Mythic or Legendary cosmetic from Gacha.',
+        icon: '🌟',
+        rewardCoins: 400,
+        target: 1,
+        current: 0,
+        unlocked: false,
+      },
+      {
+        id: 'damage_dealer_halfmillion',
+        title: 'APOCALIPSIS BINARIO',
+        titleEn: 'BINARY APOCALYPSE',
+        description: 'Inflige 500.000 de daño total acumulado en una partida.',
+        descriptionEn: 'Deal 500,000 total cumulative damage in a single run.',
+        icon: '💥',
+        rewardCoins: 350,
+        target: 500000,
         current: 0,
         unlocked: false,
       },
@@ -239,6 +420,7 @@ export class AchievementSystem {
       this.activeToasts.push({
         id: ach.id,
         title: ach.title,
+        titleEn: ach.titleEn,
         rewardCoins: ach.rewardCoins,
         icon: ach.icon,
         timer: 4.2,
@@ -299,14 +481,22 @@ export class AchievementSystem {
       ctx.textBaseline = 'middle';
       ctx.fillText(toast.icon, toastX + 16, currentY + toastH / 2);
 
-      // Texto de Hito
+      // Texto de Hito bilingüe
       ctx.fillStyle = '#fbbf24';
       ctx.font = 'bold 13px "Courier New", monospace';
-      ctx.fillText('¡HITO DEL KERNEL DESBLOQUEADO!', toastX + 60, currentY + 22);
+      ctx.fillText(
+        i18n.t('¡HITO DEL KERNEL DESBLOQUEADO!', 'KERNEL MILESTONE UNLOCKED!'),
+        toastX + 60,
+        currentY + 22
+      );
 
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 15px "Courier New", monospace';
-      ctx.fillText(toast.title, toastX + 60, currentY + 44);
+      ctx.fillText(
+        i18n.currentLang === 'EN' ? toast.titleEn : toast.title,
+        toastX + 60,
+        currentY + 44
+      );
 
       // Recompensa en monedas a la derecha
       ctx.textAlign = 'right';
@@ -322,5 +512,14 @@ export class AchievementSystem {
 
   public getUnlockedCount(): number {
     return this.achievements.filter((a) => a.unlocked).length;
+  }
+
+  public getPageAchievements(page: number, pageSize: number = 12): Achievement[] {
+    const start = page * pageSize;
+    return this.achievements.slice(start, start + pageSize);
+  }
+
+  public getPageUnlockedCount(page: number, pageSize: number = 12): number {
+    return this.getPageAchievements(page, pageSize).filter((a) => a.unlocked).length;
   }
 }

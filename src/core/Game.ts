@@ -33,6 +33,7 @@ import {
   LeaderboardEntry,
 } from '../systems/MetaSystem';
 import { HatItem, HATS_DATABASE, RARITY_CONFIG } from '../systems/HatSystem';
+import { i18n } from '../utils/i18n';
 import { auth, db, googleProvider } from '../firebase';
 import {
   onAuthStateChanged,
@@ -74,7 +75,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.0.1';
+const GAME_VERSION = 'v1.1.0';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -136,6 +137,8 @@ export class Game {
   private hoveredLeaderboardBackBtn: boolean = false;
   private achievementSystem: AchievementSystem;
   private showAchievementsOverlay: boolean = false;
+  private achievementsPage: number = 0;
+  private hoveredAchievementsTab: number | null = null;
   private showSettingsOverlay: boolean = false;
   private showHelpOverlay: boolean = false;
   private hoveredAchievementsBtn: boolean = false;
@@ -143,6 +146,8 @@ export class Game {
   private hoveredFullscreenBtn: boolean = false;
   private hoveredHelpBtn: boolean = false;
   private hoveredOverlayBackBtn: boolean = false;
+  private runBossesKilled: number = 0;
+  private runTotalDamageDealt: number = 0;
   public readonly firestoreDb = db;
   private menuFeedbackMessage: string =
     'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.';
@@ -210,8 +215,17 @@ export class Game {
         }
         this.menuFeedbackMessage = `Sesión iniciada como ${displayName}. Progreso sincronizado con la nube.`;
         this.addTerminalLog(`AUTH: Cloud Save synced (${displayName})`);
+        this.achievementSystem.reportProgress('gacha_collector_20', this.metaSystem.unlockedHats.size, true);
+        if (this.metaSystem.getUnlockedHatsList().some((h) => h.rarity === 'MITICA' || h.rarity === 'LEGENDARIA')) {
+          this.achievementSystem.reportProgress('gacha_mythic', 1, true);
+        }
       }
     });
+
+    this.achievementSystem.reportProgress('gacha_collector_20', this.metaSystem.unlockedHats.size, true);
+    if (this.metaSystem.getUnlockedHatsList().some((h) => h.rarity === 'MITICA' || h.rarity === 'LEGENDARIA')) {
+      this.achievementSystem.reportProgress('gacha_mythic', 1, true);
+    }
 
     this.setupEventListeners();
   }
@@ -282,6 +296,12 @@ export class Game {
         if (this.showAchievementsOverlay) {
           if (key === 'escape' || key === 'b' || key === 'a') {
             this.showAchievementsOverlay = false;
+            this.sound.playShoot(false);
+          } else if (key === '1' || key === 'arrowleft' || key === 'left') {
+            this.achievementsPage = 0;
+            this.sound.playShoot(false);
+          } else if (key === '2' || key === 'arrowright' || key === 'right') {
+            this.achievementsPage = 1;
             this.sound.playShoot(false);
           }
           return;
@@ -423,8 +443,32 @@ export class Game {
           return;
         }
 
-        if (this.showAchievementsOverlay || this.showHelpOverlay) {
-          const panelH = this.showAchievementsOverlay ? 610 : 590;
+        if (this.showAchievementsOverlay) {
+          const panelH = 650;
+          const py = this.canvas.height / 2 - panelH / 2;
+          const backBtn = this.getOverlayBackButtonRect(py, panelH);
+          this.hoveredOverlayBackBtn =
+            mx >= backBtn.x &&
+            mx <= backBtn.x + backBtn.width &&
+            my >= backBtn.y &&
+            my <= backBtn.y + backBtn.height;
+          this.hoveredAchievementsTab = null;
+          for (const tab of this.getAchievementsTabRects(py)) {
+            if (
+              mx >= tab.x &&
+              mx <= tab.x + tab.width &&
+              my >= tab.y &&
+              my <= tab.y + tab.height
+            ) {
+              this.hoveredAchievementsTab = tab.page;
+              break;
+            }
+          }
+          return;
+        }
+
+        if (this.showHelpOverlay) {
+          const panelH = 590;
           const py = this.canvas.height / 2 - panelH / 2;
           const backBtn = this.getOverlayBackButtonRect(py, panelH);
           this.hoveredOverlayBackBtn =
@@ -436,7 +480,9 @@ export class Game {
         }
 
         if (this.showSettingsOverlay) {
-          const backBtn = this.getOverlayBackButtonRect(this.canvas.height / 2 - 270, 540);
+          const panelH = 520;
+          const py = this.canvas.height / 2 - panelH / 2;
+          const backBtn = this.getOverlayBackButtonRect(py, panelH);
           this.hoveredOverlayBackBtn =
             mx >= backBtn.x &&
             mx <= backBtn.x + backBtn.width &&
@@ -591,7 +637,9 @@ export class Game {
         }
 
         if (this.showAchievementsOverlay) {
-          const backBtn = this.getOverlayBackButtonRect(this.canvas.height / 2 - 305, 610);
+          const panelH = 650;
+          const py = this.canvas.height / 2 - panelH / 2;
+          const backBtn = this.getOverlayBackButtonRect(py, panelH);
           if (
             mx >= backBtn.x &&
             mx <= backBtn.x + backBtn.width &&
@@ -600,6 +648,21 @@ export class Game {
           ) {
             this.showAchievementsOverlay = false;
             this.sound.playShoot(false);
+            return;
+          }
+          for (const tab of this.getAchievementsTabRects(py)) {
+            if (
+              mx >= tab.x &&
+              mx <= tab.x + tab.width &&
+              my >= tab.y &&
+              my <= tab.y + tab.height
+            ) {
+              if (this.achievementsPage !== tab.page) {
+                this.achievementsPage = tab.page;
+                this.sound.playShoot(false);
+              }
+              return;
+            }
           }
           return;
         }
@@ -740,6 +803,18 @@ export class Game {
                 this.lastGachaResults = res.results;
                 this.gachaRevealTimer = 1.2;
                 this.sound.playCoinPickup();
+                this.achievementSystem.reportProgress(
+                  'gacha_collector_20',
+                  this.metaSystem.unlockedHats.size,
+                  true
+                );
+                if (
+                  res.results.some(
+                    (r) => r.hat.rarity === 'MITICA' || r.hat.rarity === 'LEGENDARIA'
+                  )
+                ) {
+                  this.achievementSystem.reportProgress('gacha_mythic', 1, true);
+                }
                 const bestEntry = res.results[0];
                 const rColor = RARITY_CONFIG[bestEntry.hat.rarity].color;
                 this.particleSystem.spawnExplosion(
@@ -901,6 +976,8 @@ export class Game {
     this.elapsedTime = 0;
     this.killCount = 0;
     this.runCoinsCollected = 0;
+    this.runBossesKilled = 0;
+    this.runTotalDamageDealt = 0;
     this.damageVignetteAlpha = 0;
     this.player = new Player(
       this.canvas.width / 2,
@@ -950,6 +1027,8 @@ export class Game {
     this.killCount = 0;
     this.runCoinsCollected = 0;
     this.runDamageToToro = 0;
+    this.runBossesKilled = 0;
+    this.runTotalDamageDealt = 0;
     this.hoveredCardIndex = -1;
     this.damageVignetteAlpha = 0;
     this.gameState = 'PLAYING';
@@ -1112,7 +1191,10 @@ export class Game {
 
     this.achievementSystem.reportProgress('survivor_3min', this.elapsedTime, true);
     this.achievementSystem.reportProgress('survivor_6min', this.elapsedTime, true);
+    this.achievementSystem.reportProgress('survivor_10min', this.elapsedTime, true);
+    this.achievementSystem.reportProgress('survivor_15min', this.elapsedTime, true);
     this.achievementSystem.reportProgress('level_20', this.upgradeSystem.level, true);
+    this.achievementSystem.reportProgress('level_30', this.upgradeSystem.level, true);
 
     this.player.update(dt, this.input, this.canvas.width, this.canvas.height);
     for (const block of this.encryptedBlocks) {
@@ -1350,11 +1432,14 @@ export class Game {
     this.killCount += combatEvents.enemiesKilled;
     this.achievementSystem.reportProgress('first_patch', this.killCount, true);
     this.achievementSystem.reportProgress('mass_purge', this.killCount, true);
+    this.achievementSystem.reportProgress('mass_purge_elite', this.killCount, true);
 
     if (this.finalBoss) {
       this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
       this.achievementSystem.reportProgress('toro_damage_10k', this.runDamageToToro, true);
       this.achievementSystem.reportProgress('toro_damage_50k', this.runDamageToToro, true);
+      this.achievementSystem.reportProgress('toro_damage_100k', this.runDamageToToro, true);
+      this.achievementSystem.reportProgress('toro_damage_250k', this.runDamageToToro, true);
     }
     this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
     this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
@@ -1403,6 +1488,7 @@ export class Game {
     }
 
     for (const hit of combatEvents.damagedEnemies) {
+      this.runTotalDamageDealt += hit.damage;
       this.particleSystem.spawnHitSparks(hit.x, hit.y, hit.isCrit ? '#facc15' : hit.color);
       if (hit.damage === 0) {
         this.particleSystem.spawnFloatingText(hit.x, hit.y, '0 [SHIELD]', '#38bdf8', 0.85);
@@ -1412,6 +1498,7 @@ export class Game {
         this.particleSystem.spawnFloatingText(hit.x, hit.y, `-${hit.damage}`, '#ffffff', 0.95);
       }
     }
+    this.achievementSystem.reportProgress('damage_dealer_halfmillion', this.runTotalDamageDealt, true);
 
     let triggerMegaBossNow = false;
 
@@ -1438,6 +1525,7 @@ export class Game {
 
       if (drop.malwareType === 'CRYPTO_MINER') {
         this.achievementSystem.reportProgress('crypto_miner_slayer', 1);
+        this.achievementSystem.reportProgress('crypto_tycoon', 1);
       }
 
       this.particleSystem.spawnExplosion(
@@ -1450,6 +1538,7 @@ export class Game {
 
       if (drop.malwareType === 'HARDWARE_BOX') {
         this.achievementSystem.reportProgress('hardware_collector', 1);
+        this.achievementSystem.reportProgress('hardware_hoarder', 1);
         this.player.heal(25);
         for (let c = 0; c < 3; c++) {
           this.cryptoCoins.push(
@@ -1511,6 +1600,8 @@ export class Game {
 
       if (isBoss && !this.spawner.finalBossMode) {
         this.normalBossesKilledCount++;
+        this.runBossesKilled++;
+        this.achievementSystem.reportProgress('boss_slayer_ten', this.runBossesKilled, true);
         this.addTerminalLog(
           `BOSS PURGED (${this.normalBossesKilledCount}/${NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS} for Mega-Boss Event)!`
         );
@@ -1705,12 +1796,14 @@ export class Game {
       this.activeMegaBossVariant = -1;
     }
 
+    this.runBossesKilled++;
     this.achievementSystem.reportProgress('first_boss_killed', 1);
     this.achievementSystem.reportProgress(
       'all_four_bosses',
       this.defeatedMegaBossVariants.size,
       true
     );
+    this.achievementSystem.reportProgress('boss_slayer_ten', this.runBossesKilled, true);
 
     this.killCount++;
     this.highScoreKills = Math.max(this.highScoreKills, this.killCount);
@@ -1932,7 +2025,7 @@ export class Game {
     return [
       {
         action: 'RESUME',
-        label: '> [1 / P] REANUDAR PARTIDA',
+        label: `> ${i18n.t('[1 / P] REANUDAR PARTIDA', '[1 / P] RESUME GAME')}`,
         x: cx - btnW / 2,
         y: cy - 35,
         width: btnW,
@@ -1940,7 +2033,7 @@ export class Game {
       },
       {
         action: 'SETTINGS',
-        label: '> [O] AJUSTES Y VOLUMEN',
+        label: `> ${i18n.t('[O] AJUSTES Y VOLUMEN', '[O] SETTINGS & AUDIO')}`,
         x: cx - btnW / 2,
         y: cy + 20,
         width: btnW,
@@ -1948,7 +2041,7 @@ export class Game {
       },
       {
         action: 'EXIT_TO_MENU',
-        label: '> [2 / ESC] SALIR AL MENÚ PRINCIPAL',
+        label: `> ${i18n.t('[2 / ESC] SALIR AL MENÚ PRINCIPAL', '[2 / ESC] QUIT TO MAIN MENU')}`,
         x: cx - btnW / 2,
         y: cy + 75,
         width: btnW,
@@ -1979,11 +2072,15 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#00ff66';
     this.ctx.font = 'bold 28px "Courier New", monospace';
-    this.ctx.fillText('// SISTEMA EN PAUSA //', cx, cy - 95);
+    this.ctx.fillText(`// ${i18n.t('SISTEMA EN PAUSA', 'SYSTEM PAUSED')} //`, cx, cy - 95);
 
     this.ctx.fillStyle = '#00f0ff';
     this.ctx.font = '13px "Courier New", monospace';
-    this.ctx.fillText('Simulación y temporizadores detenidos.', cx, cy - 64);
+    this.ctx.fillText(
+      i18n.t('Simulación y temporizadores detenidos.', 'Simulation and run timers paused.'),
+      cx,
+      cy - 64
+    );
 
     for (const btn of this.getPauseButtonRects()) {
       const hovered = this.hoveredPauseAction === btn.action;
@@ -2280,7 +2377,7 @@ export class Game {
     return [
       {
         tab: 'SHOP',
-        label: '[Q] AGENTES',
+        label: `[Q] ${i18n.t('AGENTES', 'AGENTS')}`,
         x: startX,
         y,
         width: tabW,
@@ -2288,7 +2385,7 @@ export class Game {
       },
       {
         tab: 'GACHA',
-        label: '[G] GACHA // COFRES',
+        label: `[G] ${i18n.t('GACHA // COFRES', 'GACHA // CHESTS')}`,
         x: startX + tabW + gap,
         y,
         width: tabW,
@@ -2296,7 +2393,7 @@ export class Game {
       },
       {
         tab: 'INVENTORY',
-        label: `[I] INVENTARIO (${this.metaSystem.unlockedHats.size}/${HATS_DATABASE.length})`,
+        label: `[I] ${i18n.t('INVENTARIO', 'INVENTORY')} (${this.metaSystem.unlockedHats.size}/${HATS_DATABASE.length})`,
         x: startX + (tabW + gap) * 2,
         y,
         width: tabW,
@@ -2538,6 +2635,8 @@ export class Game {
       | 'SFX_UP'
       | 'TOGGLE_MUTE'
       | 'TOGGLE_SHAKE'
+      | 'LANG_ES'
+      | 'LANG_EN'
       | 'BACK';
     x: number;
     y: number;
@@ -2546,10 +2645,11 @@ export class Game {
   }[] {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
-    const panelH = 460;
+    const panelH = 520;
     const py = cy - panelH / 2;
-    const rowStartY = py + 110;
-    const rowGap = 52;
+    const rowStartY = py + 104;
+    const rowGap = 50;
+    const langY = py + 316;
 
     return [
       { id: 'MASTER_DOWN', x: cx + 70, y: rowStartY, width: 44, height: 32 },
@@ -2558,9 +2658,11 @@ export class Game {
       { id: 'MUSIC_UP', x: cx + 200, y: rowStartY + rowGap, width: 44, height: 32 },
       { id: 'SFX_DOWN', x: cx + 70, y: rowStartY + rowGap * 2, width: 44, height: 32 },
       { id: 'SFX_UP', x: cx + 200, y: rowStartY + rowGap * 2, width: 44, height: 32 },
-      { id: 'TOGGLE_MUTE', x: cx - 240, y: rowStartY + rowGap * 3 + 12, width: 230, height: 38 },
-      { id: 'TOGGLE_SHAKE', x: cx + 10, y: rowStartY + rowGap * 3 + 12, width: 230, height: 38 },
-      { id: 'BACK', x: cx - 150, y: py + panelH - 56, width: 300, height: 40 },
+      { id: 'TOGGLE_MUTE', x: cx - 240, y: rowStartY + rowGap * 3 + 10, width: 230, height: 38 },
+      { id: 'TOGGLE_SHAKE', x: cx + 10, y: rowStartY + rowGap * 3 + 10, width: 230, height: 38 },
+      { id: 'LANG_ES', x: cx - 20, y: langY, width: 120, height: 38 },
+      { id: 'LANG_EN', x: cx + 120, y: langY, width: 120, height: 38 },
+      { id: 'BACK', x: cx - 160, y: py + panelH - 56, width: 320, height: 40 },
     ];
   }
 
@@ -2712,11 +2814,11 @@ export class Game {
       this.ctx.fillStyle = '#00ff66';
       this.ctx.font = 'bold 13px "Courier New", monospace';
       // Sin emoji al lado de AGENTE tal como pidió el usuario
-      this.ctx.fillText(`AGENTE: ${truncatedName}`, statusBoxX + 14, statusBoxY + 20);
+      this.ctx.fillText(`${i18n.t('AGENTE', 'AGENT')}: ${truncatedName}`, statusBoxX + 14, statusBoxY + 20);
 
       this.ctx.fillStyle = '#38bdf8';
       this.ctx.font = 'bold 11px Consolas, monospace';
-      this.ctx.fillText('☁ NUBE SINCRONIZADA', statusBoxX + 14, statusBoxY + 34);
+      this.ctx.fillText(`☁ ${i18n.t('NUBE SINCRONIZADA', 'CLOUD SYNCED')}`, statusBoxX + 14, statusBoxY + 34);
 
       // Botón Cerrar Sesión
       const authBtn = this.getAuthActionButtonRect();
@@ -2729,7 +2831,7 @@ export class Game {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = '#fecaca';
       this.ctx.font = 'bold 12px "Courier New", monospace';
-      this.ctx.fillText('[L] CERRAR SESIÓN', authBtn.x + authBtn.width / 2, authBtn.y + 27);
+      this.ctx.fillText(`[L] ${i18n.t('CERRAR SESIÓN', 'LOG OUT')}`, authBtn.x + authBtn.width / 2, authBtn.y + 27);
     } else {
       const authBtn = this.getAuthActionButtonRect();
       this.ctx.fillStyle = this.hoveredAuthBtn ? 'rgba(14, 55, 85, 0.96)' : 'rgba(8, 28, 46, 0.92)';
@@ -2744,7 +2846,7 @@ export class Game {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = this.hoveredAuthBtn ? '#00ff66' : '#e0f2fe';
       this.ctx.font = 'bold 12px "Courier New", monospace';
-      this.ctx.fillText('🔐 [L] INICIAR SESIÓN CON GOOGLE', authBtn.x + authBtn.width / 2, authBtn.y + 27);
+      this.ctx.fillText(`🔐 [L] ${i18n.t('INICIAR SESIÓN CON GOOGLE', 'SIGN IN WITH GOOGLE')}`, authBtn.x + authBtn.width / 2, authBtn.y + 27);
     }
 
     // ==========================================
@@ -2764,7 +2866,7 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = this.hoveredFullscreenBtn ? '#ffffff' : '#00f0ff';
     this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText('⛶ [F] PANTALLA COMPLETA', fsBtn.x + fsBtn.width / 2, fsBtn.y + 27);
+    this.ctx.fillText(`⛶ [F] ${i18n.t('PANTALLA COMPLETA', 'FULLSCREEN')}`, fsBtn.x + fsBtn.width / 2, fsBtn.y + 27);
 
     // Botón Cómo Jugar (Tutorial / Guía)
     const helpBtn = this.getHelpButtonRect();
@@ -2780,7 +2882,7 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = this.hoveredHelpBtn ? '#ffffff' : '#f0abfc';
     this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText('📖 [H] CÓMO JUGAR', helpBtn.x + helpBtn.width / 2, helpBtn.y + 27);
+    this.ctx.fillText(`📖 [H] ${i18n.t('CÓMO JUGAR', 'HOW TO PLAY')}`, helpBtn.x + helpBtn.width / 2, helpBtn.y + 27);
 
     // Botón Clasificación Global (Rankings)
     const rankingsBtn = this.getGlobalRankingsButtonRect();
@@ -2796,7 +2898,7 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = this.hoveredRankingsBtn ? '#ffffff' : '#fde047';
     this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText('🏆 [R] RANKINGS', rankingsBtn.x + rankingsBtn.width / 2, rankingsBtn.y + 27);
+    this.ctx.fillText(`🏆 [R] ${i18n.t('RANKINGS', 'RANKINGS')}`, rankingsBtn.x + rankingsBtn.width / 2, rankingsBtn.y + 27);
 
     // Botón Logros
     const achBtn = this.getAchievementsButtonRect();
@@ -2813,7 +2915,7 @@ export class Game {
 
     this.ctx.fillStyle = this.hoveredAchievementsBtn ? '#ffffff' : '#bef264';
     this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText(`🏆 [A] LOGROS (${achUnlocked}/${totalAch})`, achBtn.x + achBtn.width / 2, achBtn.y + 27);
+    this.ctx.fillText(`🏆 [A] ${i18n.t('LOGROS', 'ACHIEVEMENTS')} (${achUnlocked}/${totalAch})`, achBtn.x + achBtn.width / 2, achBtn.y + 27);
 
     // Botón Ajustes
     const setBtn = this.getSettingsButtonRect();
@@ -2828,7 +2930,7 @@ export class Game {
 
     this.ctx.fillStyle = this.hoveredSettingsBtn ? '#ffffff' : '#7dd3fc';
     this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText('⚙️ [O] AJUSTES', setBtn.x + setBtn.width / 2, setBtn.y + 27);
+    this.ctx.fillText(`⚙️ [O] ${i18n.t('AJUSTES', 'SETTINGS')}`, setBtn.x + setBtn.width / 2, setBtn.y + 27);
 
     // ==========================================
     // 3. PANEL CENTRAL (KERNEL HUB)
@@ -2853,11 +2955,12 @@ export class Game {
     this.ctx.fillText(`CYBER SURVIVOR // KERNEL HUB (${GAME_VERSION})`, cx, py + 40);
 
     const equippedHat = this.metaSystem.getEquippedHat();
+    const noneText = i18n.t('Ninguno', 'None');
     this.ctx.fillStyle = '#fbbf24';
     this.ctx.font = 'bold 14px "Courier New", monospace';
     this.ctx.fillText(
-      `[ High Score: ${this.metaSystem.highScore} (${this.formatTimeMMSS(this.metaSystem.bestTimeSeconds)}) ]  |  [ CRYPTO: ${this.metaSystem.coins} 🪙 ]  |  [ EQUIPADO: ${
-        equippedHat ? `${equippedHat.icon} ${equippedHat.name}` : 'Ninguno'
+      `[ ${i18n.t('Récord', 'High Score')}: ${this.metaSystem.highScore} (${this.formatTimeMMSS(this.metaSystem.bestTimeSeconds)}) ]  |  [ CRYPTO: ${this.metaSystem.coins} 🪙 ]  |  [ ${i18n.t('EQUIPADO', 'EQUIPPED')}: ${
+        equippedHat ? `${equippedHat.icon} ${equippedHat.name}` : noneText
       } ]`,
       cx,
       py + 72
@@ -3207,7 +3310,7 @@ export class Game {
     this.ctx.fillStyle = blink ? '#00ff66' : '#ffffff';
     this.ctx.font = 'bold 17px "Courier New", monospace';
     this.ctx.fillText(
-      '> PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR <',
+      `> ${i18n.t('PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR', 'PRESS [ENTER] OR CLICK HERE TO DEPLOY')} <`,
       cx,
       startBtn.y + 29
     );
@@ -3457,6 +3560,12 @@ export class Game {
           this.sound.screenShakeEnabled = !this.sound.screenShakeEnabled;
           this.sound.saveSettings();
           this.sound.playShoot(false);
+        } else if (ctrl.id === 'LANG_ES') {
+          i18n.setLanguage('ES');
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'LANG_EN') {
+          i18n.setLanguage('EN');
+          this.sound.playShoot(false);
         } else if (ctrl.id === 'BACK') {
           this.showSettingsOverlay = false;
           this.sound.playShoot(false);
@@ -3467,6 +3576,43 @@ export class Game {
     return false;
   }
 
+  private getAchievementsTabRects(py: number): {
+    page: number;
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const cx = this.canvas.width / 2;
+    const tabW = 400;
+    const tabH = 34;
+    const gap = 20;
+    const startX = cx - tabW - gap / 2;
+    const y = py + 72;
+    const p1Unlocked = this.achievementSystem.getPageUnlockedCount(0, 12);
+    const p2Unlocked = this.achievementSystem.getPageUnlockedCount(1, 12);
+
+    return [
+      {
+        page: 0,
+        label: `[1] ${i18n.t('FASE I // PROTOCOLOS (1-12)', 'PHASE I // PROTOCOLS (1-12)')} [${p1Unlocked}/12]`,
+        x: startX,
+        y,
+        width: tabW,
+        height: tabH,
+      },
+      {
+        page: 1,
+        label: `[2] ${i18n.t('FASE II // DESAFÍOS ÉPICOS (13-24)', 'PHASE II // EPIC CHALLENGES (13-24)')} [${p2Unlocked}/12]`,
+        x: startX + tabW + gap,
+        y,
+        width: tabW,
+        height: tabH,
+      },
+    ];
+  }
+
   private drawAchievementsOverlay(): void {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
@@ -3475,8 +3621,8 @@ export class Game {
     this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const panelW = 860;
-    const panelH = 610;
+    const panelW = 880;
+    const panelH = 650;
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
 
@@ -3493,27 +3639,56 @@ export class Game {
     this.ctx.fillStyle = '#bef264';
     this.ctx.font = 'bold 24px "Courier New", monospace';
     this.ctx.fillText(
-      `🏆 PROTOCOLO DE HITOS // LOGROS (${this.achievementSystem.getUnlockedCount()}/${this.achievementSystem.achievements.length})`,
+      `🏆 ${i18n.t('PROTOCOLO DE HITOS // LOGROS', 'MILESTONE PROTOCOL // ACHIEVEMENTS')} (${this.achievementSystem.getUnlockedCount()}/${this.achievementSystem.achievements.length})`,
       cx,
-      py + 36
+      py + 34
     );
 
     this.ctx.fillStyle = '#94a3b8';
     this.ctx.font = '12px "Courier New", monospace';
     this.ctx.fillText(
-      'Recompensas en Criptomonedas acreditadas automáticamente al desbloquear cada hito.',
+      i18n.t(
+        'Recompensas en Criptomonedas acreditadas automáticamente al desbloquear cada hito.',
+        'Cryptocurrency rewards automatically credited upon milestone completion.'
+      ),
       cx,
-      py + 58
+      py + 54
     );
 
-    const cardW = 390;
+    // Pestañas Página 1 & Página 2
+    for (const tab of this.getAchievementsTabRects(py)) {
+      const isActive = this.achievementsPage === tab.page;
+      const isHovered = this.hoveredAchievementsTab === tab.page;
+
+      this.ctx.fillStyle = isActive
+        ? 'rgba(30, 65, 20, 0.95)'
+        : isHovered
+        ? 'rgba(20, 45, 30, 0.85)'
+        : 'rgba(10, 24, 20, 0.75)';
+      this.ctx.strokeStyle = isActive ? '#bef264' : isHovered ? '#84cc16' : 'rgba(71, 85, 105, 0.6)';
+      this.ctx.lineWidth = isActive ? 2.2 : 1.2;
+      if (isActive) {
+        this.ctx.shadowColor = '#bef264';
+        this.ctx.shadowBlur = 10;
+      }
+      this.ctx.fillRect(tab.x, tab.y, tab.width, tab.height);
+      this.ctx.strokeRect(tab.x, tab.y, tab.width, tab.height);
+      this.ctx.shadowBlur = 0;
+
+      this.ctx.fillStyle = isActive ? '#bef264' : isHovered ? '#ffffff' : '#94a3b8';
+      this.ctx.font = 'bold 12px "Courier New", monospace';
+      this.ctx.fillText(tab.label, tab.x + tab.width / 2, tab.y + 21);
+    }
+
+    const cardW = 400;
     const cardH = 68;
-    const startY = py + 74;
+    const startY = py + 114;
     const col1X = cx - cardW - 10;
     const col2X = cx + 10;
 
-    for (let i = 0; i < this.achievementSystem.achievements.length; i++) {
-      const ach = this.achievementSystem.achievements[i];
+    const pageList = this.achievementSystem.getPageAchievements(this.achievementsPage, 12);
+    for (let i = 0; i < pageList.length; i++) {
+      const ach = pageList[i];
       const col = i % 2 === 0 ? col1X : col2X;
       const row = Math.floor(i / 2);
       const cardY = startY + row * (cardH + 10);
@@ -3534,7 +3709,8 @@ export class Game {
       this.ctx.textBaseline = 'alphabetic';
       this.ctx.fillStyle = ach.unlocked ? '#4ade80' : '#e2e8f0';
       this.ctx.font = 'bold 13px "Courier New", monospace';
-      this.ctx.fillText(ach.title, col + 46, cardY + 20);
+      const title = i18n.currentLang === 'EN' ? ach.titleEn : ach.title;
+      this.ctx.fillText(title, col + 46, cardY + 20);
 
       this.ctx.textAlign = 'right';
       this.ctx.fillStyle = ach.unlocked ? '#86efac' : '#fbbf24';
@@ -3545,7 +3721,8 @@ export class Game {
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = '#94a3b8';
       this.ctx.font = '11px "Courier New", monospace';
-      this.ctx.fillText(ach.description, col + 46, cardY + 38);
+      const desc = i18n.currentLang === 'EN' ? ach.descriptionEn : ach.description;
+      this.ctx.fillText(desc, col + 46, cardY + 38);
 
       // Barra de Progreso
       const progressRatio = Math.min(1, ach.current / ach.target);
@@ -3563,7 +3740,7 @@ export class Game {
       this.ctx.fillStyle = ach.unlocked ? '#4ade80' : '#38bdf8';
       this.ctx.font = 'bold 10px "Courier New", monospace';
       const progressText = ach.unlocked
-        ? 'COMPLETO'
+        ? i18n.t('COMPLETO', 'COMPLETED')
         : `${Math.floor(ach.current)}/${ach.target}`;
       this.ctx.fillText(progressText, col + cardW - 12, cardY + 56);
     }
@@ -3581,7 +3758,11 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
     this.ctx.font = 'bold 15px "Courier New", monospace';
-    this.ctx.fillText('<< [ ESC / B ] VOLVER AL MENÚ', backBtn.x + backBtn.width / 2, backBtn.y + 24);
+    this.ctx.fillText(
+      i18n.t('<< [ ESC / B ] VOLVER AL MENÚ', '<< [ ESC / B ] RETURN TO MENU'),
+      backBtn.x + backBtn.width / 2,
+      backBtn.y + 24
+    );
 
     this.ctx.restore();
   }
@@ -3595,7 +3776,7 @@ export class Game {
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const panelW = 660;
-    const panelH = 460;
+    const panelH = 520;
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
 
@@ -3611,20 +3792,31 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#7dd3fc';
     this.ctx.font = 'bold 24px "Courier New", monospace';
-    this.ctx.fillText('⚙️ CONFIGURACIÓN DEL SISTEMA // AJUSTES', cx, py + 42);
+    this.ctx.fillText(
+      i18n.t('⚙️ CONFIGURACIÓN DEL SISTEMA // AJUSTES', '⚙️ SYSTEM CONFIGURATION // SETTINGS'),
+      cx,
+      py + 40
+    );
 
     this.ctx.fillStyle = '#94a3b8';
     this.ctx.font = '12px "Courier New", monospace';
-    this.ctx.fillText('Los cambios se guardan automáticamente en tu navegador.', cx, py + 68);
+    this.ctx.fillText(
+      i18n.t(
+        'Los cambios se guardan automáticamente en tu navegador.',
+        'Changes are automatically saved in your browser.'
+      ),
+      cx,
+      py + 66
+    );
 
     const rows = [
-      { label: 'VOLUMEN MAESTRO', value: Math.round(this.sound.masterVolume * 100) },
-      { label: 'MÚSICA PROCEDURAL (BGM)', value: Math.round(this.sound.musicVolume * 100) },
-      { label: 'EFECTOS DE SONIDO (SFX)', value: Math.round(this.sound.sfxVolume * 100) },
+      { label: i18n.t('VOLUMEN MAESTRO', 'MASTER VOLUME'), value: Math.round(this.sound.masterVolume * 100) },
+      { label: i18n.t('MÚSICA PROCEDURAL (BGM)', 'PROCEDURAL MUSIC (BGM)'), value: Math.round(this.sound.musicVolume * 100) },
+      { label: i18n.t('EFECTOS DE SONIDO (SFX)', 'SOUND EFFECTS (SFX)'), value: Math.round(this.sound.sfxVolume * 100) },
     ];
 
-    const rowStartY = py + 110;
-    const rowGap = 52;
+    const rowStartY = py + 104;
+    const rowGap = 50;
 
     for (let r = 0; r < rows.length; r++) {
       const y = rowStartY + r * rowGap;
@@ -3662,7 +3854,7 @@ export class Game {
     }
 
     // Toggle Mute
-    const muteY = rowStartY + rowGap * 3 + 12;
+    const muteY = rowStartY + rowGap * 3 + 10;
     const muteActive = this.sound.muted;
     this.ctx.fillStyle = muteActive ? 'rgba(127, 29, 29, 0.92)' : 'rgba(10, 45, 30, 0.92)';
     this.ctx.strokeStyle = muteActive ? '#ef4444' : '#00ff66';
@@ -3673,7 +3865,10 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = muteActive ? '#fca5a5' : '#86efac';
     this.ctx.font = 'bold 13px "Courier New", monospace';
-    this.ctx.fillText(`MUTE: ${muteActive ? 'SILENCIADO' : 'SONIDO ON'}`, cx - 125, muteY + 24);
+    const muteLabel = muteActive
+      ? i18n.t('MUTE: SILENCIADO', 'MUTE: MUTED')
+      : i18n.t('MUTE: SONIDO ON', 'MUTE: AUDIO ON');
+    this.ctx.fillText(muteLabel, cx - 125, muteY + 24);
 
     // Toggle Screen Shake
     const shakeActive = this.sound.screenShakeEnabled;
@@ -3684,9 +3879,57 @@ export class Game {
     this.ctx.strokeRect(cx + 10, muteY, 230, 38);
 
     this.ctx.fillStyle = shakeActive ? '#86efac' : '#94a3b8';
-    this.ctx.fillText(`AGITADO PANTALLA: ${shakeActive ? 'ON' : 'OFF'}`, cx + 125, muteY + 24);
+    const shakeLabel = shakeActive
+      ? i18n.t('AGITADO PANTALLA: ON', 'SCREEN SHAKE: ON')
+      : i18n.t('AGITADO PANTALLA: OFF', 'SCREEN SHAKE: OFF');
+    this.ctx.fillText(shakeLabel, cx + 125, muteY + 24);
 
-    // Botón Volver
+    // ==========================================
+    // SECTOR IDIOMA / LANGUAGE (ES / EN)
+    // ==========================================
+    const langY = py + 316;
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = '#e2e8f0';
+    this.ctx.font = 'bold 14px "Courier New", monospace';
+    this.ctx.fillText(i18n.t('IDIOMA / LANGUAGE:', 'LANGUAGE / IDIOMA:'), cx - 240, langY + 24);
+
+    // Botón Español
+    const isEs = i18n.currentLang === 'ES';
+    this.ctx.fillStyle = isEs ? 'rgba(6, 78, 59, 0.95)' : 'rgba(15, 23, 42, 0.85)';
+    this.ctx.strokeStyle = isEs ? '#00ff66' : '#334155';
+    this.ctx.lineWidth = isEs ? 2.2 : 1.2;
+    if (isEs) {
+      this.ctx.shadowColor = '#00ff66';
+      this.ctx.shadowBlur = 10;
+    }
+    this.ctx.fillRect(cx - 20, langY, 120, 38);
+    this.ctx.strokeRect(cx - 20, langY, 120, 38);
+    this.ctx.shadowBlur = 0;
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = isEs ? '#ffffff' : '#94a3b8';
+    this.ctx.font = 'bold 13px "Courier New", monospace';
+    this.ctx.fillText(isEs ? '✓ ESPAÑOL' : 'ESPAÑOL', cx + 40, langY + 24);
+
+    // Botón Inglés
+    const isEn = i18n.currentLang === 'EN';
+    this.ctx.fillStyle = isEn ? 'rgba(14, 116, 144, 0.95)' : 'rgba(15, 23, 42, 0.85)';
+    this.ctx.strokeStyle = isEn ? '#38bdf8' : '#334155';
+    this.ctx.lineWidth = isEn ? 2.2 : 1.2;
+    if (isEn) {
+      this.ctx.shadowColor = '#38bdf8';
+      this.ctx.shadowBlur = 10;
+    }
+    this.ctx.fillRect(cx + 120, langY, 120, 38);
+    this.ctx.strokeRect(cx + 120, langY, 120, 38);
+    this.ctx.shadowBlur = 0;
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = isEn ? '#ffffff' : '#94a3b8';
+    this.ctx.font = 'bold 13px "Courier New", monospace';
+    this.ctx.fillText(isEn ? '✓ ENGLISH' : 'ENGLISH', cx + 180, langY + 24);
+
+    // Botón Guardar y Volver
     const backBtn = this.getOverlayBackButtonRect(py, panelH);
     this.ctx.fillStyle = this.hoveredOverlayBackBtn
       ? 'rgba(0, 68, 40, 0.96)'
@@ -3696,9 +3939,14 @@ export class Game {
     this.ctx.fillRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
     this.ctx.strokeRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
 
+    this.ctx.textAlign = 'center';
     this.ctx.fillStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
     this.ctx.font = 'bold 15px "Courier New", monospace';
-    this.ctx.fillText('<< [ ESC / B ] GUARDAR Y VOLVER', backBtn.x + backBtn.width / 2, backBtn.y + 24);
+    this.ctx.fillText(
+      i18n.t('<< [ ESC / B ] GUARDAR Y VOLVER', '<< [ ESC / B ] SAVE & RETURN'),
+      backBtn.x + backBtn.width / 2,
+      backBtn.y + 24
+    );
 
     this.ctx.restore();
   }
@@ -3728,54 +3976,94 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#f0abfc';
     this.ctx.font = 'bold 24px "Courier New", monospace';
-    this.ctx.fillText('📖 MANUAL DE OPERACIONES DEL KERNEL // CÓMO JUGAR', cx, py + 38);
+    this.ctx.fillText(
+      `📖 ${i18n.t('MANUAL DE OPERACIONES DEL KERNEL // CÓMO JUGAR', 'KERNEL OPERATIONS MANUAL // HOW TO PLAY')}`,
+      cx,
+      py + 38
+    );
 
     const cards = [
       {
-        title: '🎮 1. MOVIMIENTO Y CONTROLES',
-        lines: [
-          '• [WASD / Flechas]: Desplazamiento del Agente.',
-          '• [P]: Pausa táctica del sistema.',
-          '• [Ratón]: Clic para interactuar con menús y cartas.',
-          '• Disparo automático: Tus armas atacan solas',
-          '  al malware más prioritario en tu radio de acción.',
-        ],
+        title: i18n.t('🎮 1. MOVIMIENTO Y CONTROLES', '🎮 1. MOVEMENT & CONTROLS'),
+        lines:
+          i18n.currentLang === 'EN'
+            ? [
+                '• [WASD / Arrows]: Agent movement.',
+                '• [P]: Tactical system pause.',
+                '• [Mouse]: Click to interact with cards & tabs.',
+                '• Auto-fire: Your weapons target automatically',
+                '  the highest priority malware in range.',
+              ]
+            : [
+                '• [WASD / Flechas]: Desplazamiento del Agente.',
+                '• [P]: Pausa táctica del sistema.',
+                '• [Ratón]: Clic para interactuar con menús y cartas.',
+                '• Disparo automático: Tus armas atacan solas',
+                '  al malware más prioritario en tu radio de acción.',
+              ],
         color: '#00ff66',
         border: 'rgba(0, 255, 102, 0.35)',
       },
       {
-        title: '⚡ 2. ARSENAL Y PROGRESIÓN',
-        lines: [
-          '• Recoge orbes de XP para instalar parches de nivel.',
-          '• Límite estricto de 4 ranuras de armas activas.',
-          '• Combina armas y pasivas para crear sinergias.',
-          '• Desbloquea y equipa sombreros en el Gacha [G]',
-          '  para obtener bonificaciones pasivas permanentes.',
-        ],
+        title: i18n.t('⚡ 2. ARSENAL Y PROGRESIÓN', '⚡ 2. ARSENAL & PROGRESSION'),
+        lines:
+          i18n.currentLang === 'EN'
+            ? [
+                '• Collect XP orbs to install level-up patches.',
+                '• Strict limit of 4 active weapon slots.',
+                '• Combine weapons and passives for synergies.',
+                '• Unlock and equip hats in the Gacha [G]',
+                '  to gain permanent passive bonuses.',
+              ]
+            : [
+                '• Recoge orbes de XP para instalar parches de nivel.',
+                '• Límite estricto de 4 ranuras de armas activas.',
+                '• Combina armas y pasivas para crear sinergias.',
+                '• Desbloquea y equipa sombreros en el Gacha [G]',
+                '  para obtener bonificaciones pasivas permanentes.',
+              ],
         color: '#38bdf8',
         border: 'rgba(56, 189, 248, 0.35)',
       },
       {
-        title: '🔑 3. PROTOCOLO MEGA-JEFES',
-        lines: [
-          '• Tras cada ciclo de élites aparece 1 de los 4 Mega-Jefes.',
-          '• ¡TUS ARMAS SE DESHABILITAN POR EL ENCRIPTADO!',
-          '• No puedes dañarlos disparando.',
-          '• Esquiva sus ataques y RECOGE 5 LLAVES',
-          '  de desencriptación en la arena para eliminarlos.',
-        ],
+        title: i18n.t('🔑 3. PROTOCOLO MEGA-JEFES', '🔑 3. MEGA-BOSS PROTOCOL'),
+        lines:
+          i18n.currentLang === 'EN'
+            ? [
+                '• After each elite cycle, 1 of 4 Mega-Bosses spawns.',
+                '• YOUR WEAPONS ARE DISABLED BY ENCRYPTION!',
+                '• You cannot damage them by shooting.',
+                '• Dodge attacks and COLLECT 5 DECRYPTION KEYS',
+                '  in the arena to eliminate them.',
+              ]
+            : [
+                '• Tras cada ciclo de élites aparece 1 de los 4 Mega-Jefes.',
+                '• ¡TUS ARMAS SE DESHABILITAN POR EL ENCRIPTADO!',
+                '• No puedes dañarlos disparando.',
+                '• Esquiva sus ataques y RECOGE 5 LLAVES',
+                '  de desencriptación en la arena para eliminarlos.',
+              ],
         color: '#fbbf24',
         border: 'rgba(251, 191, 36, 0.35)',
       },
       {
-        title: '🐂 4. JEFE FINAL: "EL TORO" (INVENCIBLE)',
-        lines: [
-          '• Despierta al derrotar a los 4 Mega-Jefes únicos.',
-          '• ¡TUS ARMAS SE REACTIVAN PARA ESTE COMBATE!',
-          '• "El Toro" es INVENCIBLE y acelera cada 15s.',
-          '• Cada embestida o contacto quita el 50% de HP.',
-          '• ¡Haz todo el daño posible para liderar el Ranking!',
-        ],
+        title: i18n.t('🐂 4. JEFE FINAL: "EL TORO" (INVENCIBLE)', '🐂 4. FINAL BOSS: "EL TORO" (INVINCIBLE)'),
+        lines:
+          i18n.currentLang === 'EN'
+            ? [
+                '• Awakens after defeating all 4 unique Mega-Bosses.',
+                '• YOUR WEAPONS RE-ENGAGE FOR THIS COMBAT!',
+                '• "El Toro" is INVINCIBLE and accelerates every 15s.',
+                '• Each collision strips 50% max HP.',
+                '• Inflict maximum damage to top the Leaderboard!',
+              ]
+            : [
+                '• Despierta al derrotar a los 4 Mega-Jefes únicos.',
+                '• ¡TUS ARMAS SE REACTIVAN PARA ESTE COMBATE!',
+                '• "El Toro" es INVENCIBLE y acelera cada 15s.',
+                '• Cada embestida o contacto quita el 50% de HP.',
+                '• ¡Haz todo el daño posible para liderar el Ranking!',
+              ],
         color: '#f87171',
         border: 'rgba(248, 113, 113, 0.35)',
       },
@@ -3823,7 +4111,11 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
     this.ctx.font = 'bold 15px "Courier New", monospace';
-    this.ctx.fillText('<< [ ESC / B ] ENTENDIDO // VOLVER', backBtn.x + backBtn.width / 2, backBtn.y + 24);
+    this.ctx.fillText(
+      i18n.t('<< [ ESC / B ] ENTENDIDO // VOLVER', '<< [ ESC / B ] UNDERSTOOD // RETURN'),
+      backBtn.x + backBtn.width / 2,
+      backBtn.y + 24
+    );
 
     this.ctx.restore();
   }
@@ -4147,7 +4439,7 @@ export class Game {
     this.ctx.shadowBlur = 16;
     this.ctx.font = 'bold 28px "Courier New", monospace';
     this.ctx.fillText(
-      `// TARJETAS DE MEJORA :: NIVEL ${this.upgradeSystem.level}.0 //`,
+      `// ${i18n.t('TARJETAS DE MEJORA', 'UPGRADE CARDS')} :: ${i18n.t('NIVEL', 'LEVEL')} ${this.upgradeSystem.level}.0 //`,
       this.canvas.width / 2,
       this.canvas.height / 2 - 150
     );
@@ -4156,7 +4448,10 @@ export class Game {
     this.ctx.fillStyle = '#00f0ff';
     this.ctx.font = '15px "Courier New", monospace';
     this.ctx.fillText(
-      'Elige 1 de las 3 Tarjetas de Mejora con las teclas [1] [2] [3] o haciendo clic:',
+      i18n.t(
+        'Elige 1 de las 3 Tarjetas de Mejora con las teclas [1] [2] [3] o haciendo clic:',
+        'Choose 1 of 3 Upgrade Cards using keys [1] [2] [3] or clicking:'
+      ),
       this.canvas.width / 2,
       this.canvas.height / 2 - 118
     );
@@ -4190,8 +4485,11 @@ export class Game {
       this.ctx.font = '12px "Courier New", monospace';
       this.ctx.fillText(
         opt.level === 0
-          ? 'Estado: NUEVA TARJETA -> v1.0'
-          : `Nivel: v${opt.level}.0 -> v${opt.level + 1}.0 (Máx ${opt.maxLevel})`,
+          ? i18n.t('Estado: NUEVA TARJETA -> v1.0', 'Status: NEW CARD -> v1.0')
+          : i18n.t(
+              `Nivel: v${opt.level}.0 -> v${opt.level + 1}.0 (Máx ${opt.maxLevel})`,
+              `Level: v${opt.level}.0 -> v${opt.level + 1}.0 (Max ${opt.maxLevel})`
+            ),
         rect.x + 18,
         rect.y + 78
       );
@@ -4218,7 +4516,11 @@ export class Game {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = isHovered ? '#ffffff' : opt.color;
       this.ctx.font = 'bold 13px "Courier New", monospace';
-      this.ctx.fillText(`> SELECCIONAR TARJETA [${i + 1}] <`, rect.x + rect.width / 2, rect.y + rect.height - 18);
+      this.ctx.fillText(
+        `> ${i18n.t('SELECCIONAR TARJETA', 'SELECT CARD')} [${i + 1}] <`,
+        rect.x + rect.width / 2,
+        rect.y + rect.height - 18
+      );
 
       this.ctx.restore();
     }
@@ -4273,7 +4575,7 @@ export class Game {
     this.ctx.fillStyle = '#00ff66';
     this.ctx.font = '14px "Courier New", monospace';
     this.ctx.fillText(
-      `Agente: ${this.player.profileName} (v${this.upgradeSystem.level}.0)  |  Tiempo: ${this.formatTimeMMSS(this.elapsedTime)}  |  Bajas: ${this.killCount}  |  Cripto: +${this.runCoinsCollected} 🪙`,
+      `${i18n.t('Agente', 'Agent')}: ${this.player.profileName} (v${this.upgradeSystem.level}.0)  |  ${i18n.t('Tiempo', 'Time')}: ${this.formatTimeMMSS(this.elapsedTime)}  |  ${i18n.t('Bajas', 'Kills')}: ${this.killCount}  |  ${i18n.t('Cripto', 'Crypto')}: +${this.runCoinsCollected} 🪙`,
       cx,
       cy - 200
     );
@@ -4282,7 +4584,7 @@ export class Game {
       this.ctx.fillStyle = '#fbbf24';
       this.ctx.font = 'bold 14px "Courier New", monospace';
       this.ctx.fillText(
-        `🐂 DAÑO AL JEFE FINAL (EL TORO): ${this.runDamageToToro.toLocaleString('en-US')} DMG`,
+        `🐂 ${i18n.t('DAÑO AL JEFE FINAL (EL TORO)', 'DAMAGE TO FINAL BOSS (EL TORO)')}: ${this.runDamageToToro.toLocaleString('en-US')} DMG`,
         cx,
         cy - 176
       );
@@ -4305,7 +4607,7 @@ export class Game {
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#fb7185';
     this.ctx.font = 'bold 14px "Courier New", monospace';
-    this.ctx.fillText('⚔️ RENDIMIENTO DE ARSENAL (DAÑO)', leftX + 16, panelY + 28);
+    this.ctx.fillText(`⚔️ ${i18n.t('RENDIMIENTO DE ARSENAL (DAÑO)', 'ARSENAL PERFORMANCE (DAMAGE)')}`, leftX + 16, panelY + 28);
 
     const weaponDamages = Object.entries(this.combatSystem.weaponDamageStats)
       .filter(([_, dmg]) => dmg > 0)
@@ -4318,7 +4620,7 @@ export class Game {
     if (weaponDamages.length === 0) {
       this.ctx.fillStyle = '#94a3b8';
       this.ctx.font = '12px "Courier New", monospace';
-      this.ctx.fillText('Sin registros de daño con armas.', leftX + 16, panelY + 60);
+      this.ctx.fillText(i18n.t('Sin registros de daño con armas.', 'No weapon damage recorded.'), leftX + 16, panelY + 60);
     } else {
       for (let w = 0; w < Math.min(6, weaponDamages.length); w++) {
         const item = weaponDamages[w];
@@ -4354,15 +4656,15 @@ export class Game {
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#7dd3fc';
     this.ctx.font = 'bold 14px "Courier New", monospace';
-    this.ctx.fillText('👾 REGISTRO DE AMENAZAS PURGADAS', rightX + 16, panelY + 28);
+    this.ctx.fillText(`👾 ${i18n.t('REGISTRO DE AMENAZAS PURGADAS', 'PURGED THREATS LOG')}`, rightX + 16, panelY + 28);
 
     const enemyRows = [
-      { name: 'Adware Básico (Rojos)', count: this.combatSystem.killsByTypeStats['Adware'], color: '#ef4444' },
-      { name: 'Troyanos Rápidos (Amarillos)', count: this.combatSystem.killsByTypeStats['Trojan'], color: '#eab308' },
-      { name: 'Gusanos Divisibles (Morados)', count: this.combatSystem.killsByTypeStats['Worm'], color: '#a855f7' },
-      { name: 'Evasores (Ghost Scripts)', count: this.combatSystem.killsByTypeStats['Evasor'], color: '#06b6d4' },
-      { name: 'Cajas de Hardware Destruidas', count: this.combatSystem.killsByTypeStats['Hardware Box'], color: '#f97316' },
-      { name: 'Mega-Jefes Purgados', count: this.defeatedMegaBossVariants.size, color: '#22c55e' },
+      { name: i18n.t('Adware Básico (Rojos)', 'Basic Adware (Red)'), count: this.combatSystem.killsByTypeStats['Adware'], color: '#ef4444' },
+      { name: i18n.t('Troyanos Rápidos (Amarillos)', 'Fast Trojans (Yellow)'), count: this.combatSystem.killsByTypeStats['Trojan'], color: '#eab308' },
+      { name: i18n.t('Gusanos Divisibles (Morados)', 'Splitting Worms (Purple)'), count: this.combatSystem.killsByTypeStats['Worm'], color: '#a855f7' },
+      { name: i18n.t('Evasores (Ghost Scripts)', 'Evasors (Ghost Scripts)'), count: this.combatSystem.killsByTypeStats['Evasor'], color: '#06b6d4' },
+      { name: i18n.t('Cajas de Hardware Destruidas', 'Hardware Crates Destroyed'), count: this.combatSystem.killsByTypeStats['Hardware Box'], color: '#f97316' },
+      { name: i18n.t('Mega-Jefes Purgados', 'Mega-Bosses Purged'), count: this.defeatedMegaBossVariants.size, color: '#22c55e' },
     ];
 
     for (let e = 0; e < enemyRows.length; e++) {
@@ -4389,7 +4691,7 @@ export class Game {
     this.ctx.fillStyle = blink ? '#00f0ff' : '#ffffff';
     this.ctx.font = 'bold 16px "Courier New", monospace';
     this.ctx.fillText(
-      '[R / ENTER]: Reintentar Partida  |  [T / ESC / CLIC]: Ir a Tienda Principal',
+      `[R / ENTER]: ${i18n.t('Reintentar Partida', 'Retry Run')}  |  [T / ESC / CLIC]: ${i18n.t('Ir a Tienda Principal', 'Main Menu')}`,
       cx,
       cy + 242
     );
