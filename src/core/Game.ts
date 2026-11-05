@@ -74,7 +74,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.0.0';
+const GAME_VERSION = 'v1.0.1';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -140,6 +140,7 @@ export class Game {
   private showHelpOverlay: boolean = false;
   private hoveredAchievementsBtn: boolean = false;
   private hoveredSettingsBtn: boolean = false;
+  private hoveredFullscreenBtn: boolean = false;
   private hoveredHelpBtn: boolean = false;
   private hoveredOverlayBackBtn: boolean = false;
   public readonly firestoreDb = db;
@@ -257,6 +258,10 @@ export class Game {
       if (key === 'm') {
         this.sound.muted = !this.sound.muted;
         this.addTerminalLog(`Audio Synthesizer: ${this.sound.muted ? 'MUTED' : 'ONLINE'}`);
+      }
+
+      if (key === 'f') {
+        this.toggleFullscreen();
       }
 
       if (this.gameState === 'MENU') {
@@ -468,6 +473,13 @@ export class Game {
           my >= setBtn.y &&
           my <= setBtn.y + setBtn.height;
 
+        const fsBtn = this.getFullscreenButtonRect();
+        this.hoveredFullscreenBtn =
+          mx >= fsBtn.x &&
+          mx <= fsBtn.x + fsBtn.width &&
+          my >= fsBtn.y &&
+          my <= fsBtn.y + fsBtn.height;
+
         const helpBtn = this.getHelpButtonRect();
         this.hoveredHelpBtn =
           mx >= helpBtn.x &&
@@ -631,6 +643,18 @@ export class Game {
           my <= setBtn.y + setBtn.height
         ) {
           this.showSettingsOverlay = true;
+          this.sound.playShoot(false);
+          return;
+        }
+
+        const fsBtn = this.getFullscreenButtonRect();
+        if (
+          mx >= fsBtn.x &&
+          mx <= fsBtn.x + fsBtn.width &&
+          my >= fsBtn.y &&
+          my <= fsBtn.y + fsBtn.height
+        ) {
+          this.toggleFullscreen();
           this.sound.playShoot(false);
           return;
         }
@@ -2245,13 +2269,13 @@ export class Game {
   }[] {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
-    const py = cy - 305;
-    const tabW = 225;
-    const tabH = 34;
-    const gap = 14;
+    const py = cy - 290;
+    const tabW = 230;
+    const tabH = 36;
+    const gap = 16;
     const totalW = tabW * 3 + gap * 2;
     const startX = cx - totalW / 2;
-    const y = py + 98;
+    const y = py + 104;
 
     return [
       {
@@ -2284,12 +2308,13 @@ export class Game {
   private getMenuCharacterRects(): MenuCharacterRect[] {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
-    const cardW = 340;
+    const py = cy - 290;
+    const cardW = 380;
     const cardH = 138;
     const gapX = 22;
     const gapY = 14;
     const startX = cx - cardW - gapX / 2;
-    const startY = cy - 95;
+    const startY = py + 154;
 
     return this.metaSystem.characterOrder.map((id, idx) => {
       const col = idx % 2;
@@ -2318,11 +2343,12 @@ export class Game {
   }[] {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
+    const py = cy - 290;
     const btnW = 310;
-    const btnH = 42;
+    const btnH = 44;
     const gap = 20;
     const startX = cx - btnW - gap / 2;
-    const y = cy - 92;
+    const y = py + 180;
 
     return [
       {
@@ -2357,13 +2383,14 @@ export class Game {
     const pageItems = unlockedList.slice(this.inventoryPage * 9, (this.inventoryPage + 1) * 9);
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
-    const cardW = 222;
+    const py = cy - 290;
+    const cardW = 240;
     const cardH = 78;
-    const gapX = 14;
+    const gapX = 16;
     const gapY = 12;
     const totalW = cardW * 3 + gapX * 2;
     const startX = cx - totalW / 2;
-    const startY = cy - 102;
+    const startY = py + 154;
 
     return pageItems.map((hat, idx) => {
       const col = idx % 3;
@@ -2391,7 +2418,8 @@ export class Game {
 
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
-    const y = cy + 165;
+    const py = cy - 290;
+    const y = py + 456;
     const btnW = 140;
     const btnH = 28;
 
@@ -2418,74 +2446,78 @@ export class Game {
   private getStartButtonRect(): { x: number; y: number; width: number; height: number } {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
-    const width = 480;
-    const height = 44;
+    const py = cy - 290;
+    const width = 500;
+    const height = 46;
     return {
       x: cx - width / 2,
-      y: cy + 240,
+      y: py + 508,
       width,
       height,
     };
   }
 
-  private getAuthActionButtonRect(): { x: number; y: number; width: number; height: number } {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 305;
-    if (this.currentUser) {
-      const width = 148;
-      const height = 28;
-      return {
-        x: cx - 94,
-        y: py + 140,
-        width,
-        height,
-      };
-    } else {
-      const width = 406;
-      const height = 28;
-      return {
-        x: cx - 351,
-        y: py + 140,
-        width,
-        height,
-      };
-    }
+  private getFullscreenButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 1142,
+      y: 26,
+      width: 220,
+      height: 44,
+    };
   }
 
   private getGlobalRankingsButtonRect(): { x: number; y: number; width: number; height: number } {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 305;
-    const width = 282;
-    const height = 28;
     return {
-      x: cx + 69,
-      y: py + 140,
-      width,
-      height,
+      x: 1376,
+      y: 26,
+      width: 160,
+      height: 44,
     };
   }
 
   private getAchievementsButtonRect(): { x: number; y: number; width: number; height: number } {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 305;
-    return { x: cx - 351, y: py + 174, width: 226, height: 26 };
+    return {
+      x: 1550,
+      y: 26,
+      width: 180,
+      height: 44,
+    };
   }
 
   private getSettingsButtonRect(): { x: number; y: number; width: number; height: number } {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 305;
-    return { x: cx - 113, y: py + 174, width: 226, height: 26 };
+    return {
+      x: 1744,
+      y: 26,
+      width: 140,
+      height: 44,
+    };
   }
 
   private getHelpButtonRect(): { x: number; y: number; width: number; height: number } {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 305;
-    return { x: cx + 125, y: py + 174, width: 226, height: 26 };
+    return {
+      x: -9999,
+      y: -9999,
+      width: 0,
+      height: 0,
+    };
+  }
+
+  private getAuthActionButtonRect(): { x: number; y: number; width: number; height: number } {
+    if (this.currentUser) {
+      return {
+        x: 308,
+        y: 26,
+        width: 160,
+        height: 44,
+      };
+    } else {
+      return {
+        x: 36,
+        y: 26,
+        width: 310,
+        height: 44,
+      };
+    }
   }
 
   private toggleFullscreen(): void {
@@ -2506,7 +2538,6 @@ export class Game {
       | 'SFX_UP'
       | 'TOGGLE_MUTE'
       | 'TOGGLE_SHAKE'
-      | 'TOGGLE_FULLSCREEN'
       | 'BACK';
     x: number;
     y: number;
@@ -2515,7 +2546,7 @@ export class Game {
   }[] {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
-    const panelH = 540;
+    const panelH = 460;
     const py = cy - panelH / 2;
     const rowStartY = py + 110;
     const rowGap = 52;
@@ -2527,10 +2558,9 @@ export class Game {
       { id: 'MUSIC_UP', x: cx + 200, y: rowStartY + rowGap, width: 44, height: 32 },
       { id: 'SFX_DOWN', x: cx + 70, y: rowStartY + rowGap * 2, width: 44, height: 32 },
       { id: 'SFX_UP', x: cx + 200, y: rowStartY + rowGap * 2, width: 44, height: 32 },
-      { id: 'TOGGLE_MUTE', x: cx - 240, y: rowStartY + rowGap * 3 + 10, width: 230, height: 38 },
-      { id: 'TOGGLE_SHAKE', x: cx + 10, y: rowStartY + rowGap * 3 + 10, width: 230, height: 38 },
-      { id: 'TOGGLE_FULLSCREEN', x: cx - 240, y: rowStartY + rowGap * 4 + 18, width: 480, height: 40 },
-      { id: 'BACK', x: cx - 140, y: py + panelH - 52, width: 280, height: 38 },
+      { id: 'TOGGLE_MUTE', x: cx - 240, y: rowStartY + rowGap * 3 + 12, width: 230, height: 38 },
+      { id: 'TOGGLE_SHAKE', x: cx + 10, y: rowStartY + rowGap * 3 + 12, width: 230, height: 38 },
+      { id: 'BACK', x: cx - 150, y: py + panelH - 56, width: 300, height: 40 },
     ];
   }
 
@@ -2658,8 +2688,137 @@ export class Game {
     this.ctx.fillStyle = 'rgba(0, 6, 3, 0.85)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const panelW = Math.min(760, this.canvas.width - 28);
-    const panelH = 610;
+    // ==========================================
+    // 1. ESQUINA SUPERIOR IZQUIERDA: HUD JUGADOR / AUTH
+    // ==========================================
+    if (this.currentUser) {
+      const displayName = this.currentUser.displayName || this.currentUser.email || 'Survivor';
+      const truncatedName = displayName.length > 16 ? displayName.slice(0, 15) + '…' : displayName;
+      const statusBoxX = 36;
+      const statusBoxY = 26;
+      const statusBoxW = 260;
+      const statusBoxH = 44;
+
+      this.ctx.fillStyle = 'rgba(2, 22, 14, 0.94)';
+      this.ctx.strokeStyle = '#00ff66';
+      this.ctx.lineWidth = 1.5;
+      this.ctx.shadowColor = '#00ff66';
+      this.ctx.shadowBlur = 10;
+      this.ctx.fillRect(statusBoxX, statusBoxY, statusBoxW, statusBoxH);
+      this.ctx.strokeRect(statusBoxX, statusBoxY, statusBoxW, statusBoxH);
+      this.ctx.shadowBlur = 0;
+
+      this.ctx.textAlign = 'left';
+      this.ctx.fillStyle = '#00ff66';
+      this.ctx.font = 'bold 13px "Courier New", monospace';
+      // Sin emoji al lado de AGENTE tal como pidió el usuario
+      this.ctx.fillText(`AGENTE: ${truncatedName}`, statusBoxX + 14, statusBoxY + 20);
+
+      this.ctx.fillStyle = '#38bdf8';
+      this.ctx.font = 'bold 10px "Courier New", monospace';
+      this.ctx.fillText('☁ NUBE SINCRONIZADA', statusBoxX + 14, statusBoxY + 34);
+
+      // Botón Cerrar Sesión
+      const authBtn = this.getAuthActionButtonRect();
+      this.ctx.fillStyle = this.hoveredAuthBtn ? 'rgba(127, 29, 29, 0.95)' : 'rgba(69, 10, 10, 0.9)';
+      this.ctx.strokeStyle = this.hoveredAuthBtn ? '#f87171' : '#ef4444';
+      this.ctx.lineWidth = this.hoveredAuthBtn ? 2 : 1.5;
+      this.ctx.fillRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
+      this.ctx.strokeRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
+
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#fecaca';
+      this.ctx.font = 'bold 12px "Courier New", monospace';
+      this.ctx.fillText('[L] CERRAR SESIÓN', authBtn.x + authBtn.width / 2, authBtn.y + 27);
+    } else {
+      const authBtn = this.getAuthActionButtonRect();
+      this.ctx.fillStyle = this.hoveredAuthBtn ? 'rgba(14, 55, 85, 0.96)' : 'rgba(8, 28, 46, 0.92)';
+      this.ctx.strokeStyle = this.hoveredAuthBtn ? '#00ff66' : '#38bdf8';
+      this.ctx.lineWidth = this.hoveredAuthBtn ? 2.2 : 1.5;
+      this.ctx.shadowColor = this.hoveredAuthBtn ? '#00ff66' : '#38bdf8';
+      this.ctx.shadowBlur = this.hoveredAuthBtn ? 14 : 6;
+      this.ctx.fillRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
+      this.ctx.strokeRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
+      this.ctx.shadowBlur = 0;
+
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = this.hoveredAuthBtn ? '#00ff66' : '#e0f2fe';
+      this.ctx.font = 'bold 12px "Courier New", monospace';
+      this.ctx.fillText('🔐 [L] INICIAR SESIÓN CON GOOGLE', authBtn.x + authBtn.width / 2, authBtn.y + 27);
+    }
+
+    // ==========================================
+    // 2. ESQUINA SUPERIOR DERECHA: PANTALLA COMPLETA, RANKINGS, LOGROS, AJUSTES
+    // ==========================================
+    // Botón Pantalla Completa (Destacado y fuera de opciones para máxima visibilidad)
+    const fsBtn = this.getFullscreenButtonRect();
+    this.ctx.fillStyle = this.hoveredFullscreenBtn ? 'rgba(0, 55, 45, 0.96)' : 'rgba(4, 28, 28, 0.92)';
+    this.ctx.strokeStyle = this.hoveredFullscreenBtn ? '#ffffff' : '#00f0ff';
+    this.ctx.lineWidth = this.hoveredFullscreenBtn ? 2.5 : 1.8;
+    this.ctx.shadowColor = '#00f0ff';
+    this.ctx.shadowBlur = this.hoveredFullscreenBtn ? 16 : 8;
+    this.ctx.fillRect(fsBtn.x, fsBtn.y, fsBtn.width, fsBtn.height);
+    this.ctx.strokeRect(fsBtn.x, fsBtn.y, fsBtn.width, fsBtn.height);
+    this.ctx.shadowBlur = 0;
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = this.hoveredFullscreenBtn ? '#ffffff' : '#00f0ff';
+    this.ctx.font = 'bold 12px "Courier New", monospace';
+    this.ctx.fillText('⛶ [F] PANTALLA COMPLETA', fsBtn.x + fsBtn.width / 2, fsBtn.y + 27);
+
+    // Botón Clasificación Global (Rankings)
+    const rankingsBtn = this.getGlobalRankingsButtonRect();
+    this.ctx.fillStyle = this.hoveredRankingsBtn ? 'rgba(85, 50, 5, 0.96)' : 'rgba(42, 24, 4, 0.92)';
+    this.ctx.strokeStyle = this.hoveredRankingsBtn ? '#ffffff' : '#fbbf24';
+    this.ctx.lineWidth = this.hoveredRankingsBtn ? 2.2 : 1.5;
+    this.ctx.shadowColor = '#fbbf24';
+    this.ctx.shadowBlur = this.hoveredRankingsBtn ? 14 : 6;
+    this.ctx.fillRect(rankingsBtn.x, rankingsBtn.y, rankingsBtn.width, rankingsBtn.height);
+    this.ctx.strokeRect(rankingsBtn.x, rankingsBtn.y, rankingsBtn.width, rankingsBtn.height);
+    this.ctx.shadowBlur = 0;
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = this.hoveredRankingsBtn ? '#ffffff' : '#fde047';
+    this.ctx.font = 'bold 12px "Courier New", monospace';
+    this.ctx.fillText('🏆 [R] RANKINGS', rankingsBtn.x + rankingsBtn.width / 2, rankingsBtn.y + 27);
+
+    // Botón Logros
+    const achBtn = this.getAchievementsButtonRect();
+    const achUnlocked = this.achievementSystem.getUnlockedCount();
+    const totalAch = this.achievementSystem.achievements.length;
+    this.ctx.fillStyle = this.hoveredAchievementsBtn ? 'rgba(30, 50, 15, 0.96)' : 'rgba(15, 26, 8, 0.92)';
+    this.ctx.strokeStyle = this.hoveredAchievementsBtn ? '#ffffff' : '#84cc16';
+    this.ctx.lineWidth = this.hoveredAchievementsBtn ? 2 : 1.5;
+    this.ctx.shadowColor = '#84cc16';
+    this.ctx.shadowBlur = this.hoveredAchievementsBtn ? 12 : 6;
+    this.ctx.fillRect(achBtn.x, achBtn.y, achBtn.width, achBtn.height);
+    this.ctx.strokeRect(achBtn.x, achBtn.y, achBtn.width, achBtn.height);
+    this.ctx.shadowBlur = 0;
+
+    this.ctx.fillStyle = this.hoveredAchievementsBtn ? '#ffffff' : '#bef264';
+    this.ctx.font = 'bold 12px "Courier New", monospace';
+    this.ctx.fillText(`🏆 [A] LOGROS (${achUnlocked}/${totalAch})`, achBtn.x + achBtn.width / 2, achBtn.y + 27);
+
+    // Botón Ajustes
+    const setBtn = this.getSettingsButtonRect();
+    this.ctx.fillStyle = this.hoveredSettingsBtn ? 'rgba(12, 40, 65, 0.96)' : 'rgba(6, 22, 36, 0.92)';
+    this.ctx.strokeStyle = this.hoveredSettingsBtn ? '#ffffff' : '#0284c7';
+    this.ctx.lineWidth = this.hoveredSettingsBtn ? 2 : 1.5;
+    this.ctx.shadowColor = '#0284c7';
+    this.ctx.shadowBlur = this.hoveredSettingsBtn ? 12 : 6;
+    this.ctx.fillRect(setBtn.x, setBtn.y, setBtn.width, setBtn.height);
+    this.ctx.strokeRect(setBtn.x, setBtn.y, setBtn.width, setBtn.height);
+    this.ctx.shadowBlur = 0;
+
+    this.ctx.fillStyle = this.hoveredSettingsBtn ? '#ffffff' : '#7dd3fc';
+    this.ctx.font = 'bold 12px "Courier New", monospace';
+    this.ctx.fillText('⚙️ [O] AJUSTES', setBtn.x + setBtn.width / 2, setBtn.y + 27);
+
+    // ==========================================
+    // 3. PANEL CENTRAL (KERNEL HUB)
+    // ==========================================
+    const panelW = 860;
+    const panelH = 580;
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
 
@@ -2675,7 +2834,7 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#00ff66';
     this.ctx.font = 'bold 30px "Courier New", monospace';
-    this.ctx.fillText(`CYBER SURVIVOR // KERNEL HUB (${GAME_VERSION})`, cx, py + 38);
+    this.ctx.fillText(`CYBER SURVIVOR // KERNEL HUB (${GAME_VERSION})`, cx, py + 40);
 
     const equippedHat = this.metaSystem.getEquippedHat();
     this.ctx.fillStyle = '#fbbf24';
@@ -2685,7 +2844,7 @@ export class Game {
         equippedHat ? `${equippedHat.icon} ${equippedHat.name}` : 'Ninguno'
       } ]`,
       cx,
-      py + 68
+      py + 72
     );
 
     // Dibujar barra de pestañas (AGENTES | GACHA | INVENTARIO)
@@ -2699,136 +2858,8 @@ export class Game {
 
       this.ctx.fillStyle = isActive ? '#00ff66' : '#bae6fd';
       this.ctx.font = 'bold 13px "Courier New", monospace';
-      this.ctx.fillText(tabRect.label, tabRect.x + tabRect.width / 2, tabRect.y + 22);
+      this.ctx.fillText(tabRect.label, tabRect.x + tabRect.width / 2, tabRect.y + 23);
     }
-
-    // Panel / Botón de Autenticación de Google (Firebase Auth)
-    const authBtn = this.getAuthActionButtonRect();
-    if (this.currentUser) {
-      const displayName = this.currentUser.displayName || this.currentUser.email || 'Survivor';
-      const statusBoxX = cx - 351;
-      const statusBoxW = 248;
-      this.ctx.fillStyle = 'rgba(0, 40, 26, 0.9)';
-      this.ctx.strokeStyle = '#00ff66';
-      this.ctx.lineWidth = 1.5;
-      this.ctx.fillRect(statusBoxX, authBtn.y, statusBoxW, authBtn.height);
-      this.ctx.strokeRect(statusBoxX, authBtn.y, statusBoxW, authBtn.height);
-
-      this.ctx.textAlign = 'center';
-      this.ctx.fillStyle = '#00ff66';
-      this.ctx.font = 'bold 12px "Courier New", monospace';
-      const truncatedName = displayName.length > 18 ? displayName.slice(0, 17) + '…' : displayName;
-      this.ctx.fillText(
-        `🟢 AGENTE: ${truncatedName}`,
-        statusBoxX + statusBoxW / 2,
-        authBtn.y + 18
-      );
-
-      this.ctx.fillStyle = this.hoveredAuthBtn
-        ? 'rgba(127, 29, 29, 0.95)'
-        : 'rgba(69, 10, 10, 0.9)';
-      this.ctx.strokeStyle = this.hoveredAuthBtn ? '#f87171' : '#ef4444';
-      this.ctx.lineWidth = this.hoveredAuthBtn ? 2 : 1.5;
-      this.ctx.fillRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
-      this.ctx.strokeRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
-
-      this.ctx.fillStyle = '#fecaca';
-      this.ctx.font = 'bold 12px "Courier New", monospace';
-      this.ctx.fillText(
-        '[L] CERRAR SESIÓN',
-        authBtn.x + authBtn.width / 2,
-        authBtn.y + 18
-      );
-    } else {
-      this.ctx.fillStyle = this.hoveredAuthBtn
-        ? 'rgba(14, 55, 85, 0.96)'
-        : 'rgba(8, 28, 46, 0.92)';
-      this.ctx.strokeStyle = this.hoveredAuthBtn ? '#00ff66' : '#38bdf8';
-      this.ctx.lineWidth = this.hoveredAuthBtn ? 2.2 : 1.5;
-      this.ctx.fillRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
-      this.ctx.strokeRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
-
-      this.ctx.textAlign = 'center';
-      this.ctx.fillStyle = this.hoveredAuthBtn ? '#00ff66' : '#e0f2fe';
-      this.ctx.font = 'bold 12px "Courier New", monospace';
-      this.ctx.fillText(
-        '🔐 [L] INICIAR SESIÓN CON GOOGLE',
-        authBtn.x + authBtn.width / 2,
-        authBtn.y + 18
-      );
-    }
-
-    // Botón de Clasificación Global (Global Rankings)
-    const rankingsBtn = this.getGlobalRankingsButtonRect();
-    this.ctx.fillStyle = this.hoveredRankingsBtn
-      ? 'rgba(85, 50, 5, 0.96)'
-      : 'rgba(42, 24, 4, 0.92)';
-    this.ctx.strokeStyle = this.hoveredRankingsBtn ? '#fde047' : '#fbbf24';
-    this.ctx.lineWidth = this.hoveredRankingsBtn ? 2.2 : 1.5;
-    this.ctx.fillRect(rankingsBtn.x, rankingsBtn.y, rankingsBtn.width, rankingsBtn.height);
-    this.ctx.strokeRect(rankingsBtn.x, rankingsBtn.y, rankingsBtn.width, rankingsBtn.height);
-
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.hoveredRankingsBtn ? '#ffffff' : '#fde047';
-    this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText(
-      '🏆 [R] GLOBAL RANKINGS',
-      rankingsBtn.x + rankingsBtn.width / 2,
-      rankingsBtn.y + 18
-    );
-
-    // Botón de Logros / Hitos
-    const achBtn = this.getAchievementsButtonRect();
-    const achUnlocked = this.achievementSystem.getUnlockedCount();
-    const totalAch = this.achievementSystem.achievements.length;
-    this.ctx.fillStyle = this.hoveredAchievementsBtn
-      ? 'rgba(30, 50, 15, 0.96)'
-      : 'rgba(15, 26, 8, 0.92)';
-    this.ctx.strokeStyle = this.hoveredAchievementsBtn ? '#a3e635' : '#84cc16';
-    this.ctx.lineWidth = this.hoveredAchievementsBtn ? 2 : 1.5;
-    this.ctx.fillRect(achBtn.x, achBtn.y, achBtn.width, achBtn.height);
-    this.ctx.strokeRect(achBtn.x, achBtn.y, achBtn.width, achBtn.height);
-    this.ctx.fillStyle = this.hoveredAchievementsBtn ? '#ffffff' : '#bef264';
-    this.ctx.font = 'bold 11px "Courier New", monospace';
-    this.ctx.fillText(
-      `🏆 [A] LOGROS (${achUnlocked}/${totalAch})`,
-      achBtn.x + achBtn.width / 2,
-      achBtn.y + 17
-    );
-
-    // Botón de Ajustes y Audio
-    const setBtn = this.getSettingsButtonRect();
-    this.ctx.fillStyle = this.hoveredSettingsBtn
-      ? 'rgba(12, 40, 65, 0.96)'
-      : 'rgba(6, 22, 36, 0.92)';
-    this.ctx.strokeStyle = this.hoveredSettingsBtn ? '#38bdf8' : '#0284c7';
-    this.ctx.lineWidth = this.hoveredSettingsBtn ? 2 : 1.5;
-    this.ctx.fillRect(setBtn.x, setBtn.y, setBtn.width, setBtn.height);
-    this.ctx.strokeRect(setBtn.x, setBtn.y, setBtn.width, setBtn.height);
-    this.ctx.fillStyle = this.hoveredSettingsBtn ? '#ffffff' : '#7dd3fc';
-    this.ctx.font = 'bold 11px "Courier New", monospace';
-    this.ctx.fillText(
-      '⚙️ [O] AJUSTES',
-      setBtn.x + setBtn.width / 2,
-      setBtn.y + 17
-    );
-
-    // Botón de Cómo Jugar (Tutorial)
-    const helpBtn = this.getHelpButtonRect();
-    this.ctx.fillStyle = this.hoveredHelpBtn
-      ? 'rgba(45, 16, 55, 0.96)'
-      : 'rgba(24, 8, 32, 0.92)';
-    this.ctx.strokeStyle = this.hoveredHelpBtn ? '#d946ef' : '#a855f7';
-    this.ctx.lineWidth = this.hoveredHelpBtn ? 2 : 1.5;
-    this.ctx.fillRect(helpBtn.x, helpBtn.y, helpBtn.width, helpBtn.height);
-    this.ctx.strokeRect(helpBtn.x, helpBtn.y, helpBtn.width, helpBtn.height);
-    this.ctx.fillStyle = this.hoveredHelpBtn ? '#ffffff' : '#f0abfc';
-    this.ctx.font = 'bold 11px "Courier New", monospace';
-    this.ctx.fillText(
-      '📖 [H] CÓMO JUGAR',
-      helpBtn.x + helpBtn.width / 2,
-      helpBtn.y + 17
-    );
 
     if (this.activeMenuTab === 'SHOP') {
       const charRects = this.getMenuCharacterRects();
@@ -3410,9 +3441,6 @@ export class Game {
           this.sound.screenShakeEnabled = !this.sound.screenShakeEnabled;
           this.sound.saveSettings();
           this.sound.playShoot(false);
-        } else if (ctrl.id === 'TOGGLE_FULLSCREEN') {
-          this.toggleFullscreen();
-          this.sound.playShoot(false);
         } else if (ctrl.id === 'BACK') {
           this.showSettingsOverlay = false;
           this.sound.playShoot(false);
@@ -3551,7 +3579,7 @@ export class Game {
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const panelW = 660;
-    const panelH = 540;
+    const panelH = 460;
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
 
@@ -3618,7 +3646,7 @@ export class Game {
     }
 
     // Toggle Mute
-    const muteY = rowStartY + rowGap * 3 + 10;
+    const muteY = rowStartY + rowGap * 3 + 12;
     const muteActive = this.sound.muted;
     this.ctx.fillStyle = muteActive ? 'rgba(127, 29, 29, 0.92)' : 'rgba(10, 45, 30, 0.92)';
     this.ctx.strokeStyle = muteActive ? '#ef4444' : '#00ff66';
@@ -3641,18 +3669,6 @@ export class Game {
 
     this.ctx.fillStyle = shakeActive ? '#86efac' : '#94a3b8';
     this.ctx.fillText(`AGITADO PANTALLA: ${shakeActive ? 'ON' : 'OFF'}`, cx + 125, muteY + 24);
-
-    // Toggle Fullscreen
-    const fsY = rowStartY + rowGap * 4 + 18;
-    this.ctx.fillStyle = 'rgba(20, 35, 50, 0.92)';
-    this.ctx.strokeStyle = '#38bdf8';
-    this.ctx.lineWidth = 1.8;
-    this.ctx.fillRect(cx - 240, fsY, 480, 40);
-    this.ctx.strokeRect(cx - 240, fsY, 480, 40);
-
-    this.ctx.fillStyle = '#bae6fd';
-    this.ctx.font = 'bold 14px "Courier New", monospace';
-    this.ctx.fillText('⛶ CONMUTAR PANTALLA COMPLETA (F11)', cx, fsY + 25);
 
     // Botón Volver
     const backBtn = this.getOverlayBackButtonRect(py, panelH);
@@ -4085,12 +4101,12 @@ export class Game {
 
   private getUpgradeCardRects(): CardRect[] {
     const choices = this.upgradeSystem.currentChoices;
-    const cardWidth = 285;
-    const cardHeight = 235;
-    const gap = 24;
+    const cardWidth = 350;
+    const cardHeight = 270;
+    const gap = 32;
     const totalWidth = choices.length * cardWidth + (choices.length - 1) * gap;
     const startX = (this.canvas.width - totalWidth) / 2;
-    const y = this.canvas.height / 2 - cardHeight / 2 + 20;
+    const y = this.canvas.height / 2 - cardHeight / 2 + 25;
 
     return choices.map((_, index) => ({
       index,
@@ -4106,7 +4122,7 @@ export class Game {
     const cards = this.getUpgradeCardRects();
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 8, 4, 0.84)';
+    this.ctx.fillStyle = 'rgba(0, 8, 4, 0.86)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     this.ctx.textAlign = 'center';
@@ -4117,7 +4133,7 @@ export class Game {
     this.ctx.fillText(
       `// TARJETAS DE MEJORA :: NIVEL ${this.upgradeSystem.level}.0 //`,
       this.canvas.width / 2,
-      this.canvas.height / 2 - 145
+      this.canvas.height / 2 - 150
     );
 
     this.ctx.shadowBlur = 0;
@@ -4126,7 +4142,7 @@ export class Game {
     this.ctx.fillText(
       'Elige 1 de las 3 Tarjetas de Mejora con las teclas [1] [2] [3] o haciendo clic:',
       this.canvas.width / 2,
-      this.canvas.height / 2 - 112
+      this.canvas.height / 2 - 118
     );
 
     for (let i = 0; i < choices.length; i++) {
@@ -4147,30 +4163,46 @@ export class Game {
       this.ctx.shadowBlur = 0;
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = opt.color;
-      this.ctx.font = 'bold 13px "Courier New", monospace';
-      this.ctx.fillText(`[KEY ${i + 1}] // ${opt.category}`, rect.x + 16, rect.y + 28);
+      this.ctx.font = 'bold 12px "Courier New", monospace';
+      this.ctx.fillText(`[KEY ${i + 1}] // ${opt.category}`, rect.x + 18, rect.y + 26);
 
       this.ctx.fillStyle = '#ffffff';
-      this.ctx.font = 'bold 18px "Courier New", monospace';
-      this.ctx.fillText(opt.name, rect.x + 16, rect.y + 60);
+      this.ctx.font = 'bold 17px "Courier New", monospace';
+      this.ctx.fillText(opt.name, rect.x + 18, rect.y + 54);
 
       this.ctx.fillStyle = '#00ff66';
-      this.ctx.font = '13px "Courier New", monospace';
+      this.ctx.font = '12px "Courier New", monospace';
       this.ctx.fillText(
         opt.level === 0
           ? 'Estado: NUEVA TARJETA -> v1.0'
           : `Nivel: v${opt.level}.0 -> v${opt.level + 1}.0 (Máx ${opt.maxLevel})`,
-        rect.x + 16,
-        rect.y + 84
+        rect.x + 18,
+        rect.y + 78
       );
 
       this.ctx.fillStyle = '#cbd5e1';
       this.ctx.font = '13px "Courier New", monospace';
-      this.wrapText(opt.description, rect.x + 16, rect.y + 118, rect.width - 32, 19);
+      this.wrapText(opt.description, rect.x + 18, rect.y + 104, rect.width - 36, 18);
 
-      this.ctx.fillStyle = opt.color;
+      // Subcaja con las estadísticas que mejoran o disminuyen de cada opción
+      const badgeY = rect.y + 148;
+      const badgeH = 44;
+      const badgeW = rect.width - 36;
+      this.ctx.fillStyle = 'rgba(0, 26, 18, 0.95)';
+      this.ctx.strokeStyle = opt.color;
+      this.ctx.lineWidth = 1.5;
+      this.ctx.fillRect(rect.x + 18, badgeY, badgeW, badgeH);
+      this.ctx.strokeRect(rect.x + 18, badgeY, badgeW, badgeH);
+
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.font = 'bold 12px "Courier New", monospace';
+      this.ctx.fillText(opt.statBadge || '', rect.x + 18 + badgeW / 2, badgeY + 27);
+
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = isHovered ? '#ffffff' : opt.color;
       this.ctx.font = 'bold 13px "Courier New", monospace';
-      this.ctx.fillText(`> SELECCIONAR TARJETA [${i + 1}]`, rect.x + 16, rect.y + rect.height - 20);
+      this.ctx.fillText(`> SELECCIONAR TARJETA [${i + 1}] <`, rect.x + rect.width / 2, rect.y + rect.height - 18);
 
       this.ctx.restore();
     }

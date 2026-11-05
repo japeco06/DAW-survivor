@@ -261,7 +261,7 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
 │   └── [Optimizaciones Autónomas (`CompanionPet.ts`, `ElToroBoss.ts`)]
 │       └── Eliminadas dependencias residuales de `window.innerWidth/innerHeight` en las entidades del juego
 │
-└── v1.0.0 — Versión Oficial 1.0 (BGM Procedimental, Desglose Estadístico, Logros, Ajustes y Deploy Hosting) (ACTUAL)
+├── v1.0.0 — Versión Oficial 1.0 (BGM Procedimental, Desglose Estadístico, Logros, Ajustes y Deploy Hosting)
     ├── [Música y Audio Web Audio API (`SoundSystem.ts`)]
     │   ├── BGM procedimental sintetizado en tiempo real con 4 pistas dinámicas: MENÚ, EN PARTIDA, JEFE y JEFE FINAL
     │   └── Controles independientes de volumen: Master, BGM y SFX con persistencia local
@@ -278,11 +278,34 @@ CYBER SURVIVOR ( Kernel Defense Protocol )
     └── [Despliegue y Hosting de Producción (`firebase.json`, `.firebaserc`, `package.json`)]
         ├── Configuración oficial de Firebase Hosting para el proyecto `survivor-daw`
         └── Script `npm run deploy` automatizado para compilación y despliegue
+│
+└── v1.0.1 — Rediseño HUD Menú, Pantalla Completa Destacada y Tarjetas de Mejora Sin Desborde (ACTUAL)
+    ├── [Rediseño Espacial del Menú Principal (`Game.ts`)]
+    │   ├── Esquina superior izquierda: Perfil de Agente y autenticación Google (eliminado emoji verde)
+    │   ├── Esquina superior derecha: Botón destacado de Pantalla Completa [F], Rankings [R], Logros [A] y Ajustes [O]
+    │   ├── Simplificación del menú: Eliminado el botón superfluo de "Cómo Jugar" para una interfaz minimalista y limpia
+    │   └── Caja central (Kernel Hub): Liberada de 6 botones comprimidos, ganando amplitud y espacio vertical óptimo
+    └── [Tarjetas de Mejora de Nivel (`UpgradeSystem.ts`, `Game.ts`)]
+        ├── Textos reducidos y concisos de descripción en las 17 tarjetas para lectura instantánea
+        ├── Nueva subcaja visual de estadísticas (`statBadge`) mostrando incrementos (▲) y reducciones de enfriamiento (▼)
+        └── Dimensiones ampliadas a 350x270px garantizando que ningún texto desborde ni tape los bordes de la tarjeta
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.0.1] - 2026-11-05
+- **Rediseño Espacial del Menú Principal (`src/core/Game.ts`)**:
+  - Reubicados los elementos de autenticación y ajustes fuera del panel central:
+    - **Esquina Superior Izquierda**: Perfil de usuario (`AGENTE: [Nombre]`) sin emojis residuales y botón de inicio/cierre de sesión Google.
+    - **Esquina Superior Derecha**: Botón de acceso directo a **Pantalla Completa (`⛶ [F] PANTALLA COMPLETA`)** con brillo cian neón (accionable con clic o tecla `F`), junto a **Rankings Globales (`[R]`)**, **Logros (`[A]`)** y **Ajustes (`[O]`)**.
+    - Eliminado el botón visual de `[H] CÓMO JUGAR` para despejar el menú y lograr una estética más limpia y profesional.
+  - El panel central (`KERNEL HUB`) queda liberado de 6 botones que estaban apiñados en dos filas intermedias, permitiendo que las tarjetas de personajes, el gacha y el inventario respiren con márgenes equilibrados.
+- **Tarjetas de Nivel y Estadísticas (`src/systems/UpgradeSystem.ts`, `src/core/Game.ts`)**:
+  - Rediseñadas las 17 tarjetas de mejora con descripciones reducidas y directas.
+  - Añadido el atributo `statBadge` a cada tarjeta, renderizando una subcaja destacada que indica con precisión las estadísticas mejoradas (`▲`) o disminuidas (`▼`, ej: cooldowns).
+  - Dimensiones de tarjeta aumentadas a 350x270px para garantizar holgura total y cero desbordamientos fuera de la caja.
 
 ### [v1.0.0] - 2026-11-04
 - **Música Procedimental y Sistema de Audio (`src/core/SoundSystem.ts`, `src/core/Game.ts`)**:

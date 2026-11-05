@@ -6,6 +6,7 @@ export interface UpgradeOption {
   name: string;
   category: string;
   description: string;
+  statBadge: string;
   color: string;
   level: number;
   maxLevel: number;
@@ -50,8 +51,8 @@ export class UpgradeSystem {
         id: 'memory_overclock',
         name: 'OVERCLOCK DE MEMORIA',
         category: 'PASIVA // MULTIPLICADOR XP',
-        description:
-          'Aplica un multiplicador permanente (+20% XP) a la experiencia que otorgan todos los futuros orbes de código.',
+        description: 'Multiplica permanentemente la XP de los orbes de código.',
+        statBadge: '▲ +20% Multiplicador XP',
         color: '#a3e635',
         level: 0,
         maxLevel: 5,
@@ -64,8 +65,8 @@ export class UpgradeSystem {
         id: 'electromagnet',
         name: 'ELECTROIMÁN',
         category: 'PASIVA // CAMPO MAGNÉTICO',
-        description:
-          'Amplía intensamente el campo electromagnético (+90px de radio) para atraer orbes de XP y Criptomonedas desde mucho más lejos.',
+        description: 'Amplía intensamente el radio magnético de recolección.',
+        statBadge: '▲ +90px Radio de Imán',
         color: '#38bdf8',
         level: 0,
         maxLevel: 5,
@@ -77,8 +78,8 @@ export class UpgradeSystem {
         id: 'bandwidth_leech',
         name: 'ROBO DE ANCHO DE BANDA',
         category: 'PASIVA // VAMPIRISMO',
-        description:
-          'Drena vida según el nivel (Nv.1: 2 HP | Nv.2: 4 HP | Nv.3: 6 HP | Nv.4: 8 HP | Nv.5: 10 HP) con un 5% de probabilidad de activación.',
+        description: 'Probabilidad de drenar vida al impactar malware enemigo.',
+        statBadge: '▲ +2 HP Robo Vida (5% azar)',
         color: '#f43f5e',
         level: 0,
         maxLevel: 5,
@@ -92,8 +93,8 @@ export class UpgradeSystem {
         id: 'ping_tracker',
         name: 'PING_TRACKER.exe',
         category: 'ARMA // HOMING',
-        description:
-          'Lanza proyectiles azules inteligentes que persiguen automáticamente al enemigo más cercano.',
+        description: 'Lanza proyectiles inteligentes teledirigidos al enemigo más cercano.',
+        statBadge: '▲ +8 Daño  |  ▼ -14% Cooldown',
         color: '#3b82f6',
         level: 0,
         maxLevel: 5,
@@ -108,8 +109,8 @@ export class UpgradeSystem {
         id: 'quarantine_zone',
         name: 'ZONA_CUARENTENA.sys',
         category: 'ARMA // ÁREA DoT',
-        description:
-          'Despliega un perímetro estático en el suelo que inflige daño continuo a los enemigos que lo pisen.',
+        description: 'Despliega perímetros estáticos con daño continuo a los enemigos.',
+        statBadge: '▲ +5 Daño/s  |  ▲ +14px Radio',
         color: '#10b981',
         level: 0,
         maxLevel: 5,
@@ -125,8 +126,8 @@ export class UpgradeSystem {
         id: 'antivirus_drones',
         name: 'DRONES ANTIVIRUS',
         category: 'ARMA // ESCUDO REACTIVO',
-        description:
-          'Drones escudo que orbitan e interceptan enemigos (0 daño al jugador). Durabilidad: 3 golpes (Verde->Amarillo->Rojo), explotan en AoE al 3er impacto y reaparecen en 10s.',
+        description: 'Drones orbitales que bloquean ataques y explotan en área.',
+        statBadge: '▲ +1 Drone  |  ▲ +8 Daño  |  +16% Vel',
         color: '#00ff66',
         level: 0,
         maxLevel: 5,
@@ -142,8 +143,8 @@ export class UpgradeSystem {
         id: 'firewall_pulse',
         name: 'CORTAFUEGOS',
         category: 'ARMA // ONDA EXPANSIVA',
-        description:
-          'Emite periódicamente un anillo de energía expansivo alrededor del Agente que daña a todos los enemigos en el radio (+daño, +radio y -cooldown).',
+        description: 'Emite pulsos radiales periódicos que dañan y repelen malware.',
+        statBadge: '▲ +8 Daño  |  ▲ +28px Radio  |  ▼ -14% CD',
         color: '#ff8800',
         level: 0,
         maxLevel: 5,
@@ -159,8 +160,8 @@ export class UpgradeSystem {
         id: 'sql_injection_beam',
         name: 'RAYO SQL INJECTION',
         category: 'ARMA // LÁSER PENETRANTE',
-        description:
-          'Dispara un haz láser grueso en línea recta que atraviesa a todos los enemigos en su trayectoria sin destruirse (+daño, +grosor y -cooldown).',
+        description: 'Dispara un haz láser perforante que atraviesa toda la hilera enemiga.',
+        statBadge: '▲ +12 Daño  |  ▲ +5px Ancho  |  ▼ -15% CD',
         color: '#d946ef',
         level: 0,
         maxLevel: 5,
@@ -176,8 +177,8 @@ export class UpgradeSystem {
         id: 'overclocking',
         name: 'OVERCLOCKING.exe',
         category: 'PASIVA // CADENCIA',
-        description:
-          'Mejora tu Ráfaga de Firewall aumentando la cadencia de disparo (-14% cooldown) y velocidad de proyectil.',
+        description: 'Mejora tu Ráfaga de Firewall aumentando cadencia y velocidad.',
+        statBadge: '▼ -14% Cooldown  |  ▲ +45 Vel Balas',
         color: '#00f0ff',
         level: 0,
         maxLevel: 6,
@@ -191,8 +192,8 @@ export class UpgradeSystem {
         id: 'multithreading',
         name: 'MULTITHREADING.dll',
         category: 'PASIVA // MULTIDISPARO BASE',
-        description:
-          'Añade +1 proyectil simultáneo a tu Ráfaga de Firewall inicial para cubrir múltiples ángulos (máx. 4 proyectiles).',
+        description: 'Añade proyectiles frontales simultáneos a tu ráfaga básica.',
+        statBadge: '▲ +1 Proyectil Frontal (Máx 4)',
         color: '#c084fc',
         level: 0,
         maxLevel: 3,
@@ -205,8 +206,8 @@ export class UpgradeSystem {
         id: 'deepscan',
         name: 'HEURISTIC_SCAN.bat',
         category: 'PASIVA // POTENCIA',
-        description:
-          'Incrementa el daño de la Ráfaga de Firewall (+10) y amplía el radio del escáner (+60px).',
+        description: 'Incrementa el daño del disparo básico y amplía el radio de escáner.',
+        statBadge: '▲ +10 Daño  |  ▲ +60px Rango',
         color: '#facc15',
         level: 0,
         maxLevel: 5,
@@ -220,8 +221,8 @@ export class UpgradeSystem {
         id: 'companion_overdrive',
         name: 'SINAPSIS DE MASCOTA',
         category: 'MASCOTA // +DAÑO COMPAÑERO',
-        description:
-          'Aumenta directamente el daño de tu Mascota Acompañante (+5 DMG de contacto/láser) en su rama evolutiva.',
+        description: 'Aumenta directamente el daño de tu Mascota Acompañante.',
+        statBadge: '▲ +5 Daño Mascota',
         color: '#ec4899',
         level: 0,
         maxLevel: 5,
@@ -236,8 +237,8 @@ export class UpgradeSystem {
         id: 'fiber_bus',
         name: 'FIBER_OPTIC_BUS.drv',
         category: 'PASIVA // VELOCIDAD E IMÁN',
-        description:
-          'Aumenta la velocidad de movimiento (+10%) y el radio magnético de recolección (+45px).',
+        description: 'Aumenta la velocidad del agente y el radio magnético de recogida.',
+        statBadge: '▲ +10% Velocidad  |  ▲ +45px Imán',
         color: '#38bdf8',
         level: 0,
         maxLevel: 5,
@@ -250,8 +251,8 @@ export class UpgradeSystem {
         id: 'system_restore',
         name: 'SYSTEM_RESTORE.iso',
         category: 'PASIVA // SALUD KERNEL',
-        description:
-          'Amplía la integridad máxima (+25 HP) y repara inmediatamente +40 HP del Agente.',
+        description: 'Amplía la salud máxima y repara inmediatamente el chasis.',
+        statBadge: '▲ +25 HP Máx  |  ▲ +40 HP Curación',
         color: '#00ff66',
         level: 0,
         maxLevel: 6,
@@ -267,8 +268,8 @@ export class UpgradeSystem {
         id: 'companion_branch_brute',
         name: 'FUERZA BRUTA',
         category: 'EVOLUCIÓN NV.2 // RAMA 1',
-        description:
-          'El cuadrado marrón crece un +50% y empuja a los enemigos. [Nv.5: Gigante + Temblor | Nv.10: Masa Crítica | Nv.20: Onda de Choque]',
+        description: 'Mascota gigante de choque pesado que empuja y aplasta malware.',
+        statBadge: '▲ +50% Tamaño  |  Efecto Empuje',
         color: '#f97316',
         level: 0,
         maxLevel: 1,
@@ -286,8 +287,8 @@ export class UpgradeSystem {
         id: 'companion_branch_botnet',
         name: 'LA BOTNET (ENJAMBRE)',
         category: 'EVOLUCIÓN NV.2 // RAMA 2',
-        description:
-          'El cuadrado se divide en 3 cuadrados rápidos con objetivos únicos. [Nv.5: Mente Colmena (5) | Nv.10: Propagación de Malware | Nv.20: Botnet Global (15)]',
+        description: 'Divide la mascota en un enjambre de 3 acompañantes autónomos.',
+        statBadge: '▲ 3 Mascotas  |  Objetivos Múltiples',
         color: '#eab308',
         level: 0,
         maxLevel: 1,
@@ -305,8 +306,8 @@ export class UpgradeSystem {
         id: 'companion_branch_pinball',
         name: 'PROTOCOLO PINBALL',
         category: 'EVOLUCIÓN NV.2 // RAMA 3',
-        description:
-          'La mascota se independiza y rebota a velocidad extrema atravesando enemigos. [Nv.5: +50% Vel + Estela Corrupta | Nv.10: Explosión Cinética | Nv.20: Multibola (3)]',
+        description: 'Mascota perforante a velocidad extrema rebotando por el mapa.',
+        statBadge: '▲ Rebote Veloz  |  Perforación Enemiga',
         color: '#ec4899',
         level: 0,
         maxLevel: 1,
