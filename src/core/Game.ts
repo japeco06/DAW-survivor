@@ -75,7 +75,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.5';
+const GAME_VERSION = 'v1.1.6';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -2829,9 +2829,15 @@ export class Game {
         .catch((err: { code?: string; message?: string }) => {
           console.error('Error en Google Login:', err);
           const code = err?.code || '';
+          const isIframe = window.self !== window.top;
           if (code === 'auth/popup-blocked') {
-            this.menuFeedbackMessage = 'Popup bloqueado. Redirigiendo a Google Login...';
-            void signInWithRedirect(auth, googleProvider);
+            if (isIframe) {
+              this.menuFeedbackMessage =
+                'Popup bloqueado por el navegador. Permite ventanas emergentes en la barra de tu navegador.';
+            } else {
+              this.menuFeedbackMessage = 'Popup bloqueado. Redirigiendo a Google Login...';
+              void signInWithRedirect(auth, googleProvider);
+            }
           } else if (code === 'auth/unauthorized-domain') {
             this.menuFeedbackMessage = `Añade "${window.location.hostname}" en Firebase > Auth > Settings > Dominios autorizados.`;
           } else if (
