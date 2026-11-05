@@ -23,8 +23,11 @@ export interface LeaderboardEntry {
 export interface CharacterProfile {
   id: CharacterId;
   name: string;
+  nameEn?: string;
   subtitle: string;
+  subtitleEn?: string;
   description: string;
+  descriptionEn?: string;
   color: string;
   borderColor: string;
   speedMultiplier: number;
@@ -73,8 +76,11 @@ export class MetaSystem {
     STANDARD: {
       id: 'STANDARD',
       name: 'AGENTE ESTÁNDAR',
+      nameEn: 'STANDARD AGENT',
       subtitle: 'KERNEL_DEFENDER // BASE',
+      subtitleEn: 'KERNEL_DEFENDER // BASE',
       description: 'Unidad antivirus equilibrada. Salud base (100 HP), velocidad 100% y chasis verde neón.',
+      descriptionEn: 'Balanced antivirus unit. Base health (100 HP), 100% speed, and neon green chassis.',
       color: '#00ff66',
       borderColor: '#ffffff',
       speedMultiplier: 1.0,
@@ -85,8 +91,11 @@ export class MetaSystem {
     ROOT: {
       id: 'ROOT',
       name: 'AGENTE ROOT',
+      nameEn: 'ROOT AGENT',
       subtitle: 'SUPERUSER // +20% VELOCIDAD',
+      subtitleEn: 'SUPERUSER // +20% SPEED',
       description: 'Privilegios elevados de superusuario. Cuadrado azul oscuro que se mueve un 20% más rápido.',
+      descriptionEn: 'Elevated superuser privileges. Dark blue square moving 20% faster.',
       color: '#1e40af',
       borderColor: '#60a5fa',
       speedMultiplier: 1.2,
@@ -97,8 +106,11 @@ export class MetaSystem {
     PROXY: {
       id: 'PROXY',
       name: 'AGENTE PROXY',
+      nameEn: 'PROXY AGENT',
       subtitle: 'HEAVY_SHIELD // 2X SALUD, -15% VEL',
+      subtitleEn: 'HEAVY_SHIELD // 2X HEALTH, -15% SPD',
       description: 'Cuadrado morado blindado: tiene el doble de salud máxima (200 HP), pero su velocidad es un 15% menor.',
+      descriptionEn: 'Armored purple square: double maximum health (200 HP), but 15% slower speed.',
       color: '#9333ea',
       borderColor: '#f3e8ff',
       speedMultiplier: 0.85,
@@ -109,8 +121,11 @@ export class MetaSystem {
     MORCILLITA: {
       id: 'MORCILLITA',
       name: 'AGENTE MORCILLITA (SUMMONER)',
+      nameEn: 'MORCILLITA AGENT (SUMMONER)',
       subtitle: 'CHASSIS ROSA // MASCOTA EVOLUTIVA LVL 20',
+      subtitleEn: 'PINK CHASSIS // EVOLVING PET LVL 20',
       description: 'Sin disparo básico propio. Su ataque depende 100% de una mascota acompañante marrón con 3 ramas evolutivas.',
+      descriptionEn: 'No innate basic fire. Attack power depends 100% on an evolving brown companion pet with 3 branches.',
       color: '#ec4899',
       borderColor: '#fbcfe8',
       speedMultiplier: 1.05,
@@ -312,27 +327,14 @@ export class MetaSystem {
 
       if (snapshot.exists()) {
         const cloudData = snapshot.data() as Partial<SavedMetaState>;
-        this.applyParsedState(cloudData);
+        // Fusionar datos locales y de la nube para no perder monedas o desbloqueos conseguidos offline
+        this.applyParsedState(cloudData, true);
         if (currentUser && currentUser.displayName && currentUser.displayName.trim().length > 0) {
           this.displayName = currentUser.displayName.trim();
         }
         this.save();
-        // Ensure displayName and leaderboard fields exist in Firestore document
-        if (
-          cloudData.displayName !== this.displayName ||
-          typeof cloudData.maxDamageToToro !== 'number' ||
-          typeof cloudData.bestTimeSeconds !== 'number'
-        ) {
-          await setDoc(
-            userDocRef,
-            {
-              displayName: this.displayName,
-              maxDamageToToro: this.maxDamageToToro,
-              bestTimeSeconds: this.bestTimeSeconds,
-            },
-            { merge: true }
-          );
-        }
+        // Guardar la versión combinada en la nube
+        await setDoc(userDocRef, this.getStatePayload(), { merge: true });
       } else {
         await setDoc(userDocRef, this.getStatePayload());
       }
@@ -512,15 +514,23 @@ export class MetaSystem {
     }
   }
 
-  private applyParsedState(parsed: Partial<SavedMetaState>): void {
+  private applyParsedState(parsed: Partial<SavedMetaState>, mergeWithCurrent: boolean = false): void {
     if (typeof parsed.coins === 'number' && parsed.coins >= 0) {
-      this.coins = Math.floor(parsed.coins);
+      this.coins = mergeWithCurrent
+        ? Math.max(this.coins, Math.floor(parsed.coins))
+        : Math.floor(parsed.coins);
     }
     if (Array.isArray(parsed.unlockedCharacters)) {
       const validUnlocked = parsed.unlockedCharacters.filter(
         (id): id is CharacterId => Boolean(this.characters[id as CharacterId])
       );
-      this.unlockedCharacters = new Set(['STANDARD', 'MORCILLITA', ...validUnlocked]);
+      if (mergeWithCurrent) {
+        for (const c of validUnlocked) {
+          this.unlockedCharacters.add(c);
+        }
+      } else {
+        this.unlockedCharacters = new Set(['STANDARD', 'MORCILLITA', ...validUnlocked]);
+      }
     }
     if (
       parsed.selectedCharacter &&
@@ -528,16 +538,22 @@ export class MetaSystem {
       this.unlockedCharacters.has(parsed.selectedCharacter)
     ) {
       this.selectedCharacter = parsed.selectedCharacter;
-    } else {
+    } else if (!mergeWithCurrent) {
       this.selectedCharacter = 'STANDARD';
     }
     if (Array.isArray(parsed.unlockedHats)) {
       const validHats = parsed.unlockedHats.filter((id) => Boolean(getHatById(id)));
-      this.unlockedHats = new Set(validHats);
+      if (mergeWithCurrent) {
+        for (const h of validHats) {
+          this.unlockedHats.add(h);
+        }
+      } else {
+        this.unlockedHats = new Set(validHats);
+      }
     }
     if (parsed.equippedHatId && this.unlockedHats.has(parsed.equippedHatId)) {
       this.equippedHatId = parsed.equippedHatId;
-    } else {
+    } else if (!mergeWithCurrent) {
       this.equippedHatId = null;
     }
     if (typeof parsed.displayName === 'string' && parsed.displayName.trim().length > 0) {

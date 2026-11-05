@@ -75,7 +75,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.6';
+const GAME_VERSION = 'v1.1.7';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -186,7 +186,8 @@ export class Game {
     this.player = new Player(
       this.canvas.width / 2,
       this.canvas.height / 2,
-      this.metaSystem.getSelectedProfile()
+      this.metaSystem.getSelectedProfile(),
+      this.metaSystem.getEquippedHat()
     );
     this.spawner = new Spawner();
     this.combatSystem = new CombatSystem();
@@ -968,8 +969,12 @@ export class Game {
   }
 
   private exitToMainMenu(): void {
-    this.metaSystem.updateHighScore(this.killCount, this.elapsedTime);
+    if (this.finalBoss) {
+      this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
+    }
+    this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
     this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
+    void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
     this.isPaused = false;
     this.hoveredPauseAction = null;
     this.hoveredCardIndex = -1;
@@ -1005,7 +1010,8 @@ export class Game {
     this.player = new Player(
       this.canvas.width / 2,
       this.canvas.height / 2,
-      this.metaSystem.getSelectedProfile()
+      this.metaSystem.getSelectedProfile(),
+      this.metaSystem.getEquippedHat()
     );
     this.gameState = 'MENU';
     this.sound.setTrack('MENU');
@@ -1019,7 +1025,12 @@ export class Game {
 
   private startNewRun(): void {
     const profile = this.metaSystem.getSelectedProfile();
-    this.player = new Player(this.canvas.width / 2, this.canvas.height / 2, profile);
+    this.player = new Player(
+      this.canvas.width / 2,
+      this.canvas.height / 2,
+      profile,
+      this.metaSystem.getEquippedHat()
+    );
     this.enemies = [];
     this.projectiles = [];
     this.pingProjectiles = [];
@@ -1223,6 +1234,11 @@ export class Game {
     for (const block of this.encryptedBlocks) {
       block.update(dt);
       block.resolvePlayerCollision(this.player);
+    }
+    if (this.encryptedBlocks.length > 0) {
+      const halfSize = this.player.size / 2;
+      this.player.x = Math.max(halfSize, Math.min(this.canvas.width - halfSize, this.player.x));
+      this.player.y = Math.max(halfSize, Math.min(this.canvas.height - halfSize, this.player.y));
     }
 
     // =========================================================================
@@ -1788,6 +1804,14 @@ export class Game {
         killedCount++;
         this.codeFragments.push(new CodeFragment(e.x, e.y, e.xpValue));
         this.particleSystem.spawnExplosion(e.x, e.y, '#ff1e42', 12, false);
+      }
+      if (killedCount > 0) {
+        this.killCount += killedCount;
+        this.highScoreKills = Math.max(this.highScoreKills, this.killCount);
+        this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
+        this.achievementSystem.reportProgress('first_patch', this.killCount, true);
+        this.achievementSystem.reportProgress('mass_purge', this.killCount, true);
+        this.achievementSystem.reportProgress('mass_purge_elite', this.killCount, true);
       }
       this.particleSystem.spawnFloatingText(x, y - 24, '¡BOMBA LÓGICA ACTIVADA!', '#ff1e42', 1.3);
       this.addTerminalLog(`>> LOGIC BOMB DETONATED: ${killedCount} basic malware units purged! <<`);
@@ -3097,34 +3121,42 @@ export class Game {
         }
 
         this.ctx.shadowBlur = 0;
+        const pName = i18n.currentLang === 'EN' && profile.nameEn ? profile.nameEn : profile.name;
+        const pSub = i18n.currentLang === 'EN' && profile.subtitleEn ? profile.subtitleEn : profile.subtitle;
+        const pDesc = i18n.currentLang === 'EN' && profile.descriptionEn ? profile.descriptionEn : profile.description;
+
         this.ctx.textAlign = 'left';
         this.ctx.fillStyle = '#ffffff';
         this.ctx.font =
-          profile.name.length > 20
+          pName.length > 20
             ? 'bold 13px "Courier New", monospace'
             : 'bold 15px "Courier New", monospace';
-        this.ctx.fillText(`[${i + 1}] ${profile.name}`, rect.x + 56, rect.y + 28);
+        this.ctx.fillText(`[${i + 1}] ${pName}`, rect.x + 56, rect.y + 28);
 
         this.ctx.fillStyle = '#38bdf8';
         this.ctx.font = 'bold 11px "Courier New", monospace';
-        this.ctx.fillText(profile.subtitle, rect.x + 56, rect.y + 45);
+        this.ctx.fillText(pSub, rect.x + 56, rect.y + 45);
 
         this.ctx.fillStyle = '#cbd5e1';
         this.ctx.font = '12px "Courier New", monospace';
-        this.wrapText(profile.description, rect.x + 14, rect.y + 68, rect.width - 28, 15, 3);
+        this.wrapText(pDesc, rect.x + 14, rect.y + 68, rect.width - 28, 15, 3);
 
         this.ctx.font = 'bold 12px "Courier New", monospace';
         if (selected) {
           this.ctx.fillStyle = '#00ff66';
-          this.ctx.fillText('✔ EQUIPADO Y LISTO', rect.x + 14, rect.y + rect.height - 12);
+          this.ctx.fillText(i18n.t('✔ EQUIPADO Y LISTO', '✔ EQUIPPED & READY'), rect.x + 14, rect.y + rect.height - 12);
         } else if (unlocked) {
           this.ctx.fillStyle = '#00f0ff';
-          this.ctx.fillText(`> PULSA [${i + 1}] O CLIC PARA EQUIPAR`, rect.x + 14, rect.y + rect.height - 12);
+          this.ctx.fillText(
+            i18n.t(`> PULSA [${i + 1}] O CLIC PARA EQUIPAR`, `> PRESS [${i + 1}] OR CLICK TO EQUIP`),
+            rect.x + 14,
+            rect.y + rect.height - 12
+          );
         } else {
           const canAfford = this.metaSystem.coins >= profile.cost;
           this.ctx.fillStyle = canAfford ? '#fbbf24' : '#ff1e42';
           this.ctx.fillText(
-            `🔒 DESBLOQUEAR (${profile.cost} CRYPTO)`,
+            i18n.t(`🔒 DESBLOQUEAR (${profile.cost} CRIPTO)`, `🔒 UNLOCK (${profile.cost} CRYPTO)`),
             rect.x + 14,
             rect.y + rect.height - 12
           );
@@ -3136,7 +3168,10 @@ export class Game {
       this.ctx.fillStyle = '#cbd5e1';
       this.ctx.font = 'bold 12px "Courier New", monospace';
       this.ctx.fillText(
-        'PROBABILIDADES: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%  (Repetido = +10 🪙)',
+        i18n.t(
+          'PROBABILIDADES: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%  (Repetido = +10 🪙)',
+          'ODDS: Common 40% | Rare 30% | Epic 20% | Legendary 9% | Mythic 1%  (Duplicate = +10 🪙)'
+        ),
         cx,
         cy - 106
       );
@@ -4605,23 +4640,28 @@ export class Game {
       this.ctx.rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
       this.ctx.clip();
 
+      const cardCategory = i18n.currentLang === 'EN' && opt.categoryEn ? opt.categoryEn : opt.category;
+      const cardName = i18n.currentLang === 'EN' && opt.nameEn ? opt.nameEn : opt.name;
+      const cardDesc = i18n.currentLang === 'EN' && opt.descriptionEn ? opt.descriptionEn : opt.description;
+      const cardStat = i18n.currentLang === 'EN' && opt.statBadgeEn ? opt.statBadgeEn : opt.statBadge;
+
       this.ctx.shadowBlur = 0;
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = opt.color;
       this.ctx.font = 'bold 12px "Courier New", monospace';
-      this.ctx.fillText(`[KEY ${i + 1}] // ${opt.category}`, rect.x + 18, rect.y + 26);
+      this.ctx.fillText(`[KEY ${i + 1}] // ${cardCategory}`, rect.x + 18, rect.y + 26);
 
       // Auto-fit para el nombre de la carta
       const nameMaxW = rect.width - 36;
       let nameFont = 17;
       this.ctx.font = `bold ${nameFont}px "Courier New", monospace`;
-      const nMetrics = this.ctx.measureText(opt.name).width;
+      const nMetrics = this.ctx.measureText(cardName).width;
       if (nMetrics > nameMaxW) {
         nameFont = Math.max(12, Math.floor(17 * (nameMaxW / nMetrics)));
         this.ctx.font = `bold ${nameFont}px "Courier New", monospace`;
       }
       this.ctx.fillStyle = '#ffffff';
-      this.ctx.fillText(opt.name, rect.x + 18, rect.y + 54);
+      this.ctx.fillText(cardName, rect.x + 18, rect.y + 54);
 
       this.ctx.fillStyle = '#00ff66';
       this.ctx.font = '12px "Courier New", monospace';
@@ -4638,7 +4678,7 @@ export class Game {
 
       this.ctx.fillStyle = '#cbd5e1';
       this.ctx.font = '13px "Courier New", monospace';
-      this.wrapText(opt.description, rect.x + 18, rect.y + 104, rect.width - 36, 18, 2);
+      this.wrapText(cardDesc, rect.x + 18, rect.y + 104, rect.width - 36, 18, 2);
 
       // Subcaja con las estadísticas que mejoran o disminuyen de cada opción
       const badgeY = rect.y + 148;
@@ -4656,12 +4696,12 @@ export class Game {
       const badgeMaxW = badgeW - 16;
       let badgeFont = 12;
       this.ctx.font = `bold ${badgeFont}px "Courier New", monospace`;
-      const bMetrics = this.ctx.measureText(opt.statBadge || '').width;
+      const bMetrics = this.ctx.measureText(cardStat || '').width;
       if (bMetrics > badgeMaxW) {
         badgeFont = Math.max(9, Math.floor(12 * (badgeMaxW / bMetrics)));
         this.ctx.font = `bold ${badgeFont}px "Courier New", monospace`;
       }
-      this.ctx.fillText(opt.statBadge || '', rect.x + 18 + badgeW / 2, badgeY + 27);
+      this.ctx.fillText(cardStat || '', rect.x + 18 + badgeW / 2, badgeY + 27);
 
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = isHovered ? '#ffffff' : opt.color;
