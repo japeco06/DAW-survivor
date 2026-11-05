@@ -146,6 +146,7 @@ export class Game {
   private hoveredFullscreenBtn: boolean = false;
   private hoveredHelpBtn: boolean = false;
   private hoveredOverlayBackBtn: boolean = false;
+  private hoveredStartBtn: boolean = false;
   private runBossesKilled: number = 0;
   private runTotalDamageDealt: number = 0;
   public readonly firestoreDb = db;
@@ -532,6 +533,13 @@ export class Game {
           mx <= helpBtn.x + helpBtn.width &&
           my >= helpBtn.y &&
           my <= helpBtn.y + helpBtn.height;
+
+        const startBtn = this.getStartButtonRect();
+        this.hoveredStartBtn =
+          mx >= startBtn.x &&
+          mx <= startBtn.x + startBtn.width &&
+          my >= startBtn.y &&
+          my <= startBtn.y + startBtn.height;
 
         if (this.activeMenuTab === 'SHOP') {
           for (const charRect of this.getMenuCharacterRects()) {
@@ -3363,13 +3371,12 @@ export class Game {
     this.ctx.restore();
 
     const startBtn = this.getStartButtonRect();
-    const blink = Math.floor(performance.now() / 450) % 2 === 0;
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 40, 22, 0.95)';
-    this.ctx.strokeStyle = '#00ff66';
-    this.ctx.lineWidth = 2;
+    this.ctx.fillStyle = this.hoveredStartBtn ? 'rgba(0, 60, 34, 0.96)' : 'rgba(0, 36, 20, 0.94)';
+    this.ctx.strokeStyle = this.hoveredStartBtn ? '#ffffff' : '#00ff66';
+    this.ctx.lineWidth = this.hoveredStartBtn ? 2.5 : 2;
     this.ctx.shadowColor = '#00ff66';
-    this.ctx.shadowBlur = blink ? 14 : 6;
+    this.ctx.shadowBlur = this.hoveredStartBtn ? 16 : 8;
     this.ctx.fillRect(startBtn.x, startBtn.y, startBtn.width, startBtn.height);
     this.ctx.strokeRect(startBtn.x, startBtn.y, startBtn.width, startBtn.height);
     this.ctx.shadowBlur = 0;
@@ -3380,7 +3387,7 @@ export class Game {
     this.ctx.clip();
 
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = blink ? '#00ff66' : '#ffffff';
+    this.ctx.fillStyle = this.hoveredStartBtn ? '#ffffff' : '#00ff66';
     let startFont = 16;
     const maxStartW = startBtn.width - 24;
     const startText = `> ${i18n.t('PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR', 'PRESS [ENTER] OR CLICK HERE TO DEPLOY')} <`;
