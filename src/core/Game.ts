@@ -2556,36 +2556,36 @@ export class Game {
 
   private getFullscreenButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1010,
+      x: 1000,
       y: 26,
-      width: 210,
+      width: 195,
       height: 44,
     };
   }
 
   private getHelpButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1232,
+      x: 1207,
       y: 26,
-      width: 160,
+      width: 145,
       height: 44,
     };
   }
 
   private getGlobalRankingsButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1404,
+      x: 1364,
       y: 26,
-      width: 150,
+      width: 145,
       height: 44,
     };
   }
 
   private getAchievementsButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1566,
+      x: 1521,
       y: 26,
-      width: 170,
+      width: 215,
       height: 44,
     };
   }
@@ -2594,9 +2594,53 @@ export class Game {
     return {
       x: 1748,
       y: 26,
-      width: 136,
+      width: 140,
       height: 44,
     };
+  }
+
+  private drawClippedButton(
+    rect: { x: number; y: number; width: number; height: number },
+    bgFill: string,
+    strokeColor: string,
+    lineWidth: number,
+    textColor: string,
+    baseFontSize: number,
+    text: string,
+    shadowColor?: string,
+    shadowBlur?: number
+  ): void {
+    this.ctx.save();
+    this.ctx.fillStyle = bgFill;
+    this.ctx.strokeStyle = strokeColor;
+    this.ctx.lineWidth = lineWidth;
+    if (shadowColor && shadowBlur) {
+      this.ctx.shadowColor = shadowColor;
+      this.ctx.shadowBlur = shadowBlur;
+    }
+    this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+    this.ctx.shadowBlur = 0;
+
+    // Recorte estricto dentro de la caja del botón
+    this.ctx.beginPath();
+    this.ctx.rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
+    this.ctx.clip();
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = textColor;
+
+    const maxW = rect.width - 12;
+    let fontSize = baseFontSize;
+    this.ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+    const m = this.ctx.measureText(text).width;
+    if (m > maxW) {
+      fontSize = Math.max(9, Math.floor(baseFontSize * (maxW / m)));
+      this.ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+    }
+
+    this.ctx.fillText(text, rect.x + rect.width / 2, rect.y + Math.round(rect.height / 2) + 5);
+    this.ctx.restore();
   }
 
   private getAuthActionButtonRect(): { x: number; y: number; width: number; height: number } {
@@ -2801,6 +2845,7 @@ export class Game {
       const statusBoxW = 260;
       const statusBoxH = 44;
 
+      this.ctx.save();
       this.ctx.fillStyle = 'rgba(2, 22, 14, 0.94)';
       this.ctx.strokeStyle = '#00ff66';
       this.ctx.lineWidth = 1.5;
@@ -2810,43 +2855,45 @@ export class Game {
       this.ctx.strokeRect(statusBoxX, statusBoxY, statusBoxW, statusBoxH);
       this.ctx.shadowBlur = 0;
 
+      // Recorte estricto para evitar cualquier desbordamiento de texto
+      this.ctx.beginPath();
+      this.ctx.rect(statusBoxX + 2, statusBoxY + 2, statusBoxW - 4, statusBoxH - 4);
+      this.ctx.clip();
+
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = '#00ff66';
       this.ctx.font = 'bold 13px "Courier New", monospace';
-      // Sin emoji al lado de AGENTE tal como pidió el usuario
       this.ctx.fillText(`${i18n.t('AGENTE', 'AGENT')}: ${truncatedName}`, statusBoxX + 14, statusBoxY + 20);
 
       this.ctx.fillStyle = '#38bdf8';
-      this.ctx.font = 'bold 11px Consolas, monospace';
+      this.ctx.font = 'bold 11px "Courier New", monospace';
       this.ctx.fillText(`☁ ${i18n.t('NUBE SINCRONIZADA', 'CLOUD SYNCED')}`, statusBoxX + 14, statusBoxY + 34);
+      this.ctx.restore();
 
-      // Botón Cerrar Sesión
+      // Botón Cerrar Sesión con auto-fit y recorte
       const authBtn = this.getAuthActionButtonRect();
-      this.ctx.fillStyle = this.hoveredAuthBtn ? 'rgba(127, 29, 29, 0.95)' : 'rgba(69, 10, 10, 0.9)';
-      this.ctx.strokeStyle = this.hoveredAuthBtn ? '#f87171' : '#ef4444';
-      this.ctx.lineWidth = this.hoveredAuthBtn ? 2 : 1.5;
-      this.ctx.fillRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
-      this.ctx.strokeRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
-
-      this.ctx.textAlign = 'center';
-      this.ctx.fillStyle = '#fecaca';
-      this.ctx.font = 'bold 12px "Courier New", monospace';
-      this.ctx.fillText(`[L] ${i18n.t('CERRAR SESIÓN', 'LOG OUT')}`, authBtn.x + authBtn.width / 2, authBtn.y + 27);
+      this.drawClippedButton(
+        authBtn,
+        this.hoveredAuthBtn ? 'rgba(127, 29, 29, 0.95)' : 'rgba(69, 10, 10, 0.9)',
+        this.hoveredAuthBtn ? '#f87171' : '#ef4444',
+        this.hoveredAuthBtn ? 2 : 1.5,
+        '#fecaca',
+        12,
+        `[L] ${i18n.t('CERRAR SESIÓN', 'LOG OUT')}`
+      );
     } else {
       const authBtn = this.getAuthActionButtonRect();
-      this.ctx.fillStyle = this.hoveredAuthBtn ? 'rgba(14, 55, 85, 0.96)' : 'rgba(8, 28, 46, 0.92)';
-      this.ctx.strokeStyle = this.hoveredAuthBtn ? '#00ff66' : '#38bdf8';
-      this.ctx.lineWidth = this.hoveredAuthBtn ? 2.2 : 1.5;
-      this.ctx.shadowColor = this.hoveredAuthBtn ? '#00ff66' : '#38bdf8';
-      this.ctx.shadowBlur = this.hoveredAuthBtn ? 14 : 6;
-      this.ctx.fillRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
-      this.ctx.strokeRect(authBtn.x, authBtn.y, authBtn.width, authBtn.height);
-      this.ctx.shadowBlur = 0;
-
-      this.ctx.textAlign = 'center';
-      this.ctx.fillStyle = this.hoveredAuthBtn ? '#00ff66' : '#e0f2fe';
-      this.ctx.font = 'bold 12px "Courier New", monospace';
-      this.ctx.fillText(`🔐 [L] ${i18n.t('INICIAR SESIÓN CON GOOGLE', 'SIGN IN WITH GOOGLE')}`, authBtn.x + authBtn.width / 2, authBtn.y + 27);
+      this.drawClippedButton(
+        authBtn,
+        this.hoveredAuthBtn ? 'rgba(14, 55, 85, 0.96)' : 'rgba(8, 28, 46, 0.92)',
+        this.hoveredAuthBtn ? '#00ff66' : '#38bdf8',
+        this.hoveredAuthBtn ? 2.2 : 1.5,
+        this.hoveredAuthBtn ? '#00ff66' : '#e0f2fe',
+        12,
+        `🔐 [L] ${i18n.t('INICIAR SESIÓN CON GOOGLE', 'SIGN IN WITH GOOGLE')}`,
+        this.hoveredAuthBtn ? '#00ff66' : '#38bdf8',
+        this.hoveredAuthBtn ? 14 : 6
+      );
     }
 
     // ==========================================
@@ -2854,83 +2901,75 @@ export class Game {
     // ==========================================
     // Botón Pantalla Completa (Destacado y fuera de opciones para máxima visibilidad)
     const fsBtn = this.getFullscreenButtonRect();
-    this.ctx.fillStyle = this.hoveredFullscreenBtn ? 'rgba(0, 55, 45, 0.96)' : 'rgba(4, 28, 28, 0.92)';
-    this.ctx.strokeStyle = this.hoveredFullscreenBtn ? '#ffffff' : '#00f0ff';
-    this.ctx.lineWidth = this.hoveredFullscreenBtn ? 2.5 : 1.8;
-    this.ctx.shadowColor = '#00f0ff';
-    this.ctx.shadowBlur = this.hoveredFullscreenBtn ? 16 : 8;
-    this.ctx.fillRect(fsBtn.x, fsBtn.y, fsBtn.width, fsBtn.height);
-    this.ctx.strokeRect(fsBtn.x, fsBtn.y, fsBtn.width, fsBtn.height);
-    this.ctx.shadowBlur = 0;
-
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.hoveredFullscreenBtn ? '#ffffff' : '#00f0ff';
-    this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText(`⛶ [F] ${i18n.t('PANTALLA COMPLETA', 'FULLSCREEN')}`, fsBtn.x + fsBtn.width / 2, fsBtn.y + 27);
+    this.drawClippedButton(
+      fsBtn,
+      this.hoveredFullscreenBtn ? 'rgba(0, 55, 45, 0.96)' : 'rgba(4, 28, 28, 0.92)',
+      this.hoveredFullscreenBtn ? '#ffffff' : '#00f0ff',
+      this.hoveredFullscreenBtn ? 2.5 : 1.8,
+      this.hoveredFullscreenBtn ? '#ffffff' : '#00f0ff',
+      12,
+      `⛶ [F] ${i18n.t('PANTALLA COMPLETA', 'FULLSCREEN')}`,
+      '#00f0ff',
+      this.hoveredFullscreenBtn ? 16 : 8
+    );
 
     // Botón Cómo Jugar (Tutorial / Guía)
     const helpBtn = this.getHelpButtonRect();
-    this.ctx.fillStyle = this.hoveredHelpBtn ? 'rgba(55, 18, 70, 0.96)' : 'rgba(32, 10, 42, 0.92)';
-    this.ctx.strokeStyle = this.hoveredHelpBtn ? '#ffffff' : '#d946ef';
-    this.ctx.lineWidth = this.hoveredHelpBtn ? 2.2 : 1.5;
-    this.ctx.shadowColor = '#d946ef';
-    this.ctx.shadowBlur = this.hoveredHelpBtn ? 14 : 6;
-    this.ctx.fillRect(helpBtn.x, helpBtn.y, helpBtn.width, helpBtn.height);
-    this.ctx.strokeRect(helpBtn.x, helpBtn.y, helpBtn.width, helpBtn.height);
-    this.ctx.shadowBlur = 0;
-
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.hoveredHelpBtn ? '#ffffff' : '#f0abfc';
-    this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText(`📖 [H] ${i18n.t('CÓMO JUGAR', 'HOW TO PLAY')}`, helpBtn.x + helpBtn.width / 2, helpBtn.y + 27);
+    this.drawClippedButton(
+      helpBtn,
+      this.hoveredHelpBtn ? 'rgba(55, 18, 70, 0.96)' : 'rgba(32, 10, 42, 0.92)',
+      this.hoveredHelpBtn ? '#ffffff' : '#d946ef',
+      this.hoveredHelpBtn ? 2.2 : 1.5,
+      this.hoveredHelpBtn ? '#ffffff' : '#f0abfc',
+      12,
+      `📖 [H] ${i18n.t('CÓMO JUGAR', 'HOW TO PLAY')}`,
+      '#d946ef',
+      this.hoveredHelpBtn ? 14 : 6
+    );
 
     // Botón Clasificación Global (Rankings)
     const rankingsBtn = this.getGlobalRankingsButtonRect();
-    this.ctx.fillStyle = this.hoveredRankingsBtn ? 'rgba(85, 50, 5, 0.96)' : 'rgba(42, 24, 4, 0.92)';
-    this.ctx.strokeStyle = this.hoveredRankingsBtn ? '#ffffff' : '#fbbf24';
-    this.ctx.lineWidth = this.hoveredRankingsBtn ? 2.2 : 1.5;
-    this.ctx.shadowColor = '#fbbf24';
-    this.ctx.shadowBlur = this.hoveredRankingsBtn ? 14 : 6;
-    this.ctx.fillRect(rankingsBtn.x, rankingsBtn.y, rankingsBtn.width, rankingsBtn.height);
-    this.ctx.strokeRect(rankingsBtn.x, rankingsBtn.y, rankingsBtn.width, rankingsBtn.height);
-    this.ctx.shadowBlur = 0;
-
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.hoveredRankingsBtn ? '#ffffff' : '#fde047';
-    this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText(`🏆 [R] ${i18n.t('RANKINGS', 'RANKINGS')}`, rankingsBtn.x + rankingsBtn.width / 2, rankingsBtn.y + 27);
+    this.drawClippedButton(
+      rankingsBtn,
+      this.hoveredRankingsBtn ? 'rgba(85, 50, 5, 0.96)' : 'rgba(42, 24, 4, 0.92)',
+      this.hoveredRankingsBtn ? '#ffffff' : '#fbbf24',
+      this.hoveredRankingsBtn ? 2.2 : 1.5,
+      this.hoveredRankingsBtn ? '#ffffff' : '#fde047',
+      12,
+      `🏆 [R] ${i18n.t('RANKINGS', 'RANKINGS')}`,
+      '#fbbf24',
+      this.hoveredRankingsBtn ? 14 : 6
+    );
 
     // Botón Logros
     const achBtn = this.getAchievementsButtonRect();
     const achUnlocked = this.achievementSystem.getUnlockedCount();
     const totalAch = this.achievementSystem.achievements.length;
-    this.ctx.fillStyle = this.hoveredAchievementsBtn ? 'rgba(30, 50, 15, 0.96)' : 'rgba(15, 26, 8, 0.92)';
-    this.ctx.strokeStyle = this.hoveredAchievementsBtn ? '#ffffff' : '#84cc16';
-    this.ctx.lineWidth = this.hoveredAchievementsBtn ? 2 : 1.5;
-    this.ctx.shadowColor = '#84cc16';
-    this.ctx.shadowBlur = this.hoveredAchievementsBtn ? 12 : 6;
-    this.ctx.fillRect(achBtn.x, achBtn.y, achBtn.width, achBtn.height);
-    this.ctx.strokeRect(achBtn.x, achBtn.y, achBtn.width, achBtn.height);
-    this.ctx.shadowBlur = 0;
-
-    this.ctx.fillStyle = this.hoveredAchievementsBtn ? '#ffffff' : '#bef264';
-    this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText(`🏆 [A] ${i18n.t('LOGROS', 'ACHIEVEMENTS')} (${achUnlocked}/${totalAch})`, achBtn.x + achBtn.width / 2, achBtn.y + 27);
+    this.drawClippedButton(
+      achBtn,
+      this.hoveredAchievementsBtn ? 'rgba(30, 50, 15, 0.96)' : 'rgba(15, 26, 8, 0.92)',
+      this.hoveredAchievementsBtn ? '#ffffff' : '#84cc16',
+      this.hoveredAchievementsBtn ? 2 : 1.5,
+      this.hoveredAchievementsBtn ? '#ffffff' : '#bef264',
+      11.5,
+      `🏆 [A] ${i18n.t('LOGROS', 'ACHIEVEMENTS')} (${achUnlocked}/${totalAch})`,
+      '#84cc16',
+      this.hoveredAchievementsBtn ? 12 : 6
+    );
 
     // Botón Ajustes
     const setBtn = this.getSettingsButtonRect();
-    this.ctx.fillStyle = this.hoveredSettingsBtn ? 'rgba(12, 40, 65, 0.96)' : 'rgba(6, 22, 36, 0.92)';
-    this.ctx.strokeStyle = this.hoveredSettingsBtn ? '#ffffff' : '#0284c7';
-    this.ctx.lineWidth = this.hoveredSettingsBtn ? 2 : 1.5;
-    this.ctx.shadowColor = '#0284c7';
-    this.ctx.shadowBlur = this.hoveredSettingsBtn ? 12 : 6;
-    this.ctx.fillRect(setBtn.x, setBtn.y, setBtn.width, setBtn.height);
-    this.ctx.strokeRect(setBtn.x, setBtn.y, setBtn.width, setBtn.height);
-    this.ctx.shadowBlur = 0;
-
-    this.ctx.fillStyle = this.hoveredSettingsBtn ? '#ffffff' : '#7dd3fc';
-    this.ctx.font = 'bold 12px "Courier New", monospace';
-    this.ctx.fillText(`⚙️ [O] ${i18n.t('AJUSTES', 'SETTINGS')}`, setBtn.x + setBtn.width / 2, setBtn.y + 27);
+    this.drawClippedButton(
+      setBtn,
+      this.hoveredSettingsBtn ? 'rgba(12, 40, 65, 0.96)' : 'rgba(6, 22, 36, 0.92)',
+      this.hoveredSettingsBtn ? '#ffffff' : '#0284c7',
+      this.hoveredSettingsBtn ? 2 : 1.5,
+      this.hoveredSettingsBtn ? '#ffffff' : '#7dd3fc',
+      12,
+      `⚙️ [O] ${i18n.t('AJUSTES', 'SETTINGS')}`,
+      '#0284c7',
+      this.hoveredSettingsBtn ? 12 : 6
+    );
 
     // ==========================================
     // 3. PANEL CENTRAL (KERNEL HUB)
@@ -3004,6 +3043,11 @@ export class Game {
         this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
         this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
+        // Recorte estricto dentro de la tarjeta de personaje
+        this.ctx.beginPath();
+        this.ctx.rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
+        this.ctx.clip();
+
         const previewX = rect.x + 32;
         const previewY = rect.y + 34;
         this.ctx.fillStyle = profile.color;
@@ -3038,7 +3082,7 @@ export class Game {
 
         this.ctx.fillStyle = '#cbd5e1';
         this.ctx.font = '12px "Courier New", monospace';
-        this.wrapText(profile.description, rect.x + 14, rect.y + 68, rect.width - 28, 15);
+        this.wrapText(profile.description, rect.x + 14, rect.y + 68, rect.width - 28, 15, 3);
 
         this.ctx.font = 'bold 12px "Courier New", monospace';
         if (selected) {
@@ -3164,6 +3208,11 @@ export class Game {
           this.ctx.fillRect(x, y, cardW, cardH);
           this.ctx.strokeRect(x, y, cardW, cardH);
 
+          // Recorte estricto por carta gacha
+          this.ctx.beginPath();
+          this.ctx.rect(x + 2, y + 2, cardW - 4, cardH - 4);
+          this.ctx.clip();
+
           this.ctx.textAlign = 'center';
           this.ctx.font = '22px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
           this.ctx.fillText(entry.hat.icon, x + cardW / 2, y + 24);
@@ -3246,6 +3295,11 @@ export class Game {
           this.ctx.fillRect(slot.x, slot.y, slot.width, slot.height);
           this.ctx.strokeRect(slot.x, slot.y, slot.width, slot.height);
 
+          // Recorte estricto por ranura de inventario
+          this.ctx.beginPath();
+          this.ctx.rect(slot.x + 2, slot.y + 2, slot.width - 4, slot.height - 4);
+          this.ctx.clip();
+
           this.ctx.textAlign = 'left';
           this.ctx.font = '22px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
           this.ctx.fillText(slot.hat.icon, slot.x + 10, slot.y + 28);
@@ -3294,26 +3348,50 @@ export class Game {
       }
     }
 
+    this.ctx.save();
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#a3e635';
-    this.ctx.font = 'bold 13px Consolas, monospace';
-    this.ctx.fillText(this.menuFeedbackMessage, cx, py + 472);
+    let feedbackFont = 13;
+    const maxFeedbackW = panelW - 40;
+    this.ctx.font = `bold ${feedbackFont}px "Courier New", monospace`;
+    let fbMetrics = this.ctx.measureText(this.menuFeedbackMessage).width;
+    if (fbMetrics > maxFeedbackW) {
+      feedbackFont = Math.max(10, Math.floor(13 * (maxFeedbackW / fbMetrics)));
+      this.ctx.font = `bold ${feedbackFont}px "Courier New", monospace`;
+    }
+    this.ctx.fillText(this.menuFeedbackMessage, cx, py + 470);
+    this.ctx.restore();
 
     const startBtn = this.getStartButtonRect();
     const blink = Math.floor(performance.now() / 450) % 2 === 0;
+    this.ctx.save();
     this.ctx.fillStyle = 'rgba(0, 40, 22, 0.95)';
     this.ctx.strokeStyle = '#00ff66';
     this.ctx.lineWidth = 2;
+    this.ctx.shadowColor = '#00ff66';
+    this.ctx.shadowBlur = blink ? 14 : 6;
     this.ctx.fillRect(startBtn.x, startBtn.y, startBtn.width, startBtn.height);
     this.ctx.strokeRect(startBtn.x, startBtn.y, startBtn.width, startBtn.height);
+    this.ctx.shadowBlur = 0;
 
+    // Recorte estricto dentro del botón de despliegue
+    this.ctx.beginPath();
+    this.ctx.rect(startBtn.x + 2, startBtn.y + 2, startBtn.width - 4, startBtn.height - 4);
+    this.ctx.clip();
+
+    this.ctx.textAlign = 'center';
     this.ctx.fillStyle = blink ? '#00ff66' : '#ffffff';
-    this.ctx.font = 'bold 17px "Courier New", monospace';
-    this.ctx.fillText(
-      `> ${i18n.t('PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR', 'PRESS [ENTER] OR CLICK HERE TO DEPLOY')} <`,
-      cx,
-      startBtn.y + 29
-    );
+    let startFont = 16;
+    const maxStartW = startBtn.width - 24;
+    const startText = `> ${i18n.t('PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR', 'PRESS [ENTER] OR CLICK HERE TO DEPLOY')} <`;
+    this.ctx.font = `bold ${startFont}px "Courier New", monospace`;
+    let stMetrics = this.ctx.measureText(startText).width;
+    if (stMetrics > maxStartW) {
+      startFont = Math.max(11, Math.floor(16 * (maxStartW / stMetrics)));
+      this.ctx.font = `bold ${startFont}px "Courier New", monospace`;
+    }
+    this.ctx.fillText(startText, cx, startBtn.y + 29);
+    this.ctx.restore();
 
     if (this.showLeaderboardOverlay) {
       this.drawLeaderboardOverlay();
@@ -3431,6 +3509,7 @@ export class Game {
         const rowY = startRowY + i * rowH;
         const isCurrentUser = Boolean(this.currentUser && this.currentUser.uid === entry.uid);
 
+        this.ctx.save();
         this.ctx.fillStyle = isCurrentUser
           ? 'rgba(0, 65, 40, 0.92)'
           : i % 2 === 0
@@ -3440,6 +3519,11 @@ export class Game {
         this.ctx.lineWidth = isCurrentUser ? 1.8 : 1;
         this.ctx.fillRect(tableX, rowY, tableW, rowH - 3);
         this.ctx.strokeRect(tableX, rowY, tableW, rowH - 3);
+
+        // Recorte estricto por fila para no invadir bordes de tabla
+        this.ctx.beginPath();
+        this.ctx.rect(tableX + 2, rowY, tableW - 4, rowH - 3);
+        this.ctx.clip();
 
         const rankColor =
           i === 0 ? '#fbbf24' : i === 1 ? '#e2e8f0' : i === 2 ? '#f97316' : '#94a3b8';
@@ -3455,7 +3539,7 @@ export class Game {
           ? 'bold 14px "Courier New", monospace'
           : '14px "Courier New", monospace';
         const rawName = entry.displayName || 'Survivor';
-        const shownName = rawName.length > 26 ? rawName.slice(0, 25) + '…' : rawName;
+        const shownName = rawName.length > 24 ? rawName.slice(0, 23) + '…' : rawName;
         this.ctx.fillText(
           isCurrentUser ? `${shownName} (TÚ)` : shownName,
           tableX + 115,
@@ -3480,26 +3564,20 @@ export class Game {
             rowY + 21
           );
         }
+        this.ctx.restore();
       }
     }
 
-    // Back button
+    // Botón Volver con auto-fit y recorte
     const backBtn = this.getLeaderboardBackButtonRect();
-    this.ctx.fillStyle = this.hoveredLeaderboardBackBtn
-      ? 'rgba(0, 68, 40, 0.96)'
-      : 'rgba(10, 32, 24, 0.94)';
-    this.ctx.strokeStyle = this.hoveredLeaderboardBackBtn ? '#ffffff' : '#00ff66';
-    this.ctx.lineWidth = this.hoveredLeaderboardBackBtn ? 2.5 : 1.8;
-    this.ctx.fillRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
-    this.ctx.strokeRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
-
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.hoveredLeaderboardBackBtn ? '#ffffff' : '#00ff66';
-    this.ctx.font = 'bold 15px "Courier New", monospace';
-    this.ctx.fillText(
-      '<< BACK / VOLVER AL MENÚ',
-      backBtn.x + backBtn.width / 2,
-      backBtn.y + 24
+    this.drawClippedButton(
+      backBtn,
+      this.hoveredLeaderboardBackBtn ? 'rgba(0, 68, 40, 0.96)' : 'rgba(10, 32, 24, 0.94)',
+      this.hoveredLeaderboardBackBtn ? '#ffffff' : '#00ff66',
+      this.hoveredLeaderboardBackBtn ? 2.5 : 1.8,
+      this.hoveredLeaderboardBackBtn ? '#ffffff' : '#00ff66',
+      14,
+      `[ESC / CLICK] ${i18n.t('VOLVER AL KERNEL HUB', 'RETURN TO KERNEL HUB')}`
     );
 
     this.ctx.restore();
@@ -3585,7 +3663,7 @@ export class Game {
     height: number;
   }[] {
     const cx = this.canvas.width / 2;
-    const tabW = 400;
+    const tabW = 420;
     const tabH = 34;
     const gap = 20;
     const startX = cx - tabW - gap / 2;
@@ -3621,7 +3699,7 @@ export class Game {
     this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const panelW = 880;
+    const panelW = 920;
     const panelH = 650;
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
@@ -3655,33 +3733,30 @@ export class Game {
       py + 54
     );
 
-    // Pestañas Página 1 & Página 2
+    // Pestañas Página 1 & Página 2 con auto-fit y recorte
     for (const tab of this.getAchievementsTabRects(py)) {
       const isActive = this.achievementsPage === tab.page;
       const isHovered = this.hoveredAchievementsTab === tab.page;
 
-      this.ctx.fillStyle = isActive
-        ? 'rgba(30, 65, 20, 0.95)'
-        : isHovered
-        ? 'rgba(20, 45, 30, 0.85)'
-        : 'rgba(10, 24, 20, 0.75)';
-      this.ctx.strokeStyle = isActive ? '#bef264' : isHovered ? '#84cc16' : 'rgba(71, 85, 105, 0.6)';
-      this.ctx.lineWidth = isActive ? 2.2 : 1.2;
-      if (isActive) {
-        this.ctx.shadowColor = '#bef264';
-        this.ctx.shadowBlur = 10;
-      }
-      this.ctx.fillRect(tab.x, tab.y, tab.width, tab.height);
-      this.ctx.strokeRect(tab.x, tab.y, tab.width, tab.height);
-      this.ctx.shadowBlur = 0;
-
-      this.ctx.fillStyle = isActive ? '#bef264' : isHovered ? '#ffffff' : '#94a3b8';
-      this.ctx.font = 'bold 12px "Courier New", monospace';
-      this.ctx.fillText(tab.label, tab.x + tab.width / 2, tab.y + 21);
+      this.drawClippedButton(
+        tab,
+        isActive
+          ? 'rgba(30, 65, 20, 0.95)'
+          : isHovered
+          ? 'rgba(20, 45, 30, 0.85)'
+          : 'rgba(10, 24, 20, 0.75)',
+        isActive ? '#bef264' : isHovered ? '#84cc16' : 'rgba(71, 85, 105, 0.6)',
+        isActive ? 2.2 : 1.2,
+        isActive ? '#bef264' : isHovered ? '#ffffff' : '#94a3b8',
+        12,
+        tab.label,
+        isActive ? '#bef264' : undefined,
+        isActive ? 10 : undefined
+      );
     }
 
-    const cardW = 400;
-    const cardH = 68;
+    const cardW = 420;
+    const cardH = 70;
     const startY = py + 114;
     const col1X = cx - cardW - 10;
     const col2X = cx + 10;
@@ -3693,11 +3768,17 @@ export class Game {
       const row = Math.floor(i / 2);
       const cardY = startY + row * (cardH + 10);
 
+      this.ctx.save();
       this.ctx.fillStyle = ach.unlocked ? 'rgba(5, 46, 22, 0.92)' : 'rgba(8, 18, 28, 0.88)';
       this.ctx.strokeStyle = ach.unlocked ? '#22c55e' : 'rgba(71, 85, 105, 0.4)';
       this.ctx.lineWidth = ach.unlocked ? 1.8 : 1;
       this.ctx.fillRect(col, cardY, cardW, cardH);
       this.ctx.strokeRect(col, cardY, cardW, cardH);
+
+      // Recorte estricto dentro de la tarjeta para garantizar CERO desbordamientos
+      this.ctx.beginPath();
+      this.ctx.rect(col + 2, cardY + 2, cardW - 4, cardH - 4);
+      this.ctx.clip();
 
       // Icono
       this.ctx.font = '24px sans-serif';
@@ -3705,30 +3786,56 @@ export class Game {
       this.ctx.textBaseline = 'middle';
       this.ctx.fillText(ach.icon, col + 12, cardY + cardH / 2);
 
-      // Título y Recompensa
+      // Recompensa a la derecha
       this.ctx.textBaseline = 'alphabetic';
-      this.ctx.fillStyle = ach.unlocked ? '#4ade80' : '#e2e8f0';
-      this.ctx.font = 'bold 13px "Courier New", monospace';
-      const title = i18n.currentLang === 'EN' ? ach.titleEn : ach.title;
-      this.ctx.fillText(title, col + 46, cardY + 20);
-
       this.ctx.textAlign = 'right';
       this.ctx.fillStyle = ach.unlocked ? '#86efac' : '#fbbf24';
       this.ctx.font = 'bold 12px "Courier New", monospace';
-      this.ctx.fillText(`+${ach.rewardCoins} 🪙`, col + cardW - 12, cardY + 20);
+      const rewardText = `+${ach.rewardCoins} 🪙`;
+      this.ctx.fillText(rewardText, col + cardW - 12, cardY + 20);
+      const rewardW = this.ctx.measureText(rewardText).width;
 
-      // Descripción
+      // Título con auto-fit
       this.ctx.textAlign = 'left';
+      this.ctx.fillStyle = ach.unlocked ? '#4ade80' : '#e2e8f0';
+      const title = i18n.currentLang === 'EN' ? ach.titleEn : ach.title;
+      const maxTitleW = cardW - 48 - rewardW - 14;
+      let titleFontSize = 13;
+      this.ctx.font = `bold ${titleFontSize}px "Courier New", monospace`;
+      let titleMetrics = this.ctx.measureText(title).width;
+      if (titleMetrics > maxTitleW) {
+        titleFontSize = Math.max(10, Math.floor(13 * (maxTitleW / titleMetrics)));
+        this.ctx.font = `bold ${titleFontSize}px "Courier New", monospace`;
+      }
+      this.ctx.fillText(title, col + 46, cardY + 20);
+
+      // Descripción con auto-fit y truncado si fuera necesario
       this.ctx.fillStyle = '#94a3b8';
-      this.ctx.font = '11px "Courier New", monospace';
       const desc = i18n.currentLang === 'EN' ? ach.descriptionEn : ach.description;
-      this.ctx.fillText(desc, col + 46, cardY + 38);
+      const maxDescW = cardW - 58;
+      let descFontSize = 11;
+      this.ctx.font = `${descFontSize}px "Courier New", monospace`;
+      let descMetrics = this.ctx.measureText(desc).width;
+      if (descMetrics > maxDescW) {
+        descFontSize = Math.max(9, Math.floor(11 * (maxDescW / descMetrics)));
+        this.ctx.font = `${descFontSize}px "Courier New", monospace`;
+        descMetrics = this.ctx.measureText(desc).width;
+      }
+      if (descMetrics > maxDescW) {
+        let trimmed = desc;
+        while (trimmed.length > 3 && this.ctx.measureText(trimmed + '…').width > maxDescW) {
+          trimmed = trimmed.slice(0, -1);
+        }
+        this.ctx.fillText(trimmed + '…', col + 46, cardY + 38);
+      } else {
+        this.ctx.fillText(desc, col + 46, cardY + 38);
+      }
 
       // Barra de Progreso
       const progressRatio = Math.min(1, ach.current / ach.target);
       const barX = col + 46;
       const barY = cardY + 48;
-      const barW = cardW - 140;
+      const barW = cardW - 146;
       const barH = 8;
 
       this.ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
@@ -3743,25 +3850,20 @@ export class Game {
         ? i18n.t('COMPLETO', 'COMPLETED')
         : `${Math.floor(ach.current)}/${ach.target}`;
       this.ctx.fillText(progressText, col + cardW - 12, cardY + 56);
+
+      this.ctx.restore();
     }
 
-    // Botón Volver
+    // Botón Volver con auto-fit y recorte
     const backBtn = this.getOverlayBackButtonRect(py, panelH);
-    this.ctx.fillStyle = this.hoveredOverlayBackBtn
-      ? 'rgba(0, 68, 40, 0.96)'
-      : 'rgba(10, 32, 24, 0.94)';
-    this.ctx.strokeStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
-    this.ctx.lineWidth = this.hoveredOverlayBackBtn ? 2.5 : 1.8;
-    this.ctx.fillRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
-    this.ctx.strokeRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
-
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
-    this.ctx.font = 'bold 15px "Courier New", monospace';
-    this.ctx.fillText(
-      i18n.t('<< [ ESC / B ] VOLVER AL MENÚ', '<< [ ESC / B ] RETURN TO MENU'),
-      backBtn.x + backBtn.width / 2,
-      backBtn.y + 24
+    this.drawClippedButton(
+      backBtn,
+      this.hoveredOverlayBackBtn ? 'rgba(0, 68, 40, 0.96)' : 'rgba(10, 32, 24, 0.94)',
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
+      this.hoveredOverlayBackBtn ? 2.5 : 1.8,
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
+      14,
+      `[ESC / CLICK] ${i18n.t('VOLVER AL KERNEL HUB', 'RETURN TO KERNEL HUB')}`
     );
 
     this.ctx.restore();
@@ -3929,23 +4031,16 @@ export class Game {
     this.ctx.font = 'bold 13px "Courier New", monospace';
     this.ctx.fillText(isEn ? '✓ ENGLISH' : 'ENGLISH', cx + 180, langY + 24);
 
-    // Botón Guardar y Volver
+    // Botón Guardar y Volver con auto-fit y recorte
     const backBtn = this.getOverlayBackButtonRect(py, panelH);
-    this.ctx.fillStyle = this.hoveredOverlayBackBtn
-      ? 'rgba(0, 68, 40, 0.96)'
-      : 'rgba(10, 32, 24, 0.94)';
-    this.ctx.strokeStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
-    this.ctx.lineWidth = this.hoveredOverlayBackBtn ? 2.5 : 1.8;
-    this.ctx.fillRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
-    this.ctx.strokeRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
-
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
-    this.ctx.font = 'bold 15px "Courier New", monospace';
-    this.ctx.fillText(
-      i18n.t('<< [ ESC / B ] GUARDAR Y VOLVER', '<< [ ESC / B ] SAVE & RETURN'),
-      backBtn.x + backBtn.width / 2,
-      backBtn.y + 24
+    this.drawClippedButton(
+      backBtn,
+      this.hoveredOverlayBackBtn ? 'rgba(0, 68, 40, 0.96)' : 'rgba(10, 32, 24, 0.94)',
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
+      this.hoveredOverlayBackBtn ? 2.5 : 1.8,
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
+      14,
+      `[ESC / CLICK] ${i18n.t('GUARDAR Y VOLVER', 'SAVE & RETURN')}`
     );
 
     this.ctx.restore();
@@ -3959,7 +4054,7 @@ export class Game {
     this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const panelW = 860;
+    const panelW = 900;
     const panelH = 590;
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
@@ -4069,7 +4164,7 @@ export class Game {
       },
     ];
 
-    const cardW = 390;
+    const cardW = 410;
     const cardH = 205;
     const startY = py + 68;
     const col1X = cx - cardW - 10;
@@ -4080,11 +4175,17 @@ export class Game {
       const colX = c % 2 === 0 ? col1X : col2X;
       const rowY = startY + Math.floor(c / 2) * (cardH + 14);
 
+      this.ctx.save();
       this.ctx.fillStyle = 'rgba(6, 12, 20, 0.9)';
       this.ctx.strokeStyle = card.border;
       this.ctx.lineWidth = 1.5;
       this.ctx.fillRect(colX, rowY, cardW, cardH);
       this.ctx.strokeRect(colX, rowY, cardW, cardH);
+
+      // Recorte estricto dentro de la tarjeta
+      this.ctx.beginPath();
+      this.ctx.rect(colX + 2, rowY + 2, cardW - 4, cardH - 4);
+      this.ctx.clip();
 
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = card.color;
@@ -4092,29 +4193,31 @@ export class Game {
       this.ctx.fillText(card.title, colX + 16, rowY + 28);
 
       this.ctx.fillStyle = '#cbd5e1';
-      this.ctx.font = '12px "Courier New", monospace';
+      const maxLineW = cardW - 32;
       for (let l = 0; l < card.lines.length; l++) {
-        this.ctx.fillText(card.lines[l], colX + 16, rowY + 58 + l * 26);
+        const lineText = card.lines[l];
+        let lineFont = 12;
+        this.ctx.font = `${lineFont}px "Courier New", monospace`;
+        const lm = this.ctx.measureText(lineText).width;
+        if (lm > maxLineW) {
+          lineFont = Math.max(9.5, Math.floor(12 * (maxLineW / lm)));
+          this.ctx.font = `${lineFont}px "Courier New", monospace`;
+        }
+        this.ctx.fillText(lineText, colX + 16, rowY + 58 + l * 26);
       }
+      this.ctx.restore();
     }
 
-    // Botón Volver
+    // Botón Volver con auto-fit y recorte
     const backBtn = this.getOverlayBackButtonRect(py, panelH);
-    this.ctx.fillStyle = this.hoveredOverlayBackBtn
-      ? 'rgba(0, 68, 40, 0.96)'
-      : 'rgba(10, 32, 24, 0.94)';
-    this.ctx.strokeStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
-    this.ctx.lineWidth = this.hoveredOverlayBackBtn ? 2.5 : 1.8;
-    this.ctx.fillRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
-    this.ctx.strokeRect(backBtn.x, backBtn.y, backBtn.width, backBtn.height);
-
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66';
-    this.ctx.font = 'bold 15px "Courier New", monospace';
-    this.ctx.fillText(
-      i18n.t('<< [ ESC / B ] ENTENDIDO // VOLVER', '<< [ ESC / B ] UNDERSTOOD // RETURN'),
-      backBtn.x + backBtn.width / 2,
-      backBtn.y + 24
+    this.drawClippedButton(
+      backBtn,
+      this.hoveredOverlayBackBtn ? 'rgba(0, 68, 40, 0.96)' : 'rgba(10, 32, 24, 0.94)',
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
+      this.hoveredOverlayBackBtn ? 2.5 : 1.8,
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
+      14,
+      `[ESC / CLICK] ${i18n.t('VOLVER AL KERNEL HUB', 'RETURN TO KERNEL HUB')}`
     );
 
     this.ctx.restore();
@@ -4471,14 +4574,27 @@ export class Game {
       this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
       this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
+      // Recorte estricto dentro de la tarjeta de mejora
+      this.ctx.beginPath();
+      this.ctx.rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
+      this.ctx.clip();
+
       this.ctx.shadowBlur = 0;
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = opt.color;
       this.ctx.font = 'bold 12px "Courier New", monospace';
       this.ctx.fillText(`[KEY ${i + 1}] // ${opt.category}`, rect.x + 18, rect.y + 26);
 
+      // Auto-fit para el nombre de la carta
+      const nameMaxW = rect.width - 36;
+      let nameFont = 17;
+      this.ctx.font = `bold ${nameFont}px "Courier New", monospace`;
+      const nMetrics = this.ctx.measureText(opt.name).width;
+      if (nMetrics > nameMaxW) {
+        nameFont = Math.max(12, Math.floor(17 * (nameMaxW / nMetrics)));
+        this.ctx.font = `bold ${nameFont}px "Courier New", monospace`;
+      }
       this.ctx.fillStyle = '#ffffff';
-      this.ctx.font = 'bold 17px "Courier New", monospace';
       this.ctx.fillText(opt.name, rect.x + 18, rect.y + 54);
 
       this.ctx.fillStyle = '#00ff66';
@@ -4496,7 +4612,7 @@ export class Game {
 
       this.ctx.fillStyle = '#cbd5e1';
       this.ctx.font = '13px "Courier New", monospace';
-      this.wrapText(opt.description, rect.x + 18, rect.y + 104, rect.width - 36, 18);
+      this.wrapText(opt.description, rect.x + 18, rect.y + 104, rect.width - 36, 18, 2);
 
       // Subcaja con las estadísticas que mejoran o disminuyen de cada opción
       const badgeY = rect.y + 148;
@@ -4508,9 +4624,17 @@ export class Game {
       this.ctx.fillRect(rect.x + 18, badgeY, badgeW, badgeH);
       this.ctx.strokeRect(rect.x + 18, badgeY, badgeW, badgeH);
 
+      // Auto-fit en el badge de estadísticas
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = '#ffffff';
-      this.ctx.font = 'bold 12px "Courier New", monospace';
+      const badgeMaxW = badgeW - 16;
+      let badgeFont = 12;
+      this.ctx.font = `bold ${badgeFont}px "Courier New", monospace`;
+      const bMetrics = this.ctx.measureText(opt.statBadge || '').width;
+      if (bMetrics > badgeMaxW) {
+        badgeFont = Math.max(9, Math.floor(12 * (badgeMaxW / bMetrics)));
+        this.ctx.font = `bold ${badgeFont}px "Courier New", monospace`;
+      }
       this.ctx.fillText(opt.statBadge || '', rect.x + 18 + badgeW / 2, badgeY + 27);
 
       this.ctx.textAlign = 'center';
@@ -4528,23 +4652,46 @@ export class Game {
     this.ctx.restore();
   }
 
-  private wrapText(text: string, x: number, y: number, maxWidth: number, lineHeight: number): void {
+  private wrapText(
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    lineHeight: number,
+    maxLines: number = 4
+  ): void {
     const words = text.split(' ');
     let line = '';
     let currentY = y;
+    let linesDrawn = 0;
 
     for (let n = 0; n < words.length; n++) {
       const testLine = line + words[n] + ' ';
       const metrics = this.ctx.measureText(testLine);
       if (metrics.width > maxWidth && n > 0) {
-        this.ctx.fillText(line, x, currentY);
+        if (linesDrawn + 1 >= maxLines) {
+          let trunc = line.trimEnd();
+          while (trunc.length > 0 && this.ctx.measureText(trunc + '…').width > maxWidth) {
+            trunc = trunc.slice(0, -1);
+          }
+          this.ctx.fillText(trunc + '…', x, currentY);
+          return;
+        }
+        this.ctx.fillText(line.trimEnd(), x, currentY);
+        linesDrawn++;
         line = words[n] + ' ';
         currentY += lineHeight;
       } else {
         line = testLine;
       }
     }
-    this.ctx.fillText(line, x, currentY);
+    if (linesDrawn < maxLines) {
+      let finalLine = line.trimEnd();
+      while (finalLine.length > 0 && this.ctx.measureText(finalLine).width > maxWidth) {
+        finalLine = finalLine.slice(0, -1);
+      }
+      this.ctx.fillText(finalLine, x, currentY);
+    }
   }
 
   private drawSystemFailureOverlay(): void {
@@ -4598,11 +4745,17 @@ export class Game {
     const rightX = cx + 12;
 
     // Panel Izquierdo: Rendimiento de Arsenal
+    this.ctx.save();
     this.ctx.fillStyle = 'rgba(10, 2, 6, 0.9)';
     this.ctx.strokeStyle = '#f43f5e';
     this.ctx.lineWidth = 1.5;
     this.ctx.fillRect(leftX, panelY, subW, subH);
     this.ctx.strokeRect(leftX, panelY, subW, subH);
+
+    // Recorte estricto para el panel izquierdo
+    this.ctx.beginPath();
+    this.ctx.rect(leftX + 2, panelY + 2, subW - 4, subH - 4);
+    this.ctx.clip();
 
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#fb7185';
@@ -4645,13 +4798,20 @@ export class Game {
         this.ctx.fillRect(leftX + 16, rowY + 18, (item.damage / totalDmg) * barW, 8);
       }
     }
+    this.ctx.restore();
 
     // Panel Derecho: Amenazas Purgadas
+    this.ctx.save();
     this.ctx.fillStyle = 'rgba(10, 2, 6, 0.9)';
     this.ctx.strokeStyle = '#38bdf8';
     this.ctx.lineWidth = 1.5;
     this.ctx.fillRect(rightX, panelY, subW, subH);
     this.ctx.strokeRect(rightX, panelY, subW, subH);
+
+    // Recorte estricto para el panel derecho
+    this.ctx.beginPath();
+    this.ctx.rect(rightX + 2, panelY + 2, subW - 4, subH - 4);
+    this.ctx.clip();
 
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#7dd3fc';
@@ -4684,6 +4844,7 @@ export class Game {
       this.ctx.fillText(`${er.count}`, rightX + subW - 16, rY + 12);
       this.ctx.textAlign = 'left';
     }
+    this.ctx.restore();
 
     // Pie de Acción
     const blink = Math.floor(performance.now() / 450) % 2 === 0;
