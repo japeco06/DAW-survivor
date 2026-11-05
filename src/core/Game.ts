@@ -75,7 +75,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.3';
+const GAME_VERSION = 'v1.1.4';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -201,28 +201,38 @@ export class Game {
       this.addTerminalLog(`HITO DESBLOQUEADO: ${ach.title} (+${ach.rewardCoins} 🪙)`);
     };
 
-    onAuthStateChanged(auth, async (user) => {
-      this.currentUser = user;
-      if (user) {
-        const displayName = user.displayName || user.email || 'Agente';
-        this.menuFeedbackMessage = `Sincronizando datos en la nube de ${displayName}...`;
-        await this.metaSystem.loadFromCloud(user.uid);
-        this.highScoreKills = this.metaSystem.highScore;
-        if (this.gameState === 'MENU') {
-          this.player = new Player(
-            this.canvas.width / 2,
-            this.canvas.height / 2,
-            this.metaSystem.getSelectedProfile()
-          );
+    onAuthStateChanged(
+      auth,
+      async (user) => {
+        try {
+          this.currentUser = user;
+          if (user) {
+            const displayName = user.displayName || user.email || 'Agente';
+            this.menuFeedbackMessage = `Sincronizando datos en la nube de ${displayName}...`;
+            await this.metaSystem.loadFromCloud(user.uid);
+            this.highScoreKills = this.metaSystem.highScore;
+            if (this.gameState === 'MENU') {
+              this.player = new Player(
+                this.canvas.width / 2,
+                this.canvas.height / 2,
+                this.metaSystem.getSelectedProfile()
+              );
+            }
+            this.menuFeedbackMessage = `Sesión iniciada como ${displayName}. Progreso sincronizado con la nube.`;
+            this.addTerminalLog(`AUTH: Cloud Save synced (${displayName})`);
+            this.achievementSystem.reportProgress('gacha_collector_20', this.metaSystem.unlockedHats.size, true);
+            if (this.metaSystem.getUnlockedHatsList().some((h) => h.rarity === 'MITICA' || h.rarity === 'LEGENDARIA')) {
+              this.achievementSystem.reportProgress('gacha_mythic', 1, true);
+            }
+          }
+        } catch (err) {
+          console.warn('Error al sincronizar auth de Firebase:', err);
         }
-        this.menuFeedbackMessage = `Sesión iniciada como ${displayName}. Progreso sincronizado con la nube.`;
-        this.addTerminalLog(`AUTH: Cloud Save synced (${displayName})`);
-        this.achievementSystem.reportProgress('gacha_collector_20', this.metaSystem.unlockedHats.size, true);
-        if (this.metaSystem.getUnlockedHatsList().some((h) => h.rarity === 'MITICA' || h.rarity === 'LEGENDARIA')) {
-          this.achievementSystem.reportProgress('gacha_mythic', 1, true);
-        }
+      },
+      (error) => {
+        console.warn('Firebase Auth state error (entorno sandbox/iframe):', error);
       }
-    });
+    );
 
     this.achievementSystem.reportProgress('gacha_collector_20', this.metaSystem.unlockedHats.size, true);
     if (this.metaSystem.getUnlockedHatsList().some((h) => h.rarity === 'MITICA' || h.rarity === 'LEGENDARIA')) {
