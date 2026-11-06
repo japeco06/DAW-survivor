@@ -34,7 +34,7 @@ import {
 } from '../systems/MetaSystem';
 import { HatItem, HATS_DATABASE, RARITY_CONFIG } from '../systems/HatSystem';
 import { i18n } from '../utils/i18n';
-import { auth, db, googleProvider } from '../firebase';
+import { auth, db, googleProvider, logAnalyticsEvent } from '../firebase';
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -75,7 +75,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.7';
+const GAME_VERSION = 'v1.1.8';
 const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
 
 export class Game {
@@ -411,6 +411,12 @@ export class Game {
           const chosen = this.upgradeSystem.currentChoices[idx];
           if (chosen && this.upgradeSystem.selectUpgrade(idx, this.player, this.combatSystem)) {
             this.sound.playCoinPickup();
+            logAnalyticsEvent('select_content', {
+              content_type: 'upgrade',
+              item_id: chosen.id,
+              item_name: chosen.name,
+              level: chosen.level,
+            });
             this.addTerminalLog(`INSTALLED: ${chosen.name} (v${chosen.level}.0)`);
             this.particleSystem.spawnExplosion(this.player.x, this.player.y, chosen.color, 24, true);
             this.hoveredCardIndex = -1;
@@ -950,6 +956,12 @@ export class Game {
             this.upgradeSystem.selectUpgrade(card.index, this.player, this.combatSystem)
           ) {
             this.sound.playCoinPickup();
+            logAnalyticsEvent('select_content', {
+              content_type: 'upgrade',
+              item_id: chosen.id,
+              item_name: chosen.name,
+              level: chosen.level,
+            });
             this.addTerminalLog(`INSTALLED: ${chosen.name} (v${chosen.level}.0)`);
             this.particleSystem.spawnExplosion(this.player.x, this.player.y, chosen.color, 24, true);
             this.hoveredCardIndex = -1;
@@ -1025,6 +1037,10 @@ export class Game {
 
   private startNewRun(): void {
     const profile = this.metaSystem.getSelectedProfile();
+    logAnalyticsEvent('level_start', {
+      character: profile.name,
+      equipped_hat: this.metaSystem.getEquippedHat() || 'none',
+    });
     this.player = new Player(
       this.canvas.width / 2,
       this.canvas.height / 2,
@@ -1108,6 +1124,7 @@ export class Game {
     this.decryptionKeys = [];
 
     this.megaBoss = createRandomMegaBoss(this.canvas.width, chosenVariant);
+    logAnalyticsEvent('boss_spawn', { boss_name: this.megaBoss.bossTitle });
     this.encryptedBlocks = BaseBoss.createArenaBlocks(
       this.canvas.width,
       this.canvas.height
@@ -1276,6 +1293,14 @@ export class Game {
         if (!this.player.active) {
           this.gameState = 'GAMEOVER';
           this.sound.setTrack('NONE');
+          logAnalyticsEvent('level_end', {
+            success: false,
+            reason: 'mega_boss',
+            elapsed_seconds: Math.round(this.elapsedTime),
+            kills: this.killCount,
+            damage_to_toro: this.runDamageToToro,
+            character: this.metaSystem.getSelectedProfile().name,
+          });
           this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
           this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
           void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
@@ -1710,6 +1735,14 @@ export class Game {
         if (this.finalBoss) {
           this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
         }
+        logAnalyticsEvent('level_end', {
+          success: false,
+          reason: 'killed_by_enemies',
+          elapsed_seconds: Math.round(this.elapsedTime),
+          kills: this.killCount,
+          damage_to_toro: this.runDamageToToro,
+          character: this.metaSystem.getSelectedProfile().name,
+        });
         this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
         this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
         void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
@@ -1827,6 +1860,7 @@ export class Game {
   }
 
   private handleMegaBossDefeated(bossX: number, bossY: number, title: string): void {
+    logAnalyticsEvent('boss_defeat', { boss_name: title });
     this.sound.playExplosion(true);
     this.particleSystem.spawnExplosion(bossX, bossY, '#ff0055', 95, true);
     this.particleSystem.spawnExplosion(bossX, bossY, '#00ffcc', 60, true);
@@ -1890,6 +1924,7 @@ export class Game {
         this.player.y > this.canvas.height * 0.45 ? 120 : this.canvas.height - 120;
       this.finalBoss = new ElToroBoss(this.canvas.width / 2, spawnY);
       this.enemies.push(this.finalBoss);
+      logAnalyticsEvent('boss_spawn', { boss_name: 'EL_TORO' });
 
       this.particleSystem.spawnExplosion(this.finalBoss.x, this.finalBoss.y, '#dc2626', 85, true);
       this.particleSystem.spawnFloatingText(
@@ -2847,6 +2882,7 @@ export class Game {
       signInWithPopup(auth, googleProvider)
         .then((result) => {
           this.sound.playCoinPickup();
+          logAnalyticsEvent('login', { method: 'google' });
           const name = result.user.displayName || result.user.email || 'Survivor';
           this.menuFeedbackMessage = `¡Bienvenido, ${name}! Autenticación completada.`;
         })
