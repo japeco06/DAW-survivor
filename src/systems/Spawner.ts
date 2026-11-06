@@ -11,8 +11,8 @@ import { RansomwareBoss } from '../entities/RansomwareBoss';
 export class Spawner {
   private timer: number = 0;
   private spawnMargin: number = 50;
-  private readonly bossSpawnInterval: number = 22;
-  private nextBossTime: number = 22;
+  private readonly bossSpawnInterval: number = 75;
+  private nextBossTime: number = 75;
   private bossCount: number = 0;
 
   private readonly maxActiveArmoredWorms: number = 3;
@@ -38,11 +38,6 @@ export class Spawner {
   private flankWaveTimer: number = 0;
   private nextFlankWaveInterval: number = 17;
   public finalBossMode: boolean = false;
-
-  public syncAfterMegaBoss(elapsedTime: number): void {
-    this.timer = 0;
-    this.nextBossTime = elapsedTime + this.bossSpawnInterval;
-  }
 
   public enableFinalBossMode(): void {
     this.finalBossMode = true;

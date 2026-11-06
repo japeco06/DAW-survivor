@@ -6,10 +6,6 @@ import { Adware } from '../entities/Adware';
 import { Worm } from '../entities/Worm';
 import { CryptoMiner } from '../entities/CryptoMiner';
 import { RansomwareBoss } from '../entities/RansomwareBoss';
-import { BaseBoss } from '../entities/BaseBoss';
-import { createRandomMegaBoss } from '../entities/SpecialBosses';
-import { EncryptedBlock } from '../entities/EncryptedBlock';
-import { DecryptionKey } from '../entities/DecryptionKey';
 import { Projectile } from '../entities/Projectile';
 import { PingProjectile } from '../entities/PingProjectile';
 import { QuarantineZone } from '../entities/QuarantineZone';
@@ -75,8 +71,8 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.8';
-const NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS = 5;
+const GAME_VERSION = 'v1.1.9';
+export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
   private canvas: HTMLCanvasElement;
@@ -102,13 +98,7 @@ export class Game {
   private isPaused: boolean = false;
   private hoveredPauseAction: 'RESUME' | 'SETTINGS' | 'EXIT_TO_MENU' | null = null;
 
-  private normalBossesKilledCount: number = 0;
-  private megaBoss: BaseBoss | null = null;
-  private defeatedMegaBossVariants: Set<number> = new Set();
-  private activeMegaBossVariant: number = -1;
   private finalBoss: ElToroBoss | null = null;
-  private encryptedBlocks: EncryptedBlock[] = [];
-  private decryptionKeys: DecryptionKey[] = [];
 
   private gameState: GameState = 'MENU';
   private lastTime: number = 0;
@@ -170,13 +160,6 @@ export class Game {
     this.resize();
     window.addEventListener('resize', () => {
       this.resize();
-      if (this.megaBoss) {
-        this.megaBoss.reposition(this.canvas.width);
-        this.encryptedBlocks = BaseBoss.createArenaBlocks(
-          this.canvas.width,
-          this.canvas.height
-        );
-      }
     });
 
     this.input = new Input();
@@ -1002,13 +985,7 @@ export class Game {
     this.powerUps = [];
     this.systemFreezeTimer = 0;
     this.thermalOverclockTimer = 0;
-    this.decryptionKeys = [];
-    this.encryptedBlocks = [];
-    this.megaBoss = null;
-    this.defeatedMegaBossVariants.clear();
-    this.activeMegaBossVariant = -1;
     this.finalBoss = null;
-    this.normalBossesKilledCount = 0;
     this.spawner = new Spawner();
     this.combatSystem = new CombatSystem();
     this.upgradeSystem = new UpgradeSystem();
@@ -1060,13 +1037,7 @@ export class Game {
     this.powerUps = [];
     this.systemFreezeTimer = 0;
     this.thermalOverclockTimer = 0;
-    this.decryptionKeys = [];
-    this.encryptedBlocks = [];
-    this.megaBoss = null;
-    this.defeatedMegaBossVariants.clear();
-    this.activeMegaBossVariant = -1;
     this.finalBoss = null;
-    this.normalBossesKilledCount = 0;
     this.isPaused = false;
     this.hoveredPauseAction = null;
     this.spawner = new Spawner();
@@ -1092,99 +1063,30 @@ export class Game {
   }
 
   /**
-   * Instancia aleatoriamente un Mega-Jefe único (solo entre las variantes aún no derrotadas)
-   * junto con el laberinto de Bloques Encriptados, desactivando por completo las armas del jugador.
+   * Invoca al Jefe Final ("El Toro") al alcanzarse el tiempo de supervivencia de ~11-12 minutos.
    */
-  private triggerMegaBossEvent(): void {
-    const unkilledVariants = [0, 1, 2, 3].filter(
-      (idx) => !this.defeatedMegaBossVariants.has(idx)
-    );
-    if (unkilledVariants.length === 0) return;
-
-    const chosenVariant =
-      unkilledVariants[Math.floor(Math.random() * unkilledVariants.length)];
-    this.activeMegaBossVariant = chosenVariant;
-
+  private triggerFinalBossArrival(): void {
+    this.achievementSystem.reportProgress('toro_arrival', 1);
+    this.spawner.enableFinalBossMode();
     this.enemies = [];
-    this.projectiles = [];
-    this.pingProjectiles = [];
-    this.quarantineZones = [];
-    this.combatSystem.enemyProjectiles = [];
-    this.combatSystem.firewallPulses = [];
-    this.combatSystem.sqlBeams = [];
-    this.combatSystem.droneExplosions = [];
-    if (this.player.companion) {
-      this.player.companion.clearActiveEffects();
-    }
-    this.codeFragments = [];
-    this.cryptoCoins = [];
-    this.powerUps = [];
-    this.systemFreezeTimer = 0;
-    this.thermalOverclockTimer = 0;
-    this.decryptionKeys = [];
-
-    this.megaBoss = createRandomMegaBoss(this.canvas.width, chosenVariant);
-    logAnalyticsEvent('boss_spawn', { boss_name: this.megaBoss.bossTitle });
-    this.encryptedBlocks = BaseBoss.createArenaBlocks(
-      this.canvas.width,
-      this.canvas.height
-    );
-
-    for (const block of this.encryptedBlocks) {
-      block.resolvePlayerCollision(this.player);
-    }
-
-    this.spawnDecryptionKeyInArena();
+    const spawnY =
+      this.player.y > this.canvas.height * 0.45 ? 120 : this.canvas.height - 120;
+    this.finalBoss = new ElToroBoss(this.canvas.width / 2, spawnY);
+    this.enemies.push(this.finalBoss);
+    logAnalyticsEvent('boss_spawn', { boss_name: 'EL_TORO' });
 
     this.sound.playExplosion(true);
-    this.particleSystem.spawnExplosion(
-      this.megaBoss.x,
-      this.megaBoss.y,
-      this.megaBoss.color,
-      65,
-      true
+    this.particleSystem.triggerShake(18, 0.7);
+    this.particleSystem.spawnExplosion(this.finalBoss.x, this.finalBoss.y, '#dc2626', 100, true);
+    this.particleSystem.spawnFloatingText(
+      this.canvas.width / 2,
+      this.canvas.height / 2 - 40,
+      '¡¡ALERTA MÁXIMA: PROTOCOLO TORO ACTIVADO!!',
+      '#ff0044',
+      2.0
     );
-
-    this.addTerminalLog(`!! BOSS EVENT: ${this.megaBoss.bossTitle} !!`);
-    this.addTerminalLog(`!! SPECIAL ATTACK: ${this.megaBoss.specialAttackName} !!`);
-  }
-
-  private spawnDecryptionKeyInArena(): void {
-    if (!this.megaBoss || this.decryptionKeys.length >= 3) return;
-
-    let spawnX = this.canvas.width / 2;
-    let spawnY = this.canvas.height - 120;
-
-    if (this.encryptedBlocks.length > 0 && Math.random() < 0.7) {
-      const targetBlock =
-        this.encryptedBlocks[Math.floor(Math.random() * this.encryptedBlocks.length)];
-      const dirX = targetBlock.x - this.player.x;
-      const dirY = targetBlock.y - this.player.y;
-      const len = Math.hypot(dirX, dirY) || 1;
-
-      const offsetDist = Math.max(targetBlock.width, targetBlock.height) * 0.65 + 32;
-      spawnX = targetBlock.x + (dirX / len) * offsetDist;
-      spawnY = targetBlock.y + (dirY / len) * offsetDist;
-    } else {
-      const marginX = 110;
-      const minY = 250;
-      const maxY = Math.max(minY + 80, this.canvas.height - 130);
-      spawnX = marginX + Math.random() * Math.max(100, this.canvas.width - marginX * 2);
-      spawnY = minY + Math.random() * (maxY - minY);
-    }
-
-    spawnX = Math.max(70, Math.min(this.canvas.width - 70, spawnX));
-    spawnY = Math.max(230, Math.min(this.canvas.height - 90, spawnY));
-
-    for (const block of this.encryptedBlocks) {
-      if (block.containsPoint(spawnX, spawnY, 22)) {
-        const b = block.getBounds();
-        spawnY = b.bottom + 28 < this.canvas.height - 70 ? b.bottom + 28 : b.top - 28;
-      }
-    }
-
-    this.decryptionKeys.push(new DecryptionKey(spawnX, spawnY, 250));
-    this.particleSystem.spawnExplosion(spawnX, spawnY, '#00ffcc', 14, true);
+    this.addTerminalLog('!! CRITICAL ALERT: SYSTEM TIME EXCEEDED 11:30 !!');
+    this.addTerminalLog('!! FINAL BOSS AWAKENED: EL TORO (INVINCIBLE) — WEAPONS ONLINE !!');
   }
 
   public start(): void {
@@ -1230,7 +1132,7 @@ export class Game {
       if (this.sound.getCurrentTrack() !== 'FINAL_BOSS') {
         this.sound.setTrack('FINAL_BOSS');
       }
-    } else if (this.megaBoss && this.megaBoss.active) {
+    } else if (this.enemies.some((e) => e.active && e.malwareType === 'RANSOMWARE')) {
       if (this.sound.getCurrentTrack() !== 'BOSS') {
         this.sound.setTrack('BOSS');
       }
@@ -1248,117 +1150,16 @@ export class Game {
     this.achievementSystem.reportProgress('level_30', this.upgradeSystem.level, true);
 
     this.player.update(dt, this.input, this.canvas.width, this.canvas.height);
-    for (const block of this.encryptedBlocks) {
-      block.update(dt);
-      block.resolvePlayerCollision(this.player);
-    }
-    if (this.encryptedBlocks.length > 0) {
-      const halfSize = this.player.size / 2;
-      this.player.x = Math.max(halfSize, Math.min(this.canvas.width - halfSize, this.player.x));
-      this.player.y = Math.max(halfSize, Math.min(this.canvas.height - halfSize, this.player.y));
-    }
 
-    // =========================================================================
-    // RAMA A: EVENTO DE MEGA-JEFE ACTIVO (El Bañista / El Copiota / El Dormilón)
-    // =========================================================================
-    if (this.megaBoss && this.megaBoss.active) {
-      const bossResult = this.megaBoss.update(
-        dt,
-        this.player,
-        this.encryptedBlocks,
-        this.canvas.width,
-        this.canvas.height
-      );
-
-      if (bossResult.triggeredAttackSound) {
-        this.sound.playShoot(true);
-      }
-
-      if (bossResult.shouldSpawnKey) {
-        this.spawnDecryptionKeyInArena();
-      }
-
-      for (const pos of bossResult.blockedPositions) {
-        this.sound.playExplosion(false);
-        this.particleSystem.spawnExplosion(pos.x, pos.y, '#c084fc', 14, false);
-        this.particleSystem.spawnFloatingText(pos.x, pos.y, 'BLOCKED!', '#c084fc', 0.85);
-      }
-
-      if (bossResult.playerHit) {
-        this.particleSystem.triggerShake(10, 0.32);
-        this.damageVignetteAlpha = 0.75;
-        this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#ff0044', 20, false);
-        this.addTerminalLog(`BOSS ATTACK HIT! Kernel integrity: ${this.player.hp}/${this.player.maxHp}`);
-
-        if (!this.player.active) {
-          this.gameState = 'GAMEOVER';
-          this.sound.setTrack('NONE');
-          logAnalyticsEvent('level_end', {
-            success: false,
-            reason: 'mega_boss',
-            elapsed_seconds: Math.round(this.elapsedTime),
-            kills: this.killCount,
-            damage_to_toro: this.runDamageToToro,
-            character: this.metaSystem.getSelectedProfile().name,
-          });
-          this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
-          this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
-          void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
-          this.sound.playExplosion(true);
-          this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#00ff66', 45, true);
-          this.addTerminalLog(`FATAL_ERROR: Agent defeated by ${this.megaBoss.bossTitle}.`);
-          return;
-        }
-      }
-
-      for (const keyEntity of this.decryptionKeys) {
-        if (!keyEntity.active || !this.megaBoss) continue;
-        const prevState = keyEntity.state;
-        const hitBoss = keyEntity.update(dt, this.player, this.megaBoss.x, this.megaBoss.y);
-
-        if (prevState === 'IDLE' && keyEntity.state === 'LAUNCHED') {
-          this.sound.playCoinPickup();
-          this.particleSystem.spawnFloatingText(
-            this.player.x,
-            this.player.y - 24,
-            'DECRYPT KEY LAUNCHED!',
-            '#00ffcc',
-            1.0
-          );
-        }
-
-        if (hitBoss && this.megaBoss) {
-          this.megaBoss.takeKeyDamage(keyEntity.damage);
-          this.sound.playExplosion(false);
-          this.particleSystem.spawnExplosion(
-            this.megaBoss.x,
-            this.megaBoss.y,
-            '#00ffcc',
-            32,
-            true
-          );
-          this.particleSystem.spawnFloatingText(
-            this.megaBoss.x,
-            this.megaBoss.y,
-            `-${keyEntity.damage} DECRYPTED!`,
-            '#00ffcc',
-            1.25
-          );
-
-          if (!this.megaBoss.active) {
-            this.handleMegaBossDefeated(this.megaBoss.x, this.megaBoss.y, this.megaBoss.bossTitle);
-            break;
-          }
-        }
-      }
-
-      this.decryptionKeys = this.decryptionKeys.filter((k) => k.active);
-      return;
+    // Comprobar llegada del Jefe Final ("El Toro") a los ~11-12 minutos (700s)
+    if (
+      this.elapsedTime >= FINAL_BOSS_ARRIVAL_TIME &&
+      !this.spawner.finalBossMode &&
+      !this.finalBoss
+    ) {
+      this.triggerFinalBossArrival();
     }
 
-    // =========================================================================
-    // RAMA B: BUCLE DE SUPERVIVENCIA NORMAL
-    // =========================================================================
     const prevThreat = this.spawner.currentThreatLevel;
     const prevBossAlert = this.spawner.activeBossAlertTimer;
 
@@ -1564,8 +1365,6 @@ export class Game {
     }
     this.achievementSystem.reportProgress('damage_dealer_halfmillion', this.runTotalDamageDealt, true);
 
-    let triggerMegaBossNow = false;
-
     for (const drop of combatEvents.destroyedEnemies) {
       // Si el Minero de Criptos simplemente desapareció por agotarse su tiempo de huida, no da botín
       if (
@@ -1663,43 +1462,48 @@ export class Game {
       }
 
       if (isBoss && !this.spawner.finalBossMode) {
-        this.normalBossesKilledCount++;
         this.runBossesKilled++;
+        this.achievementSystem.reportProgress('first_boss_killed', 1);
+        this.achievementSystem.reportProgress('all_four_bosses', this.runBossesKilled, true);
         this.achievementSystem.reportProgress('boss_slayer_ten', this.runBossesKilled, true);
-        this.addTerminalLog(
-          `BOSS PURGED (${this.normalBossesKilledCount}/${NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS} for Mega-Boss Event)!`
+        const bossTitle = (drop.enemyRef as RansomwareBoss)?.bossName || 'RANSOMWARE';
+        this.addTerminalLog(`BOSS PURGED: ${bossTitle} (Total: ${this.runBossesKilled})!`);
+        logAnalyticsEvent('boss_defeat', { boss_name: bossTitle });
+        this.particleSystem.spawnFloatingText(
+          drop.x,
+          drop.y - 32,
+          '¡JEFE PURGADO! +BOTÍN ÉPICO',
+          '#00ff66',
+          1.4
         );
-
-        if (
-          this.normalBossesKilledCount >= NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS &&
-          this.defeatedMegaBossVariants.size < 4
-        ) {
-          this.normalBossesKilledCount = 0;
-          triggerMegaBossNow = true;
-        }
       }
 
       this.codeFragments.push(new CodeFragment(drop.x, drop.y, drop.xpValue));
 
-      // 1% de probabilidad de soltar un power-up raro temporal
-      if (Math.random() < 0.01) {
-        const pTypes: PowerUpType[] = ['NUKE', 'FREEZE', 'FRENZY'];
-        const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
-        this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
-      }
-
       if (isBoss) {
-        for (let c = 0; c < 2; c++) {
+        // Jefe de oleada derrotado: suelta 5 CryptoCoins y un PowerUp garantizado
+        for (let c = 0; c < 5; c++) {
           this.cryptoCoins.push(
             new CryptoCoin(
-              drop.x + (Math.random() - 0.5) * 32,
-              drop.y + (Math.random() - 0.5) * 32,
+              drop.x + (Math.random() - 0.5) * 44,
+              drop.y + (Math.random() - 0.5) * 44,
               1
             )
           );
         }
-      } else if (Math.random() < 0.06) {
-        this.cryptoCoins.push(new CryptoCoin(drop.x + 8, drop.y - 8, 1));
+        const pTypes: PowerUpType[] = ['NUKE', 'FREEZE', 'FRENZY'];
+        const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
+        this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
+      } else {
+        // 1% de probabilidad de soltar un power-up raro en enemigos comunes
+        if (Math.random() < 0.01) {
+          const pTypes: PowerUpType[] = ['NUKE', 'FREEZE', 'FRENZY'];
+          const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
+          this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
+        }
+        if (Math.random() < 0.06) {
+          this.cryptoCoins.push(new CryptoCoin(drop.x + 8, drop.y - 8, 1));
+        }
       }
 
       if (
@@ -1814,10 +1618,6 @@ export class Game {
     this.codeFragments = this.codeFragments.filter((f) => f.active);
     this.cryptoCoins = this.cryptoCoins.filter((c) => c.active);
     this.powerUps = this.powerUps.filter((p) => p.active);
-
-    if (triggerMegaBossNow) {
-      this.triggerMegaBossEvent();
-    }
   }
 
   private activatePowerUp(type: PowerUpType, x: number, y: number): void {
@@ -1856,91 +1656,6 @@ export class Game {
       this.thermalOverclockTimer = 6.0;
       this.particleSystem.spawnFloatingText(x, y - 24, '¡OVERCLOCK TÉRMICO (x2 VEL, 100% CRIT)!', '#f97316', 1.3);
       this.addTerminalLog('>> THERMAL OVERCLOCK: 2x fire rate & 100% critical hit chance for 6s! <<');
-    }
-  }
-
-  private handleMegaBossDefeated(bossX: number, bossY: number, title: string): void {
-    logAnalyticsEvent('boss_defeat', { boss_name: title });
-    this.sound.playExplosion(true);
-    this.particleSystem.spawnExplosion(bossX, bossY, '#ff0055', 95, true);
-    this.particleSystem.spawnExplosion(bossX, bossY, '#00ffcc', 60, true);
-    this.particleSystem.spawnFloatingText(
-      bossX,
-      bossY,
-      `${title} DEFEATED! +MASSIVE LOOT`,
-      '#00ff66',
-      1.3
-    );
-
-    if (this.activeMegaBossVariant !== -1) {
-      this.defeatedMegaBossVariants.add(this.activeMegaBossVariant);
-      this.activeMegaBossVariant = -1;
-    }
-
-    this.runBossesKilled++;
-    this.achievementSystem.reportProgress('first_boss_killed', 1);
-    this.achievementSystem.reportProgress(
-      'all_four_bosses',
-      this.defeatedMegaBossVariants.size,
-      true
-    );
-    this.achievementSystem.reportProgress('boss_slayer_ten', this.runBossesKilled, true);
-
-    this.killCount++;
-    this.highScoreKills = Math.max(this.highScoreKills, this.killCount);
-    this.decryptionKeys = [];
-    this.encryptedBlocks = [];
-    this.megaBoss = null;
-    this.normalBossesKilledCount = 0;
-
-    for (let i = 0; i < 6; i++) {
-      this.cryptoCoins.push(
-        new CryptoCoin(
-          bossX + (Math.random() - 0.5) * 140,
-          bossY + (Math.random() - 0.5) * 140,
-          1
-        )
-      );
-    }
-    for (let i = 0; i < 14; i++) {
-      this.codeFragments.push(
-        new CodeFragment(
-          bossX + (Math.random() - 0.5) * 160,
-          bossY + (Math.random() - 0.5) * 160,
-          45
-        )
-      );
-    }
-
-    this.player.heal(50);
-
-    // En el instante exacto en que se derrota al 4.º Mega-Jefe único:
-    // Detener todos los temporizadores de élites/especiales/jefes e invocar inmediatamente al Jefe Final ("El Toro")
-    if (this.defeatedMegaBossVariants.size >= 4) {
-      this.achievementSystem.reportProgress('toro_arrival', 1);
-      this.spawner.enableFinalBossMode();
-      this.enemies = [];
-      const spawnY =
-        this.player.y > this.canvas.height * 0.45 ? 120 : this.canvas.height - 120;
-      this.finalBoss = new ElToroBoss(this.canvas.width / 2, spawnY);
-      this.enemies.push(this.finalBoss);
-      logAnalyticsEvent('boss_spawn', { boss_name: 'EL_TORO' });
-
-      this.particleSystem.spawnExplosion(this.finalBoss.x, this.finalBoss.y, '#dc2626', 85, true);
-      this.particleSystem.spawnFloatingText(
-        this.canvas.width / 2,
-        this.canvas.height / 2 - 40,
-        '¡¡JEFE FINAL: EL TORO HA APARECIDO!!',
-        '#ff0044',
-        1.5
-      );
-      this.addTerminalLog('!! 4/4 MEGA-BOSSES PURGED: ALL ELITE TIMERS STOPPED !!');
-      this.addTerminalLog('!! FINAL BOSS AWAKENED: EL TORO (INVINCIBLE) — WEAPONS ONLINE !!');
-    } else {
-      this.spawner.syncAfterMegaBoss(this.elapsedTime);
-      this.addTerminalLog(
-        `>> ${title} PURGED (${this.defeatedMegaBossVariants.size}/4)! Labyrinth cleared & weapons restored <<`
-      );
     }
   }
 
@@ -1992,12 +1707,8 @@ export class Game {
         zone.draw(this.ctx);
       }
 
-      if (this.player.active && !this.megaBoss && this.showAttackRange) {
+      if (this.player.active && this.showAttackRange) {
         this.drawScannerRange();
-      }
-
-      for (const block of this.encryptedBlocks) {
-        block.draw(this.ctx);
       }
 
       for (const fragment of this.codeFragments) {
@@ -2012,10 +1723,6 @@ export class Game {
         p.draw(this.ctx);
       }
 
-      for (const keyEntity of this.decryptionKeys) {
-        keyEntity.draw(this.ctx);
-      }
-
       for (const proj of this.projectiles) {
         proj.draw(this.ctx);
       }
@@ -2024,11 +1731,9 @@ export class Game {
         ping.draw(this.ctx);
       }
 
-      if (!this.megaBoss) {
-        this.combatSystem.drawFirewall(this.ctx, this.player);
-        if (this.player.companion && this.player.active) {
-          this.player.companion.draw(this.ctx, this.player, this.upgradeSystem.level);
-        }
+      this.combatSystem.drawFirewall(this.ctx, this.player);
+      if (this.player.companion && this.player.active) {
+        this.player.companion.draw(this.ctx, this.player, this.upgradeSystem.level);
       }
 
       for (const enemy of this.enemies) {
@@ -2036,10 +1741,6 @@ export class Game {
       }
 
       this.drawEliteHpBars();
-
-      if (this.megaBoss && this.megaBoss.active) {
-        this.megaBoss.draw(this.ctx);
-      }
 
       if (this.player.active) {
         this.player.draw(this.ctx);
@@ -2327,38 +2028,6 @@ export class Game {
       this.ctx.stroke();
 
       this.ctx.restore();
-    }
-
-    if (this.megaBoss && this.megaBoss.active) {
-      const isOffScreen =
-        this.megaBoss.x < 0 || this.megaBoss.x > w || this.megaBoss.y < 0 || this.megaBoss.y > h;
-      if (isOffScreen) {
-        const cx = w / 2;
-        const cy = h / 2;
-        const dx = this.megaBoss.x - cx;
-        const dy = this.megaBoss.y - cy;
-        const angle = Math.atan2(dy, dx);
-        const edgeX = Math.max(edgePadding, Math.min(w - edgePadding, cx + dx));
-        const edgeY = Math.max(edgePadding, Math.min(h - edgePadding, cy + dy));
-
-        this.ctx.save();
-        this.ctx.translate(edgeX, edgeY);
-        this.ctx.rotate(angle);
-        this.ctx.fillStyle = `rgba(255, 30, 66, ${flashAlpha})`;
-        this.ctx.strokeStyle = '#ffffff';
-        this.ctx.shadowColor = '#ff1e42';
-        this.ctx.shadowBlur = 16;
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.moveTo(18, 0);
-        this.ctx.lineTo(-12, -10);
-        this.ctx.lineTo(-5, 0);
-        this.ctx.lineTo(-12, 10);
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.stroke();
-        this.ctx.restore();
-      }
     }
   }
 
@@ -4218,22 +3887,22 @@ export class Game {
         border: 'rgba(56, 189, 248, 0.35)',
       },
       {
-        title: i18n.t('🔑 3. PROTOCOLO MEGA-JEFES', '🔑 3. MEGA-BOSS PROTOCOL'),
+        title: i18n.t('⚔️ 3. JEFES DE OLEADA Y BOTÍN', '⚔️ 3. WAVE BOSSES & LOOT'),
         lines:
           i18n.currentLang === 'EN'
             ? [
-                '• After each elite cycle, 1 of 4 Mega-Bosses spawns.',
-                '• YOUR WEAPONS ARE DISABLED BY ENCRYPTION!',
-                '• You cannot damage them by shooting.',
-                '• Dodge attacks and COLLECT 5 DECRYPTION KEYS',
-                '  in the arena to eliminate them.',
+                '• Periodic colossal bosses spawn in the malware horde.',
+                '• Defeat them to collect massive XP, +5 CryptoCoins',
+                '• and a GUARANTEED Power-Up (Nuke, Freeze, Overclock)!',
+                '• Upgrade your arsenal to maximum power.',
+                '• Survive the evolving waves for 11-12 minutes!',
               ]
             : [
-                '• Tras cada ciclo de élites aparece 1 de los 4 Mega-Jefes.',
-                '• ¡TUS ARMAS SE DESHABILITAN POR EL ENCRIPTADO!',
-                '• No puedes dañarlos disparando.',
-                '• Esquiva sus ataques y RECOGE 5 LLAVES',
-                '  de desencriptación en la arena para eliminarlos.',
+                '• Jefes colosales periódicos aparecen en la horda.',
+                '• ¡Derrótalos para obtener gran botín de XP, +5 Cripto',
+                '• y un Power-Up GARANTIZADO (Bomba, Hielo, Overclock)!',
+                '• Mejora tu arsenal al máximo nivel.',
+                '• ¡Sobrevive a las amenazas durante 11-12 minutos!',
               ],
         color: '#fbbf24',
         border: 'rgba(251, 191, 36, 0.35)',
@@ -4243,17 +3912,17 @@ export class Game {
         lines:
           i18n.currentLang === 'EN'
             ? [
-                '• Awakens after defeating all 4 unique Mega-Bosses.',
-                '• YOUR WEAPONS RE-ENGAGE FOR THIS COMBAT!',
+                '• Deploys at ~11:40 (11-12 minutes of survival).',
                 '• "El Toro" is INVINCIBLE and accelerates every 15s.',
-                '• Each collision strips 50% max HP.',
+                '• Each dash or contact strips 50% max HP.',
+                '• All weapons online: unleash your full arsenal!',
                 '• Inflict maximum damage to top the Leaderboard!',
               ]
             : [
-                '• Despierta al derrotar a los 4 Mega-Jefes únicos.',
-                '• ¡TUS ARMAS SE REACTIVAN PARA ESTE COMBATE!',
+                '• Desciende a los ~11:40 (11-12 minutos de supervivencia).',
                 '• "El Toro" es INVENCIBLE y acelera cada 15s.',
                 '• Cada embestida o contacto quita el 50% de HP.',
+                '• ¡Todas las armas activas: desata todo tu arsenal!',
                 '• ¡Haz todo el daño posible para liderar el Ranking!',
               ],
         color: '#f87171',
@@ -4365,11 +4034,6 @@ export class Game {
       this.ctx.arc(this.player.x, this.player.y, this.player.pickupRadius, 0, Math.PI * 2);
       this.ctx.stroke();
     }
-    for (const block of this.encryptedBlocks) {
-      const b = block.getBounds();
-      this.ctx.strokeStyle = '#ff0055';
-      this.ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
-    }
     for (const enemy of this.enemies) {
       drawEntityBox(enemy, '#ff9900');
     }
@@ -4385,14 +4049,6 @@ export class Game {
     for (const coin of this.cryptoCoins) {
       drawEntityBox(coin, '#fbbf24');
     }
-    for (const keyEntity of this.decryptionKeys) {
-      drawEntityBox(keyEntity, '#00ffcc');
-    }
-    if (this.megaBoss) {
-      for (const worm of this.megaBoss.trackerWorms) {
-        drawEntityBox(worm, '#c084fc');
-      }
-    }
 
     this.ctx.restore();
   }
@@ -4400,9 +4056,7 @@ export class Game {
   private drawCyberGrid(): void {
     const gridSize = 48;
     this.ctx.save();
-    this.ctx.strokeStyle = this.megaBoss
-      ? 'rgba(255, 0, 85, 0.08)'
-      : 'rgba(0, 255, 102, 0.06)';
+    this.ctx.strokeStyle = 'rgba(0, 255, 102, 0.06)';
     this.ctx.lineWidth = 1;
 
     for (let x = 0; x < this.canvas.width; x += gridSize) {
@@ -4448,9 +4102,13 @@ export class Game {
     this.ctx.save();
     this.ctx.fillStyle = '#00ff66';
     this.ctx.font = 'bold 14px "Courier New", monospace';
+    const timeUntilToro = Math.max(0, FINAL_BOSS_ARRIVAL_TIME - this.elapsedTime);
     const bossProgressLabel = this.spawner.finalBossMode
-      ? 'FASE: JEFE FINAL [EL TORO]'
-      : `BOSSES: ${this.normalBossesKilledCount}/${NORMAL_BOSSES_REQUIRED_FOR_MEGA_BOSS} (MEGA: ${this.defeatedMegaBossVariants.size}/4)`;
+      ? i18n.t('FASE: JEFE FINAL [EL TORO]', 'PHASE: FINAL BOSS [EL TORO]')
+      : i18n.t(
+          `OBJETIVO: PROTOCOLO TORO EN ${this.formatTimeMMSS(timeUntilToro)} | JEFES: ${this.runBossesKilled}`,
+          `OBJECTIVE: TORO PROTOCOL IN ${this.formatTimeMMSS(timeUntilToro)} | BOSSES: ${this.runBossesKilled}`
+        );
 
     this.ctx.fillText(
       `[${this.player.profileName} v${this.upgradeSystem.level}.0] | HP: ${this.player.hp}/${this.player.maxHp} | XP_MULT: x${this.player.xpMultiplier.toFixed(2)} | ${bossProgressLabel} | TIME: ${this.formatTimeMMSS(this.elapsedTime)}`,
@@ -4458,11 +4116,9 @@ export class Game {
       30
     );
 
-    const weaponsStatus = this.megaBoss
-      ? `OFFLINE [${this.megaBoss.getCurrentStateLabel()}]`
-      : this.combatSystem.getActiveWeaponsList(this.player).join(' + ');
+    const weaponsStatus = this.combatSystem.getActiveWeaponsList(this.player).join(' + ');
 
-    this.ctx.fillStyle = this.megaBoss ? '#ff0055' : 'rgba(0, 240, 255, 0.85)';
+    this.ctx.fillStyle = 'rgba(0, 240, 255, 0.85)';
     this.ctx.font = '13px "Courier New", monospace';
     this.ctx.fillText(
       `[ARMAS]: ${weaponsStatus} | [P]: Pausa`,
@@ -4509,47 +4165,6 @@ export class Game {
         this.canvas.width / 2,
         py + 50
       );
-
-      this.ctx.restore();
-      return;
-    }
-
-    if (this.megaBoss && this.megaBoss.active) {
-      const barWidth = Math.min(620, this.canvas.width * 0.65);
-      const barHeight = 16;
-      const x = (this.canvas.width - barWidth) / 2;
-      const y = this.canvas.height - 52;
-      const ratio = Math.max(0, this.megaBoss.hp / this.megaBoss.maxHp);
-      const keysRemaining = Math.max(0, Math.ceil(this.megaBoss.hp / 250));
-
-      this.ctx.fillStyle = '#00ffcc';
-      this.ctx.font = 'bold 13px "Courier New", monospace';
-      this.ctx.fillText(
-        `ATAQUE ESPECIAL: [${this.megaBoss.specialAttackName}] // LLAVES PARA DERROTARLO: ${keysRemaining}/5`,
-        this.canvas.width / 2,
-        y - 28
-      );
-
-      this.ctx.fillStyle = '#ff0055';
-      this.ctx.font = 'bold 15px "Courier New", monospace';
-      this.ctx.fillText(
-        `${this.megaBoss.bossTitle} // INTEGRITY: ${this.megaBoss.hp}/${this.megaBoss.maxHp}`,
-        this.canvas.width / 2,
-        y - 8
-      );
-
-      this.ctx.fillStyle = 'rgba(20, 0, 10, 0.9)';
-      this.ctx.fillRect(x, y, barWidth, barHeight);
-
-      this.ctx.fillStyle = this.megaBoss.color;
-      this.ctx.shadowColor = this.megaBoss.color;
-      this.ctx.shadowBlur = 14;
-      this.ctx.fillRect(x, y, barWidth * ratio, barHeight);
-
-      this.ctx.shadowBlur = 0;
-      this.ctx.strokeStyle = '#00ffcc';
-      this.ctx.lineWidth = 2;
-      this.ctx.strokeRect(x, y, barWidth, barHeight);
 
       this.ctx.restore();
       return;
@@ -4926,7 +4541,7 @@ export class Game {
       { name: i18n.t('Gusanos Divisibles (Morados)', 'Splitting Worms (Purple)'), count: this.combatSystem.killsByTypeStats['Worm'], color: '#a855f7' },
       { name: i18n.t('Evasores (Ghost Scripts)', 'Evasors (Ghost Scripts)'), count: this.combatSystem.killsByTypeStats['Evasor'], color: '#06b6d4' },
       { name: i18n.t('Cajas de Hardware Destruidas', 'Hardware Crates Destroyed'), count: this.combatSystem.killsByTypeStats['Hardware Box'], color: '#f97316' },
-      { name: i18n.t('Mega-Jefes Purgados', 'Mega-Bosses Purged'), count: this.defeatedMegaBossVariants.size, color: '#22c55e' },
+      { name: i18n.t('Jefes de Oleada Purgados', 'Wave Bosses Purged'), count: this.runBossesKilled, color: '#22c55e' },
     ];
 
     for (let e = 0; e < enemyRows.length; e++) {
