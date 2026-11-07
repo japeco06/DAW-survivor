@@ -6,7 +6,7 @@ import { ArmoredWorm } from '../entities/ArmoredWorm';
 import { Evasor } from '../entities/Evasor';
 import { HardwareBox } from '../entities/HardwareBox';
 import { CryptoMiner } from '../entities/CryptoMiner';
-import { RansomwareBoss } from '../entities/RansomwareBoss';
+import { WaveBoss, createWaveBoss } from '../entities/WaveBoss';
 
 export class Spawner {
   private timer: number = 0;
@@ -47,6 +47,7 @@ export class Spawner {
   public currentThreatLevel: number = 1;
   public activeBossAlertTimer: number = 0;
   public lastBossSpawnedName: string = '';
+  public lastBossSpawnedColor: string = '#ff0055';
 
   private flankWaveTimer: number = 0;
   private nextFlankWaveInterval: number = 17;
@@ -230,10 +231,11 @@ export class Spawner {
       this.bossCount++;
       this.nextBossTime = elapsedTime + this.bossSpawnInterval;
       const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
-      const boss = new RansomwareBoss(pos.x, pos.y, this.bossCount);
+      const boss = createWaveBoss(pos.x, pos.y, this.bossCount);
       enemies.push(boss);
 
       this.lastBossSpawnedName = boss.bossName;
+      this.lastBossSpawnedColor = boss.bossColor;
       this.activeBossAlertTimer = 4.0;
     }
   }

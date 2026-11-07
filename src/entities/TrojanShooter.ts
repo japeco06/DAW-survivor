@@ -13,9 +13,11 @@ export class EnemyProjectile extends Entity {
     y: number,
     angle: number,
     speed: number = 285,
-    damage: number = 14
+    damage: number = 14,
+    color: string = '#f97316',
+    size: number = 10
   ) {
-    super(x, y, 10, speed, '#fb923c');
+    super(x, y, size, speed, color);
     this.vx = Math.cos(angle) * speed;
     this.vy = Math.sin(angle) * speed;
     this.damage = damage;
@@ -47,18 +49,18 @@ export class EnemyProjectile extends Entity {
     ctx.translate(this.x, this.y);
     ctx.rotate(angle);
 
-    ctx.fillStyle = '#f97316';
-    ctx.shadowColor = '#fb923c';
+    ctx.fillStyle = this.color;
     ctx.shadowBlur = 0;
+    const half = this.size / 2;
     ctx.beginPath();
-    ctx.moveTo(8, 0);
-    ctx.lineTo(-5, -5);
-    ctx.lineTo(-5, 5);
+    ctx.moveTo(half + 3, 0);
+    ctx.lineTo(-half, -half);
+    ctx.lineTo(-half, half);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#fff7ed';
-    ctx.fillRect(-2, -1.5, 5, 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-half * 0.4, -half * 0.3, half * 0.8, half * 0.6);
     ctx.restore();
   }
 }

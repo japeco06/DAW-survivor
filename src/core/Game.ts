@@ -5,7 +5,7 @@ import { Player } from '../entities/Player';
 import { Adware } from '../entities/Adware';
 import { Worm } from '../entities/Worm';
 import { CryptoMiner } from '../entities/CryptoMiner';
-import { RansomwareBoss } from '../entities/RansomwareBoss';
+import { WaveBoss, RansomwareBoss } from '../entities/WaveBoss';
 import { Projectile } from '../entities/Projectile';
 import { PingProjectile } from '../entities/PingProjectile';
 import { QuarantineZone } from '../entities/QuarantineZone';
@@ -71,7 +71,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.11';
+const GAME_VERSION = 'v1.1.12';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -1208,6 +1208,10 @@ export class Game {
         this.particleSystem.spawnFloatingText(enemy.x, enemy.y, '¡MINERO ESCAPÓ!', '#94a3b8', 1.0);
         this.addTerminalLog('> Crypto Miner escaped from the sector.');
       }
+      if (enemy instanceof WaveBoss && enemy.pendingMinions.length > 0) {
+        this.enemies.push(...enemy.pendingMinions);
+        enemy.pendingMinions = [];
+      }
     }
 
     if (this.thermalOverclockTimer > 0) {
@@ -1466,7 +1470,7 @@ export class Game {
         this.achievementSystem.reportProgress('first_boss_killed', 1);
         this.achievementSystem.reportProgress('all_four_bosses', this.runBossesKilled, true);
         this.achievementSystem.reportProgress('boss_slayer_ten', this.runBossesKilled, true);
-        const bossTitle = (drop.enemyRef as RansomwareBoss)?.bossName || 'RANSOMWARE';
+        const bossTitle = (drop.enemyRef as WaveBoss)?.bossName || 'RANSOMWARE';
         this.addTerminalLog(`BOSS PURGED: ${bossTitle} (Total: ${this.runBossesKilled})!`);
         logAnalyticsEvent('boss_defeat', { boss_name: bossTitle });
         this.particleSystem.spawnFloatingText(
@@ -4185,14 +4189,15 @@ export class Game {
     }
 
     const activeBoss = this.enemies.find(
-      (e): e is RansomwareBoss => e instanceof RansomwareBoss && e.active
+      (e): e is WaveBoss => e instanceof WaveBoss && e.active
     );
 
     if (this.spawner.activeBossAlertTimer > 0) {
       const pulse = Math.floor(this.spawner.activeBossAlertTimer * 8) % 2 === 0;
       if (pulse) {
-        this.ctx.fillStyle = '#ff0055';
-        this.ctx.shadowColor = '#ff0055';
+        const alertColor = this.spawner.lastBossSpawnedColor || '#ff0055';
+        this.ctx.fillStyle = alertColor;
+        this.ctx.shadowColor = alertColor;
         this.ctx.shadowBlur = 18;
         this.ctx.font = 'bold 20px "Courier New", monospace';
         this.ctx.fillText(
@@ -4209,9 +4214,10 @@ export class Game {
       const x = (this.canvas.width - barWidth) / 2;
       const y = this.canvas.height - 46;
       const ratio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
+      const bossColor = activeBoss.bossColor || '#ff0055';
 
       this.ctx.shadowBlur = 0;
-      this.ctx.fillStyle = '#ff0055';
+      this.ctx.fillStyle = bossColor;
       this.ctx.font = 'bold 14px "Courier New", monospace';
       this.ctx.fillText(
         `${activeBoss.bossName} // INTEGRITY: ${activeBoss.hp}/${activeBoss.maxHp}`,
@@ -4222,13 +4228,13 @@ export class Game {
       this.ctx.fillStyle = 'rgba(20, 0, 10, 0.88)';
       this.ctx.fillRect(x, y, barWidth, barHeight);
 
-      this.ctx.fillStyle = '#ff0055';
-      this.ctx.shadowColor = '#ff0055';
+      this.ctx.fillStyle = bossColor;
+      this.ctx.shadowColor = bossColor;
       this.ctx.shadowBlur = 12;
       this.ctx.fillRect(x, y, barWidth * ratio, barHeight);
 
       this.ctx.shadowBlur = 0;
-      this.ctx.strokeStyle = '#ff99bb';
+      this.ctx.strokeStyle = '#ffffff';
       this.ctx.lineWidth = 1.5;
       this.ctx.strokeRect(x, y, barWidth, barHeight);
     }

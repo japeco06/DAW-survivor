@@ -844,11 +844,12 @@ export class CombatSystem {
       }
     }
 
-    // --- PROYECTILES ENEMIGOS (Troyano Tirador) ---
+    // --- PROYECTILES ENEMIGOS (Troyano Tirador y Jefes de Oleada) ---
     for (const enemy of enemies) {
-      if (enemy.active && enemy instanceof TrojanShooter && enemy.pendingProjectiles.length > 0) {
-        this.enemyProjectiles.push(...enemy.pendingProjectiles);
-        enemy.pendingProjectiles = [];
+      const pProj = (enemy as any).pendingProjectiles as EnemyProjectile[] | undefined;
+      if (enemy.active && pProj && pProj.length > 0) {
+        this.enemyProjectiles.push(...pProj);
+        (enemy as any).pendingProjectiles = [];
       }
     }
 
