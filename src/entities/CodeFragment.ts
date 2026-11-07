@@ -42,8 +42,7 @@ export class CodeFragment extends Entity {
     ctx.rotate(Math.PI / 4); // Rombo estilo cristal/dato binario
 
     ctx.fillStyle = '#00ffcc';
-    ctx.shadowColor = '#00f0ff';
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 0;
     ctx.fillRect(-half, -half, half * 2, half * 2);
 
     ctx.fillStyle = '#ffffff';

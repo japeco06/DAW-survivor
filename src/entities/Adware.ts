@@ -94,7 +94,7 @@ export class Adware extends Entity {
 
     ctx.fillStyle = drawColor;
     ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 18 : 12;
+    ctx.shadowBlur = isFlashing ? 14 : 0;
     ctx.fillRect(
       this.x - this.size / 2,
       this.y - this.size / 2,

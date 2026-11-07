@@ -19,12 +19,23 @@ export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export let analytics: Analytics | null = null;
+const pendingEvents: Array<{ eventName: string; params?: Record<string, any> }> = [];
 
 if (typeof window !== 'undefined') {
   isSupported()
     .then((supported) => {
       if (supported) {
         analytics = getAnalytics(app);
+        while (pendingEvents.length > 0) {
+          const item = pendingEvents.shift();
+          if (item) {
+            try {
+              fbLogEvent(analytics, item.eventName, item.params);
+            } catch {
+              // ignore
+            }
+          }
+        }
       }
     })
     .catch(() => {
@@ -39,6 +50,9 @@ export function logAnalyticsEvent(eventName: string, params?: Record<string, any
     } catch {
       // Safe fallback
     }
+  } else {
+    // Queue until isSupported() resolves
+    pendingEvents.push({ eventName, params });
   }
 }
 

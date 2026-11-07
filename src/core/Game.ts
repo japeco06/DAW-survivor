@@ -71,7 +71,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.10';
+const GAME_VERSION = 'v1.1.11';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -1670,15 +1670,20 @@ export class Game {
 
   private resolveEnemyCrowd(): void {
     for (let i = 0; i < this.enemies.length; i++) {
+      const a = this.enemies[i];
       for (let j = i + 1; j < this.enemies.length; j++) {
-        const a = this.enemies[i];
         const b = this.enemies[j];
         const minDistance = (a.size + b.size) * 0.46;
         const dx = b.x - a.x;
+        if (Math.abs(dx) >= minDistance) continue;
         const dy = b.y - a.y;
-        const dist = Math.hypot(dx, dy);
+        if (Math.abs(dy) >= minDistance) continue;
 
-        if (dist > 0 && dist < minDistance) {
+        const distSq = dx * dx + dy * dy;
+        const minDistanceSq = minDistance * minDistance;
+
+        if (distSq > 0 && distSq < minDistanceSq) {
+          const dist = Math.sqrt(distSq);
           const overlap = (minDistance - dist) * 0.5;
           const nx = dx / dist;
           const ny = dy / dist;

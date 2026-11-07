@@ -99,8 +99,7 @@ export class PingProjectile extends Entity {
     ctx.fillStyle = '#0088ff';
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1.5;
-    ctx.shadowColor = '#0088ff';
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = 0;
 
     ctx.beginPath();
     ctx.moveTo(tipX, 0);

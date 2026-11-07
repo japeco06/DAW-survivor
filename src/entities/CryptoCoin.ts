@@ -41,8 +41,7 @@ export class CryptoCoin extends Entity {
 
     // Cuadrado dorado con destello ámbar
     ctx.fillStyle = '#fbbf24';
-    ctx.shadowColor = '#f59e0b';
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = 0;
     ctx.fillRect(this.x - half, this.y - half, size, size);
 
     // Borde interior brillante

@@ -38,7 +38,7 @@ export class Worm extends Adware {
     ctx.translate(this.x, this.y);
     ctx.fillStyle = drawColor;
     ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 18 : 14;
+    ctx.shadowBlur = isFlashing ? 14 : 0;
 
     // Dibujar octágono blindado
     const cut = half * 0.42;

@@ -76,7 +76,7 @@ export class ArmoredWorm extends Adware {
 
     ctx.fillStyle = drawColor;
     ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 18 : 12;
+    ctx.shadowBlur = isFlashing ? 16 : 0;
 
     const cut = half * 0.38;
     ctx.beginPath();
@@ -102,7 +102,7 @@ export class ArmoredWorm extends Adware {
     const shieldRadius = half + 8;
     ctx.strokeStyle = shieldFlashing ? '#ffffff' : '#38bdf8';
     ctx.shadowColor = '#00f0ff';
-    ctx.shadowBlur = shieldFlashing ? 24 : 16;
+    ctx.shadowBlur = shieldFlashing ? 18 : 0;
     ctx.lineWidth = shieldFlashing ? 7 : 5;
     ctx.beginPath();
     ctx.arc(0, 0, shieldRadius, -this.shieldHalfArc, this.shieldHalfArc);

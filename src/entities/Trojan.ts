@@ -38,7 +38,7 @@ export class Trojan extends Adware {
 
     ctx.fillStyle = drawColor;
     ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 18 : 14;
+    ctx.shadowBlur = isFlashing ? 14 : 0;
 
     const half = this.size / 2;
     ctx.beginPath();

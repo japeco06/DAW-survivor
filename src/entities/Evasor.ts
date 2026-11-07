@@ -154,7 +154,7 @@ export class Evasor extends Adware {
 
     ctx.fillStyle = bodyColor;
     ctx.shadowColor = canDodge ? '#00f0ff' : '#475569';
-    ctx.shadowBlur = isFlashing ? 18 : canDodge ? 14 : 6;
+    ctx.shadowBlur = isFlashing ? 18 : 0;
 
     const half = this.size / 2;
     ctx.fillRect(this.x - half, this.y - half, this.size, this.size);

@@ -45,8 +45,7 @@ export class Projectile extends Entity {
   public override draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = this.color;
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = 0;
 
     // Dibujar pulso energético cian con núcleo blanco
     ctx.fillRect(

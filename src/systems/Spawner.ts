@@ -18,22 +18,22 @@ export class Spawner {
   private readonly maxActiveHardwareBoxes: number = 4;
 
   public getMaxActiveArmoredWorms(elapsedTime: number): number {
-    return Math.min(5, Math.floor(2 + (elapsedTime / 60) * 0.35));
+    return Math.min(4, Math.floor(2 + (elapsedTime / 60) * 0.2));
   }
   public getMaxActiveEvasors(elapsedTime: number): number {
-    return Math.min(5, Math.floor(2 + (elapsedTime / 60) * 0.35));
+    return Math.min(3, Math.floor(1 + (elapsedTime / 60) * 0.2));
   }
   public getMaxActiveTrojanShooters(elapsedTime: number): number {
-    return Math.min(8, Math.floor(4 + (elapsedTime / 60) * 0.45));
+    return Math.min(5, Math.floor(3 + (elapsedTime / 60) * 0.2));
   }
   public getMaxActiveTrojans(elapsedTime: number): number {
-    return Math.min(12, Math.floor(5 + (elapsedTime / 60) * 0.7));
+    return Math.min(7, Math.floor(4 + (elapsedTime / 60) * 0.3));
   }
   public getMaxActiveWorms(elapsedTime: number): number {
-    return Math.min(10, Math.floor(5 + (elapsedTime / 60) * 0.55));
+    return Math.min(6, Math.floor(4 + (elapsedTime / 60) * 0.2));
   }
   public getMaxActiveRedAdware(elapsedTime: number): number {
-    return Math.min(32, Math.floor(14 + (elapsedTime / 60) * 1.8));
+    return Math.min(22, Math.floor(14 + (elapsedTime / 60) * 0.8));
   }
 
   private boxCheckTimer: number = 0;
@@ -100,20 +100,20 @@ export class Spawner {
    */
   public getGlobalHpMultiplier(elapsedTime: number, playerLevel: number): number {
     const earlyLevelBonus = Math.max(0, playerLevel - 1) * 0.035;
-    const lateLevelBonus = Math.max(0, playerLevel - 6) * 0.075;
-    const timeBonus = (elapsedTime / 60) * 0.11;
+    const lateLevelBonus = Math.max(0, playerLevel - 6) * 0.07;
+    const timeBonus = (elapsedTime / 60) * 0.075;
 
     return Number((1 + earlyLevelBonus + lateLevelBonus + timeBonus).toFixed(2));
   }
 
   public getGlobalDamageMultiplier(elapsedTime: number): number {
     const timeMinutes = elapsedTime / 60;
-    return Math.min(1.55, 1 + timeMinutes * 0.045);
+    return Math.min(1.28, 1 + timeMinutes * 0.025);
   }
 
   public getGlobalSpeedMultiplier(elapsedTime: number): number {
     const timeMinutes = elapsedTime / 60;
-    return Math.min(1.22, 1 + timeMinutes * 0.018);
+    return Math.min(1.14, 1 + timeMinutes * 0.012);
   }
 
   public update(
@@ -209,7 +209,7 @@ export class Spawner {
       this.spawnFlankMicroWave(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight);
     }
 
-    const currentSpawnInterval = Math.max(0.18, 0.90 * Math.pow(0.91, elapsedTime / 14));
+    const currentSpawnInterval = Math.max(0.24, 0.90 * Math.pow(0.92, elapsedTime / 14));
 
     this.timer += dt;
     while (this.timer >= currentSpawnInterval) {
@@ -346,15 +346,15 @@ export class Spawner {
   ): Adware {
     const adware = new Adware(x, y);
     const timeMinutes = elapsedTime / 60;
-    // Escalado progresivo en mid-to-late game: incremento de vida, velocidad y daño
+    // Escalado moderado y equilibrado en mid-to-late game
     const progressiveHpMult = Math.min(
-      4.2,
-      Math.min(2.8, hpMultiplier) * (1 + timeMinutes * 0.08)
+      3.2,
+      Math.min(2.5, hpMultiplier) * (1 + timeMinutes * 0.05)
     );
     adware.maxHp = Math.round(25 * progressiveHpMult);
     adware.hp = adware.maxHp;
 
-    const speedBonus = Math.min(55, timeMinutes * 5.0);
+    const speedBonus = Math.min(36, timeMinutes * 3.2);
     adware.speed = Math.round(115 + speedBonus);
 
     const dmgMultiplier = this.getGlobalDamageMultiplier(elapsedTime);

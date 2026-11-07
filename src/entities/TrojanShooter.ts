@@ -49,7 +49,7 @@ export class EnemyProjectile extends Entity {
 
     ctx.fillStyle = '#f97316';
     ctx.shadowColor = '#fb923c';
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 0;
     ctx.beginPath();
     ctx.moveTo(8, 0);
     ctx.lineTo(-5, -5);
@@ -127,7 +127,7 @@ export class TrojanShooter extends Adware {
 
     ctx.fillStyle = drawColor;
     ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 18 : 14;
+    ctx.shadowBlur = isFlashing ? 16 : 0;
 
     const half = this.size / 2;
     ctx.beginPath();
