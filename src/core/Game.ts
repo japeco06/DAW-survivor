@@ -71,7 +71,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.9';
+const GAME_VERSION = 'v1.1.10';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -1518,11 +1518,20 @@ export class Game {
           this.elapsedTime,
           this.upgradeSystem.level
         );
-        if (activeWormCount < 5) {
-          this.enemies.push(new Worm(drop.x - 14, drop.y - 14, hpMult, true));
+        const maxWorms = this.spawner.getMaxActiveWorms(this.elapsedTime);
+        const dmgMult = this.spawner.getGlobalDamageMultiplier(this.elapsedTime);
+        const spdMult = this.spawner.getGlobalSpeedMultiplier(this.elapsedTime);
+        if (activeWormCount < maxWorms) {
+          const w1 = new Worm(drop.x - 14, drop.y - 14, hpMult, true);
+          w1.damage = Math.round(w1.damage * dmgMult);
+          w1.speed = Math.round(w1.speed * spdMult);
+          this.enemies.push(w1);
         }
-        if (activeWormCount + 1 < 5) {
-          this.enemies.push(new Worm(drop.x + 14, drop.y + 14, hpMult, true));
+        if (activeWormCount + 1 < maxWorms) {
+          const w2 = new Worm(drop.x + 14, drop.y + 14, hpMult, true);
+          w2.damage = Math.round(w2.damage * dmgMult);
+          w2.speed = Math.round(w2.speed * spdMult);
+          this.enemies.push(w2);
         }
       }
     }

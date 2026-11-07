@@ -15,13 +15,26 @@ export class Spawner {
   private nextBossTime: number = 75;
   private bossCount: number = 0;
 
-  private readonly maxActiveArmoredWorms: number = 3;
-  private readonly maxActiveEvasors: number = 3;
-  private readonly maxActiveTrojanShooters: number = 5;
-  private readonly maxActiveTrojans: number = 5;
-  private readonly maxActiveWorms: number = 5;
-  private readonly maxActiveRedAdware: number = 14;
   private readonly maxActiveHardwareBoxes: number = 4;
+
+  public getMaxActiveArmoredWorms(elapsedTime: number): number {
+    return Math.min(5, Math.floor(2 + (elapsedTime / 60) * 0.35));
+  }
+  public getMaxActiveEvasors(elapsedTime: number): number {
+    return Math.min(5, Math.floor(2 + (elapsedTime / 60) * 0.35));
+  }
+  public getMaxActiveTrojanShooters(elapsedTime: number): number {
+    return Math.min(8, Math.floor(4 + (elapsedTime / 60) * 0.45));
+  }
+  public getMaxActiveTrojans(elapsedTime: number): number {
+    return Math.min(12, Math.floor(5 + (elapsedTime / 60) * 0.7));
+  }
+  public getMaxActiveWorms(elapsedTime: number): number {
+    return Math.min(10, Math.floor(5 + (elapsedTime / 60) * 0.55));
+  }
+  public getMaxActiveRedAdware(elapsedTime: number): number {
+    return Math.min(32, Math.floor(14 + (elapsedTime / 60) * 1.8));
+  }
 
   private boxCheckTimer: number = 0;
   private minerCheckTimer: number = 0;
@@ -54,38 +67,53 @@ export class Spawner {
   public triggerSwarmEvent(
     enemies: Adware[],
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    elapsedTime: number = 0
   ): void {
     this.swarmActiveTimer = 6.0;
     this.swarmTriggeredJustNow = true;
 
-    // Generar inmediatamente 50 enemigos de la variante 'Amarilla' con muy poca vida y daño
-    for (let i = 0; i < 50; i++) {
+    const timeMinutes = elapsedTime / 60;
+    const swarmCount = Math.min(75, Math.floor(50 + timeMinutes * 2.5));
+    const baseHp = Math.round(8 * (1 + timeMinutes * 0.08));
+    const baseDmg = Math.round(4 * this.getGlobalDamageMultiplier(elapsedTime));
+
+    for (let i = 0; i < swarmCount; i++) {
       const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
       const jitterX = (Math.random() - 0.5) * 90;
       const jitterY = (Math.random() - 0.5) * 90;
       const swarmTrojan = new Trojan(pos.x + jitterX, pos.y + jitterY, 1);
-      swarmTrojan.maxHp = 8;
-      swarmTrojan.hp = 8;
-      swarmTrojan.damage = 4;
+      swarmTrojan.maxHp = baseHp;
+      swarmTrojan.hp = baseHp;
+      swarmTrojan.damage = baseDmg;
       swarmTrojan.xpValue = 6;
-      swarmTrojan.speed = 165 + Math.random() * 35;
+      swarmTrojan.speed = 165 + Math.random() * 35 + Math.min(25, timeMinutes * 2.5);
       enemies.push(swarmTrojan);
     }
   }
 
   /**
-   * Escalado de vida lineal y equilibrado (v0.11.0):
-   * - En los primeros niveles (1 a 6) el incremento es suave (+3.5% por nivel).
-   * - A partir del nivel 6, escala linealmente a un +8% de multiplicador global por nivel.
-   * - Escalado por tiempo moderado y predecible.
+   * Escalado dinámico progresivo a medida que avanza la partida:
+   * - Vida: escala por nivel del jugador y tiempo continuo sin estancarse a los 7 minutos.
+   * - Daño: escala moderadamente (+4.5% por minuto) para mantener la tensión.
+   * - Velocidad: escala suavemente (+1.8% por minuto) para exigir mejor posicionamiento.
    */
   public getGlobalHpMultiplier(elapsedTime: number, playerLevel: number): number {
     const earlyLevelBonus = Math.max(0, playerLevel - 1) * 0.035;
-    const lateLevelBonus = Math.max(0, playerLevel - 6) * 0.08;
-    const timeBonus = Math.min(0.6, (elapsedTime / 60) * 0.08);
+    const lateLevelBonus = Math.max(0, playerLevel - 6) * 0.075;
+    const timeBonus = (elapsedTime / 60) * 0.11;
 
     return Number((1 + earlyLevelBonus + lateLevelBonus + timeBonus).toFixed(2));
+  }
+
+  public getGlobalDamageMultiplier(elapsedTime: number): number {
+    const timeMinutes = elapsedTime / 60;
+    return Math.min(1.55, 1 + timeMinutes * 0.045);
+  }
+
+  public getGlobalSpeedMultiplier(elapsedTime: number): number {
+    const timeMinutes = elapsedTime / 60;
+    return Math.min(1.22, 1 + timeMinutes * 0.018);
   }
 
   public update(
@@ -167,20 +195,21 @@ export class Spawner {
     if (elapsedTime >= 25 && this.swarmCheckTimer >= 16.0) {
       this.swarmCheckTimer = 0;
       if (Math.random() < 0.12) {
-        this.triggerSwarmEvent(enemies, canvasWidth, canvasHeight);
+        this.triggerSwarmEvent(enemies, canvasWidth, canvasHeight, elapsedTime);
         return;
       }
     }
 
-    // 4. Micro-oleadas de flanco: cada 15-20s genera un grupo de 4-6 enemigos rojos por el mismo borde
+    // 4. Micro-oleadas de flanco: intervalo y cantidad escalan con el tiempo
     this.flankWaveTimer += dt;
     if (this.flankWaveTimer >= this.nextFlankWaveInterval) {
       this.flankWaveTimer = 0;
-      this.nextFlankWaveInterval = 15 + Math.random() * 5;
+      const timeMinutes = elapsedTime / 60;
+      this.nextFlankWaveInterval = Math.max(9, (15 + Math.random() * 5) - timeMinutes * 0.65);
       this.spawnFlankMicroWave(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight);
     }
 
-    const currentSpawnInterval = Math.max(0.28, 0.92 * Math.pow(0.92, elapsedTime / 14));
+    const currentSpawnInterval = Math.max(0.18, 0.90 * Math.pow(0.91, elapsedTime / 14));
 
     this.timer += dt;
     while (this.timer >= currentSpawnInterval) {
@@ -238,53 +267,71 @@ export class Spawner {
       (e) => e.active && e.malwareType === 'ADWARE'
     ).length;
 
-    // Nuevo enemigo 'Evasor' (Ghost Script): no aparece durante los primeros 60s y límite máx. de 3 en pantalla
+    const dmgMult = this.getGlobalDamageMultiplier(elapsedTime);
+    const spdMult = this.getGlobalSpeedMultiplier(elapsedTime);
+
+    // Nuevo enemigo 'Evasor' (Ghost Script): no aparece durante los primeros 60s y escala con el tiempo
     if (
       elapsedTime >= 60 &&
-      roll < 0.08 &&
-      activeEvasorCount < this.maxActiveEvasors
+      roll < 0.09 &&
+      activeEvasorCount < this.getMaxActiveEvasors(elapsedTime)
     ) {
-      return new Evasor(pos.x, pos.y, hpMultiplier);
+      const evasor = new Evasor(pos.x, pos.y, hpMultiplier);
+      evasor.damage = Math.round(evasor.damage * dmgMult);
+      evasor.speed = Math.round(evasor.speed * spdMult);
+      return evasor;
     }
 
-    // Máximo 3 Gusanos Blindados vivos simultáneamente en pantalla
+    // Gusanos Blindados vivos simultáneamente en pantalla (escala de 2 a 5)
     if (
       elapsedTime >= 18 &&
-      roll >= 0.08 &&
-      roll < 0.14 &&
-      activeArmoredCount < this.maxActiveArmoredWorms
+      roll >= 0.09 &&
+      roll < 0.16 &&
+      activeArmoredCount < this.getMaxActiveArmoredWorms(elapsedTime)
     ) {
-      return new ArmoredWorm(pos.x, pos.y, hpMultiplier);
+      const armored = new ArmoredWorm(pos.x, pos.y, hpMultiplier);
+      armored.damage = Math.round(armored.damage * dmgMult);
+      armored.speed = Math.round(armored.speed * spdMult);
+      return armored;
     }
 
-    // Máximo 5 Troyanos Tiradores vivos simultáneamente en pantalla
+    // Troyanos Tiradores vivos simultáneamente en pantalla (escala de 4 a 8)
     if (
       elapsedTime >= 14 &&
-      roll >= 0.14 &&
-      roll < 0.21 &&
-      activeShooterCount < this.maxActiveTrojanShooters
+      roll >= 0.16 &&
+      roll < 0.24 &&
+      activeShooterCount < this.getMaxActiveTrojanShooters(elapsedTime)
     ) {
-      return new TrojanShooter(pos.x, pos.y, hpMultiplier);
+      const shooter = new TrojanShooter(pos.x, pos.y, hpMultiplier);
+      shooter.damage = Math.round(shooter.damage * dmgMult);
+      shooter.speed = Math.round(shooter.speed * spdMult);
+      return shooter;
     }
 
-    // Máximo 5 enemigos morados (Worm) vivos simultáneamente en pantalla
+    // Enemigos morados (Worm) vivos simultáneamente en pantalla (escala de 5 a 10)
     if (
       elapsedTime >= 30 &&
-      roll >= 0.21 &&
-      roll < 0.34 &&
-      activeWormCount < this.maxActiveWorms
+      roll >= 0.24 &&
+      roll < 0.38 &&
+      activeWormCount < this.getMaxActiveWorms(elapsedTime)
     ) {
-      return new Worm(pos.x, pos.y, hpMultiplier, false);
+      const worm = new Worm(pos.x, pos.y, hpMultiplier, false);
+      worm.damage = Math.round(worm.damage * dmgMult);
+      worm.speed = Math.round(worm.speed * spdMult);
+      return worm;
     }
 
-    // Máximo 5 enemigos amarillos (Trojan) vivos simultáneamente en pantalla
-    const trojanChance = elapsedTime >= 12 ? Math.min(0.32, 0.15 + elapsedTime * 0.0025) : 0;
-    if (roll >= 0.34 && roll < 0.34 + trojanChance && activeTrojanCount < this.maxActiveTrojans) {
-      return new Trojan(pos.x, pos.y, hpMultiplier);
+    // Enemigos amarillos (Trojan) vivos simultáneamente en pantalla (escala de 5 a 12)
+    const trojanChance = elapsedTime >= 12 ? Math.min(0.36, 0.16 + elapsedTime * 0.0028) : 0;
+    if (roll >= 0.38 && roll < 0.38 + trojanChance && activeTrojanCount < this.getMaxActiveTrojans(elapsedTime)) {
+      const trojan = new Trojan(pos.x, pos.y, hpMultiplier);
+      trojan.damage = Math.round(trojan.damage * dmgMult);
+      trojan.speed = Math.round(trojan.speed * spdMult);
+      return trojan;
     }
 
-    // Límite máximo en pantalla de enemigos 'rojos' (Adware base) para evitar saturación
-    if (activeRedAdwareCount >= this.maxActiveRedAdware) {
+    // Límite dinámico en pantalla de enemigos 'rojos' (Adware base) (escala de 14 a 32)
+    if (activeRedAdwareCount >= this.getMaxActiveRedAdware(elapsedTime)) {
       return null;
     }
 
@@ -299,16 +346,20 @@ export class Spawner {
   ): Adware {
     const adware = new Adware(x, y);
     const timeMinutes = elapsedTime / 60;
-    // Escalado progresivo leve en mid-to-late game: incremento suave de vida y velocidad
+    // Escalado progresivo en mid-to-late game: incremento de vida, velocidad y daño
     const progressiveHpMult = Math.min(
-      3.8,
-      Math.min(2.5, hpMultiplier) * (1 + timeMinutes * 0.07)
+      4.2,
+      Math.min(2.8, hpMultiplier) * (1 + timeMinutes * 0.08)
     );
     adware.maxHp = Math.round(25 * progressiveHpMult);
     adware.hp = adware.maxHp;
 
-    const speedBonus = Math.min(48, timeMinutes * 4.5);
+    const speedBonus = Math.min(55, timeMinutes * 5.0);
     adware.speed = Math.round(115 + speedBonus);
+
+    const dmgMultiplier = this.getGlobalDamageMultiplier(elapsedTime);
+    adware.damage = Math.round(adware.damage * dmgMultiplier);
+
     return adware;
   }
 
@@ -320,7 +371,8 @@ export class Spawner {
     height: number
   ): void {
     const edge = Math.floor(Math.random() * 4); // 0=Arriba, 1=Derecha, 2=Abajo, 3=Izquierda
-    const count = 4 + Math.floor(Math.random() * 3); // 4 a 6 enemigos
+    const timeMinutes = elapsedTime / 60;
+    const count = Math.min(10, 4 + Math.floor(Math.random() * 3) + Math.floor(timeMinutes * 0.55));
     const centerNorm = 0.2 + Math.random() * 0.6; // Entre 20% y 80% del borde
 
     for (let i = 0; i < count; i++) {

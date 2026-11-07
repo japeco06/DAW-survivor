@@ -13,10 +13,13 @@ export class RansomwareBoss extends Adware {
   private baseSpeed: number = 78;
 
   constructor(x: number, y: number, bossLevel: number = 1) {
-    const scaledHp = 450 + (bossLevel - 1) * 380;
-    super(x, y, 54, 78, '#ff0055', scaledHp, 28, 240 * bossLevel);
+    const scaledHp = 450 + (bossLevel - 1) * 440;
+    const scaledSpeed = Math.min(108, 78 + (bossLevel - 1) * 3.5);
+    const scaledDmg = Math.round(28 + (bossLevel - 1) * 3);
+    super(x, y, 54, scaledSpeed, '#ff0055', scaledHp, scaledDmg, 240 * bossLevel);
+    this.baseSpeed = scaledSpeed;
     this.malwareType = 'RANSOMWARE';
-    this.knockbackResistance = 0.92;
+    this.knockbackResistance = Math.min(0.98, 0.92 + (bossLevel - 1) * 0.01);
     this.bossName = `RANSOMWARE_v${bossLevel}.0 [ENCRYPTOR]`;
   }
 
