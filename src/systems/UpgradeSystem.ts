@@ -273,15 +273,15 @@ export class UpgradeSystem {
         categoryEn: 'PET // +COMPANION DAMAGE',
         description: 'Aumenta directamente el daño de tu Mascota Acompañante.',
         descriptionEn: 'Directly boosts the combat damage of your companion pet.',
-        statBadge: '▲ +5 Daño Mascota',
-        statBadgeEn: '▲ +5 Pet Damage',
+        statBadge: '▲ +10 Daño Mascota',
+        statBadgeEn: '▲ +10 Pet Damage',
         color: '#ec4899',
         level: 0,
         maxLevel: 5,
         isCompanionStatCard: true,
         apply: (player) => {
           if (player.companion) {
-            player.companion.upgradeBonusDamage(5);
+            player.companion.upgradeBonusDamage(10);
           }
         },
       },

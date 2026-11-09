@@ -71,7 +71,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.13';
+const GAME_VERSION = 'v1.1.14';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -1566,7 +1566,17 @@ export class Game {
       if (!fragment.active) continue;
       fragment.update(dt, this.player);
 
-      if (CombatSystem.checkAABBCollision(this.player, fragment)) {
+      let collected = CombatSystem.checkAABBCollision(this.player, fragment);
+      if (!collected && this.player.companion) {
+        for (const unit of this.player.companion.getUnits()) {
+          if (Math.hypot(unit.x - fragment.x, unit.y - fragment.y) <= unit.size + 16) {
+            collected = true;
+            break;
+          }
+        }
+      }
+
+      if (collected) {
         fragment.active = false;
         const gainedXp = Math.round(fragment.xpValue * this.player.xpMultiplier);
 
@@ -1589,7 +1599,17 @@ export class Game {
       if (!coin.active) continue;
       coin.update(dt, this.player);
 
-      if (CombatSystem.checkAABBCollision(this.player, coin)) {
+      let collected = CombatSystem.checkAABBCollision(this.player, coin);
+      if (!collected && this.player.companion) {
+        for (const unit of this.player.companion.getUnits()) {
+          if (Math.hypot(unit.x - coin.x, unit.y - coin.y) <= unit.size + 16) {
+            collected = true;
+            break;
+          }
+        }
+      }
+
+      if (collected) {
         coin.active = false;
         this.runCoinsCollected += coin.value;
         this.metaSystem.addCoins(coin.value);

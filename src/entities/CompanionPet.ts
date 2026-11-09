@@ -312,7 +312,7 @@ export class CompanionPet {
   private craterCooldown: number = 0;
 
   constructor(playerX: number, playerY: number) {
-    this.spawnUnits(1, playerX, playerY, 20, 235);
+    this.spawnUnits(1, playerX, playerY, 22, 290);
   }
 
   public selectBranch(branch: CompanionBranch, player: Player, playerLevel: number): void {
@@ -338,6 +338,10 @@ export class CompanionPet {
     if (this.branch === 'BOTNET') return 'Mascota: La Botnet';
     if (this.branch === 'PINBALL') return 'Mascota: Protocolo Pinball';
     return 'Mascota: Compañero Base';
+  }
+
+  public getUnits(): { x: number; y: number; size: number }[] {
+    return this.units;
   }
 
   private spawnUnits(
@@ -373,8 +377,8 @@ export class CompanionPet {
     let milestoneMsg: string | null = null;
 
     if (this.branch === 'BRUTE') {
-      const size = playerLevel >= 5 ? 48 : 30;
-      const speed = playerLevel >= 20 ? 275 : playerLevel >= 5 ? 245 : 225;
+      const size = playerLevel >= 5 ? 52 : 34;
+      const speed = playerLevel >= 20 ? 320 : playerLevel >= 5 ? 290 : 270;
       if (this.units.length !== 1) {
         this.spawnUnits(1, player.x, player.y, size, speed);
       } else {
@@ -394,7 +398,7 @@ export class CompanionPet {
       }
     } else if (this.branch === 'BOTNET') {
       const targetCount = playerLevel >= 20 ? 15 : playerLevel >= 5 ? 5 : 3;
-      const speed = playerLevel >= 20 ? 420 : playerLevel >= 5 ? 365 : 335;
+      const speed = playerLevel >= 20 ? 460 : playerLevel >= 5 ? 395 : 360;
       if (this.units.length !== targetCount) {
         this.spawnUnits(targetCount, player.x, player.y, 14, speed);
       } else {
@@ -413,7 +417,7 @@ export class CompanionPet {
       }
     } else if (this.branch === 'PINBALL') {
       const targetCount = playerLevel >= 20 ? 3 : 1;
-      const basePinballSpeed = 620;
+      const basePinballSpeed = 680;
       const speed = playerLevel >= 5 ? Math.round(basePinballSpeed * 1.5) : basePinballSpeed;
       if (this.units.length !== targetCount) {
         this.spawnUnits(targetCount, player.x, player.y, 24, speed);
@@ -469,22 +473,22 @@ export class CompanionPet {
 
     const baseContactDamage = Math.round(
       (this.branch === 'BRUTE'
-        ? 38
+        ? 52
         : this.branch === 'BOTNET'
-        ? 18
+        ? 28
         : this.branch === 'PINBALL'
-        ? 22
-        : 22) *
+        ? 38
+        : 34) *
         player.damageMultiplier +
         this.bonusDamageStat
     );
 
     const searchRadius =
-      this.branch === 'BOTNET' && playerLevel >= 20
-        ? 950
+      this.branch === 'BOTNET'
+        ? (playerLevel >= 20 ? 950 : 420)
         : this.branch === 'BRUTE'
-        ? 260
-        : 200;
+        ? 340
+        : 280;
 
     const spawnMalwareShrapnelBurst = (originX: number, originY: number, shrapnelDmg: number) => {
       const fragmentCount = 8;
@@ -536,7 +540,7 @@ export class CompanionPet {
           spawnMalwareShrapnelBurst(
             enemy.x,
             enemy.y,
-            Math.max(12, Math.round(baseContactDamage * 0.9))
+            Math.max(16, Math.round(baseContactDamage * 1.0))
           );
         }
       }
@@ -628,7 +632,7 @@ export class CompanionPet {
           spawnKineticBurst(
             unit.x,
             unit.y,
-            Math.max(10, Math.round(baseContactDamage * 0.45))
+            Math.max(16, Math.round(baseContactDamage * 0.65))
           );
         }
 
@@ -641,7 +645,7 @@ export class CompanionPet {
               new PinballCorruptionTrail(
                 unit.x,
                 unit.y,
-                Math.max(10, Math.round(baseContactDamage * 0.45))
+                Math.max(14, Math.round(baseContactDamage * 0.55))
               )
             );
           }
@@ -755,7 +759,7 @@ export class CompanionPet {
             spawnKineticBurst(
               unit.x,
               unit.y,
-              Math.max(10, Math.round(baseContactDamage * 0.45))
+              Math.max(16, Math.round(baseContactDamage * 0.65))
             );
           }
 
