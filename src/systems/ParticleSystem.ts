@@ -44,6 +44,10 @@ export class ParticleSystem {
   private shakeIntensity: number = 0;
   private shakeTimer: number = 0;
 
+  private readonly maxParticles: number = 140;
+  private readonly maxFloatingTexts: number = 32;
+  private readonly maxShockwaves: number = 6;
+
   public triggerShake(intensity: number, duration: number = 0.2): void {
     this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
     this.shakeTimer = Math.max(this.shakeTimer, duration);
@@ -69,7 +73,11 @@ export class ParticleSystem {
     count: number = 18,
     withShockwave: boolean = false
   ): void {
-    for (let i = 0; i < count; i++) {
+    const availableSlots = this.maxParticles - this.particles.length;
+    if (availableSlots <= 0) return;
+    const actualCount = Math.min(count, availableSlots);
+
+    for (let i = 0; i < actualCount; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 50 + Math.random() * 240;
       const life = 0.35 + Math.random() * 0.45;
@@ -89,7 +97,7 @@ export class ParticleSystem {
       });
     }
 
-    if (withShockwave) {
+    if (withShockwave && this.shockwaves.length < this.maxShockwaves) {
       this.shockwaves.push({
         x,
         y,
@@ -102,7 +110,9 @@ export class ParticleSystem {
   }
 
   public spawnHitSparks(x: number, y: number, color: string): void {
-    for (let i = 0; i < 6; i++) {
+    if (this.particles.length >= this.maxParticles) return;
+    const count = Math.min(4, this.maxParticles - this.particles.length);
+    for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 40 + Math.random() * 110;
       const life = 0.18 + Math.random() * 0.15;
@@ -128,6 +138,9 @@ export class ParticleSystem {
     color: string = '#ffffff',
     scale: number = 1
   ): void {
+    if (this.floatingTexts.length >= this.maxFloatingTexts) {
+      this.floatingTexts.shift();
+    }
     this.floatingTexts.push({
       x: x + (Math.random() - 0.5) * 14,
       y: y - 10,
@@ -180,8 +193,7 @@ export class ParticleSystem {
       ctx.save();
       ctx.globalAlpha = Math.max(0, sw.alpha);
       ctx.strokeStyle = sw.color;
-      ctx.shadowColor = sw.color;
-      ctx.shadowBlur = 14;
+      ctx.shadowBlur = 0;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
@@ -189,13 +201,12 @@ export class ParticleSystem {
       ctx.restore();
     }
 
-    // 2. Dibujar partículas y dígitos binarios
+    // 2. Dibujar partículas y dígitos binarios (Optimizado sin shadowBlur)
     for (const p of this.particles) {
       ctx.save();
       ctx.globalAlpha = p.alpha;
       ctx.fillStyle = p.color;
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 0;
 
       if (p.char) {
         ctx.font = `bold ${p.size}px "Courier New", monospace`;
@@ -206,15 +217,14 @@ export class ParticleSystem {
       ctx.restore();
     }
 
-    // 3. Dibujar textos flotantes de daño / eventos
+    // 3. Dibujar textos flotantes de daño / eventos (Optimizado sin shadowBlur)
+    ctx.textAlign = 'center';
     for (const ft of this.floatingTexts) {
       ctx.save();
       const alpha = Math.max(0, ft.life / ft.maxLife);
       ctx.globalAlpha = alpha;
       ctx.fillStyle = ft.color;
-      ctx.shadowColor = ft.color;
-      ctx.shadowBlur = 6;
-      ctx.textAlign = 'center';
+      ctx.shadowBlur = 0;
       ctx.font = `bold ${Math.round(13 * ft.scale)}px "Courier New", monospace`;
       ctx.fillText(ft.text, ft.x, ft.y);
       ctx.restore();

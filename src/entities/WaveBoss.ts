@@ -332,6 +332,7 @@ export class WormPrimeBoss extends WaveBoss {
   private segments: Array<{ x: number; y: number }> = [];
   private baseSpeed: number;
   private enrageTimer: number = 0;
+  private puddleDamageCooldown: number = 0;
 
   constructor(x: number, y: number, bossLevel: number = 1) {
     const scaledHp = 480 + (bossLevel - 1) * 450;
@@ -359,7 +360,7 @@ export class WormPrimeBoss extends WaveBoss {
       this.segments.pop();
     }
 
-    // Deja charcos tóxicos en el suelo ("Memory Leak") cada 0.8s
+    // Deja charcos tóxicos en el suelo ("Memory Leak") cada 0.8s (máx 8)
     this.puddleTimer += dt;
     if (this.puddleTimer >= 0.8) {
       this.puddleTimer = 0;
@@ -369,15 +370,22 @@ export class WormPrimeBoss extends WaveBoss {
         radius: 26,
         lifetime: 3.2
       });
+      if (this.puddles.length > 8) {
+        this.puddles.shift();
+      }
     }
 
-    // Actualizar charcos y verificar daño al jugador
+    // Actualizar charcos y verificar daño al jugador con tick de 0.4s
+    this.puddleDamageCooldown = Math.max(0, this.puddleDamageCooldown - dt);
     for (const p of this.puddles) {
       p.lifetime -= dt;
-      const dx = player.x - p.x;
-      const dy = player.y - p.y;
-      if (Math.hypot(dx, dy) < p.radius + player.size * 0.4) {
-        player.takeDamage(4);
+      if (this.puddleDamageCooldown <= 0) {
+        const dx = player.x - p.x;
+        const dy = player.y - p.y;
+        if (Math.hypot(dx, dy) < p.radius + player.size * 0.4) {
+          player.takeDamage(5);
+          this.puddleDamageCooldown = 0.4;
+        }
       }
     }
     this.puddles = this.puddles.filter((p) => p.lifetime > 0);
@@ -483,11 +491,15 @@ export class SpywareSpecterBoss extends WaveBoss {
   }
 
   private performQuantumBlink(): void {
-    // Parpadea a una distancia de 180-220px en un ángulo aleatorio
+    // Parpadea a una distancia de 180-220px en un ángulo aleatorio dentro de los límites del mapa
     const angle = Math.random() * Math.PI * 2;
     const distance = 180 + Math.random() * 50;
     this.x += Math.cos(angle) * distance;
     this.y += Math.sin(angle) * distance;
+
+    const margin = 70;
+    this.x = Math.max(margin, Math.min(1920 - margin, this.x));
+    this.y = Math.max(margin, Math.min(1080 - margin, this.y));
 
     // Dispara 4 fragmentos glitch cian
     for (let i = 0; i < 4; i++) {

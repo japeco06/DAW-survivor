@@ -68,9 +68,10 @@ export class Player extends Entity {
     }
 
     const dir = input.getDirection();
+    const effectiveSpeed = Math.min(520, this.speed);
 
-    this.x += dir.x * this.speed * dt;
-    this.y += dir.y * this.speed * dt;
+    this.x += dir.x * effectiveSpeed * dt;
+    this.y += dir.y * effectiveSpeed * dt;
 
     const halfSize = this.size / 2;
     this.x = Math.max(halfSize, Math.min(canvasWidth - halfSize, this.x));

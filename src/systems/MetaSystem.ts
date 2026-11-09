@@ -515,10 +515,11 @@ export class MetaSystem {
   }
 
   private applyParsedState(parsed: Partial<SavedMetaState>, mergeWithCurrent: boolean = false): void {
-    if (typeof parsed.coins === 'number' && parsed.coins >= 0) {
+    if (typeof parsed.coins === 'number' && Number.isFinite(parsed.coins) && parsed.coins >= 0) {
+      const sanitizedCoins = Math.min(999999, Math.floor(parsed.coins));
       this.coins = mergeWithCurrent
-        ? Math.max(this.coins, Math.floor(parsed.coins))
-        : Math.floor(parsed.coins);
+        ? Math.max(this.coins, sanitizedCoins)
+        : sanitizedCoins;
     }
     if (Array.isArray(parsed.unlockedCharacters)) {
       const validUnlocked = parsed.unlockedCharacters.filter(
@@ -557,15 +558,18 @@ export class MetaSystem {
       this.equippedHatId = null;
     }
     if (typeof parsed.displayName === 'string' && parsed.displayName.trim().length > 0) {
-      this.displayName = parsed.displayName.trim();
+      const cleanName = parsed.displayName.replace(/[<>&"']/g, '').trim().slice(0, 20);
+      if (cleanName.length > 0) {
+        this.displayName = cleanName;
+      }
     }
-    if (typeof parsed.highScore === 'number' && parsed.highScore >= 0) {
+    if (typeof parsed.highScore === 'number' && Number.isFinite(parsed.highScore) && parsed.highScore >= 0) {
       this.highScore = Math.max(this.highScore, Math.floor(parsed.highScore));
     }
-    if (typeof parsed.bestTimeSeconds === 'number' && parsed.bestTimeSeconds >= 0) {
-      this.bestTimeSeconds = Math.max(this.bestTimeSeconds, Math.floor(parsed.bestTimeSeconds));
+    if (typeof parsed.bestTimeSeconds === 'number' && Number.isFinite(parsed.bestTimeSeconds) && parsed.bestTimeSeconds >= 0) {
+      this.bestTimeSeconds = Math.max(this.bestTimeSeconds, Math.min(86400, Math.floor(parsed.bestTimeSeconds)));
     }
-    if (typeof parsed.maxDamageToToro === 'number' && parsed.maxDamageToToro >= 0) {
+    if (typeof parsed.maxDamageToToro === 'number' && Number.isFinite(parsed.maxDamageToToro) && parsed.maxDamageToToro >= 0) {
       this.maxDamageToToro = Math.max(this.maxDamageToToro, Math.floor(parsed.maxDamageToToro));
     }
   }

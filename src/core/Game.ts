@@ -71,7 +71,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.12';
+const GAME_VERSION = 'v1.1.13';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -1408,21 +1408,17 @@ export class Game {
         this.achievementSystem.reportProgress('hardware_hoarder', 1);
         this.player.heal(25);
         for (let c = 0; c < 3; c++) {
-          this.cryptoCoins.push(
-            new CryptoCoin(
-              drop.x + (Math.random() - 0.5) * 28,
-              drop.y + (Math.random() - 0.5) * 28,
-              1
-            )
+          this.spawnCryptoCoin(
+            drop.x + (Math.random() - 0.5) * 28,
+            drop.y + (Math.random() - 0.5) * 28,
+            1
           );
         }
         for (let f = 0; f < 3; f++) {
-          this.codeFragments.push(
-            new CodeFragment(
-              drop.x + (Math.random() - 0.5) * 30,
-              drop.y + (Math.random() - 0.5) * 30,
-              35
-            )
+          this.spawnCodeFragment(
+            drop.x + (Math.random() - 0.5) * 30,
+            drop.y + (Math.random() - 0.5) * 30,
+            35
           );
         }
         // 25% de probabilidad de soltar un power-up raro (Nuke, Freeze, Frenzy)
@@ -1444,15 +1440,13 @@ export class Game {
       if (drop.malwareType === 'CRYPTO_MINER') {
         const jackpotCoins = 30 + Math.floor(Math.random() * 11);
         for (let c = 0; c < jackpotCoins; c++) {
-          this.cryptoCoins.push(
-            new CryptoCoin(
-              drop.x + (Math.random() - 0.5) * 110,
-              drop.y + (Math.random() - 0.5) * 110,
-              1
-            )
+          this.spawnCryptoCoin(
+            drop.x + (Math.random() - 0.5) * 110,
+            drop.y + (Math.random() - 0.5) * 110,
+            1
           );
         }
-        this.codeFragments.push(new CodeFragment(drop.x, drop.y, drop.xpValue));
+        this.spawnCodeFragment(drop.x, drop.y, drop.xpValue);
         this.sound.playCoinPickup();
         this.particleSystem.spawnFloatingText(
           drop.x,
@@ -1482,17 +1476,15 @@ export class Game {
         );
       }
 
-      this.codeFragments.push(new CodeFragment(drop.x, drop.y, drop.xpValue));
+      this.spawnCodeFragment(drop.x, drop.y, drop.xpValue);
 
       if (isBoss) {
         // Jefe de oleada derrotado: suelta 5 CryptoCoins y un PowerUp garantizado
         for (let c = 0; c < 5; c++) {
-          this.cryptoCoins.push(
-            new CryptoCoin(
-              drop.x + (Math.random() - 0.5) * 44,
-              drop.y + (Math.random() - 0.5) * 44,
-              1
-            )
+          this.spawnCryptoCoin(
+            drop.x + (Math.random() - 0.5) * 44,
+            drop.y + (Math.random() - 0.5) * 44,
+            1
           );
         }
         const pTypes: PowerUpType[] = ['NUKE', 'FREEZE', 'FRENZY'];
@@ -1506,7 +1498,7 @@ export class Game {
           this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
         }
         if (Math.random() < 0.06) {
-          this.cryptoCoins.push(new CryptoCoin(drop.x + 8, drop.y - 8, 1));
+          this.spawnCryptoCoin(drop.x + 8, drop.y - 8, 1);
         }
       }
 
@@ -1633,6 +1625,28 @@ export class Game {
     this.powerUps = this.powerUps.filter((p) => p.active);
   }
 
+  private spawnCodeFragment(x: number, y: number, xpValue: number): void {
+    if (this.codeFragments.length >= 160) {
+      const oldest = this.codeFragments[0];
+      if (oldest) {
+        oldest.xpValue += xpValue;
+        return;
+      }
+    }
+    this.codeFragments.push(new CodeFragment(x, y, xpValue));
+  }
+
+  private spawnCryptoCoin(x: number, y: number, value: number = 1): void {
+    if (this.cryptoCoins.length >= 50) {
+      const oldest = this.cryptoCoins[0];
+      if (oldest) {
+        oldest.value += value;
+        return;
+      }
+    }
+    this.cryptoCoins.push(new CryptoCoin(x, y, value));
+  }
+
   private activatePowerUp(type: PowerUpType, x: number, y: number): void {
     this.sound.playCoinPickup();
     if (type === 'NUKE') {
@@ -1648,7 +1662,7 @@ export class Game {
           continue;
         e.active = false;
         killedCount++;
-        this.codeFragments.push(new CodeFragment(e.x, e.y, e.xpValue));
+        this.spawnCodeFragment(e.x, e.y, e.xpValue);
         this.particleSystem.spawnExplosion(e.x, e.y, '#ff1e42', 12, false);
       }
       if (killedCount > 0) {

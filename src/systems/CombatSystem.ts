@@ -298,6 +298,7 @@ export class CombatSystem {
 
   // 7. Proyectiles enemigos (disparados por el Troyano Tirador)
   public enemyProjectiles: EnemyProjectile[] = [];
+  private vampirismCooldown: number = 0;
 
   // 8. Estadísticas de Daño por Arma y Bajas (v1.0.0)
   public weaponDamageStats: Record<string, number> = {
@@ -371,8 +372,10 @@ export class CombatSystem {
     let vampirismHeals = 0;
     let droneExploded = false;
 
+    this.vampirismCooldown = Math.max(0, this.vampirismCooldown - dt);
     const tryTriggerVampirism = () => {
-      if (player.vampirismChance > 0 && Math.random() < player.vampirismChance) {
+      if (this.vampirismCooldown <= 0 && player.vampirismChance > 0 && Math.random() < player.vampirismChance) {
+        this.vampirismCooldown = 0.12;
         const healAmount = Math.max(2, player.vampirismHealAmount);
         const prevHp = player.hp;
         player.heal(healAmount);
