@@ -497,12 +497,16 @@ export class Game {
           return;
         }
 
-        const authBtn = this.getAuthActionButtonRect();
-        this.hoveredAuthBtn =
-          mx >= authBtn.x &&
-          mx <= authBtn.x + authBtn.width &&
-          my >= authBtn.y &&
-          my <= authBtn.y + authBtn.height;
+        if (this.currentUser || this.isExternalLoginAllowed()) {
+          const authBtn = this.getAuthActionButtonRect();
+          this.hoveredAuthBtn =
+            mx >= authBtn.x &&
+            mx <= authBtn.x + authBtn.width &&
+            my >= authBtn.y &&
+            my <= authBtn.y + authBtn.height;
+        } else {
+          this.hoveredAuthBtn = false;
+        }
 
         const rankingsBtn = this.getGlobalRankingsButtonRect();
         this.hoveredRankingsBtn =
@@ -747,15 +751,17 @@ export class Game {
           return;
         }
 
-        const authBtn = this.getAuthActionButtonRect();
-        if (
-          mx >= authBtn.x &&
-          mx <= authBtn.x + authBtn.width &&
-          my >= authBtn.y &&
-          my <= authBtn.y + authBtn.height
-        ) {
-          this.handleAuthButtonClick();
-          return;
+        if (this.currentUser || this.isExternalLoginAllowed()) {
+          const authBtn = this.getAuthActionButtonRect();
+          if (
+            mx >= authBtn.x &&
+            mx <= authBtn.x + authBtn.width &&
+            my >= authBtn.y &&
+            my <= authBtn.y + authBtn.height
+          ) {
+            this.handleAuthButtonClick();
+            return;
+          }
         }
 
         const rankingsBtn = this.getGlobalRankingsButtonRect();
@@ -2446,6 +2452,17 @@ export class Game {
     this.ctx.restore();
   }
 
+  private isExternalLoginAllowed(): boolean {
+    if (typeof window === 'undefined') return true;
+    const hostname = window.location.hostname || '';
+    const referrer = document.referrer || '';
+    const isCrazyGames =
+      hostname.includes('crazygames') ||
+      referrer.includes('crazygames') ||
+      (window as any).CrazyGames !== undefined;
+    return !isCrazyGames;
+  }
+
   private getAuthActionButtonRect(): { x: number; y: number; width: number; height: number } {
     if (this.currentUser) {
       return {
@@ -2691,7 +2708,7 @@ export class Game {
         12,
         `[L] ${i18n.t('CERRAR SESIÓN', 'LOG OUT')}`
       );
-    } else {
+    } else if (this.isExternalLoginAllowed()) {
       const authBtn = this.getAuthActionButtonRect();
       this.drawClippedButton(
         authBtn,

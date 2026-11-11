@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && node scripts/inline-dist.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy --only hosting",
     "deploy:itch": "npm run build && .\\butler.exe push dist japeco06/cyber-survivor:html5",
