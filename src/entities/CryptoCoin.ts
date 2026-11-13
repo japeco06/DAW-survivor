@@ -35,19 +35,41 @@ export class CryptoCoin extends Entity {
 
   public override draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
-    const scale = 1 + Math.sin(this.pulseTimer) * 0.14;
-    const size = this.size * scale;
-    const half = size / 2;
+    const scale = 1 + Math.sin(this.pulseTimer) * 0.1;
+    const r = (this.size * 0.56) * scale;
+    const spinScaleX = 0.45 + 0.55 * Math.abs(Math.cos(this.pulseTimer * 0.55));
 
-    // Cuadrado dorado con destello ámbar
-    ctx.fillStyle = '#fbbf24';
+    ctx.translate(this.x, this.y);
+    ctx.scale(spinScaleX, 1);
+
+    // Medallón octogonal giratorio dorado
     ctx.shadowBlur = 0;
-    ctx.fillRect(this.x - half, this.y - half, size, size);
-
-    // Borde interior brillante
+    ctx.fillStyle = '#d97706';
     ctx.strokeStyle = '#fef08a';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(this.x - half + 2, this.y - half + 2, size - 4, size - 4);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Núcleo dorado brillante
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.72, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Emblema rombo central oscuro + destello superior
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 0.45);
+    ctx.lineTo(r * 0.36, 0);
+    ctx.lineTo(0, r * 0.45);
+    ctx.lineTo(-r * 0.36, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#fef9c3';
+    ctx.fillRect(-1.5, -r * 0.2, 3, r * 0.4);
 
     ctx.restore();
   }

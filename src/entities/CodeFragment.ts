@@ -35,18 +35,41 @@ export class CodeFragment extends Entity {
 
   public override draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
-    const scale = 1 + Math.sin(this.pulseTimer) * 0.15;
-    const half = (this.size * scale) / 2;
+    const scale = 1 + Math.sin(this.pulseTimer) * 0.14;
+    const r = (this.size * 0.65) * scale;
 
     ctx.translate(this.x, this.y);
-    ctx.rotate(Math.PI / 4); // Rombo estilo cristal/dato binario
-
-    ctx.fillStyle = '#00ffcc';
     ctx.shadowBlur = 0;
-    ctx.fillRect(-half, -half, half * 2, half * 2);
+
+    // Cristal de datos hexagonal facetado
+    ctx.fillStyle = '#00ffcc';
+    ctx.strokeStyle = '#a5f3fc';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 1.15);
+    ctx.lineTo(r * 0.72, -r * 0.35);
+    ctx.lineTo(r * 0.72, r * 0.35);
+    ctx.lineTo(0, r * 1.15);
+    ctx.lineTo(-r * 0.72, r * 0.35);
+    ctx.lineTo(-r * 0.72, -r * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Faceta de luz superior + núcleo blanco
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 1.0);
+    ctx.lineTo(r * 0.52, -r * 0.25);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(-r * 0.52, -r * 0.25);
+    ctx.closePath();
+    ctx.fill();
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(-half * 0.4, -half * 0.4, half * 0.8, half * 0.8);
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.24, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.restore();
   }

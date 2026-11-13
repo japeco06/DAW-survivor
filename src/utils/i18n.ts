@@ -20,9 +20,15 @@ class I18nManager {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved === 'EN' || saved === 'ES') {
         this.lang = saved;
+        return;
+      }
+      if (typeof navigator !== 'undefined' && navigator.language) {
+        this.lang = navigator.language.toLowerCase().startsWith('es') ? 'ES' : 'EN';
+      } else {
+        this.lang = 'EN';
       }
     } catch {
-      // Silenciar errores de localStorage
+      this.lang = 'EN';
     }
   }
 

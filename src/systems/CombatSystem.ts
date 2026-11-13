@@ -220,18 +220,31 @@ export class SqlInjectionBeam {
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
 
+    const halfL = this.length * 0.5;
+    const halfT = this.thickness * 0.55;
+
+    // Haz de plasma afilado tipo lanza SQL
     ctx.fillStyle = '#a855f7';
     ctx.shadowColor = '#d946ef';
     ctx.shadowBlur = 18;
-    ctx.fillRect(-this.length / 2, -this.thickness / 2, this.length, this.thickness);
+    ctx.beginPath();
+    ctx.moveTo(halfL + 6, 0);
+    ctx.lineTo(halfL * 0.4, -halfT);
+    ctx.lineTo(-halfL, -halfT * 0.65);
+    ctx.lineTo(-halfL * 0.72, 0);
+    ctx.lineTo(-halfL, halfT * 0.65);
+    ctx.lineTo(halfL * 0.4, halfT);
+    ctx.closePath();
+    ctx.fill();
 
+    // Núcleo energético incandescente blanco
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(
-      -this.length * 0.42,
-      -this.thickness * 0.25,
-      this.length * 0.84,
-      this.thickness * 0.5
-    );
+    ctx.beginPath();
+    ctx.moveTo(halfL + 1, 0);
+    ctx.lineTo(-halfL * 0.55, -halfT * 0.36);
+    ctx.lineTo(-halfL * 0.55, halfT * 0.36);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
   }
 }
@@ -987,6 +1000,7 @@ export class CombatSystem {
     ctx.arc(player.x, player.y, this.firewallRadius, 0, Math.PI * 2);
     ctx.stroke();
 
+    const spin = performance.now() * 0.005;
     for (let i = 0; i < nodes.length; i++) {
       const slot = this.droneSlots[i];
       if (!slot || slot.durability <= 0) continue;
@@ -1000,19 +1014,40 @@ export class CombatSystem {
           ? '#facc15'
           : '#ff1e42';
 
-      ctx.fillStyle = droneColor;
+      ctx.save();
+      ctx.translate(node.x, node.y);
+      ctx.rotate(spin + i * 1.1);
+
+      ctx.fillStyle = '#06131a';
+      ctx.strokeStyle = droneColor;
+      ctx.lineWidth = 2.2;
       ctx.shadowColor = droneColor;
-      ctx.shadowBlur = 16;
+      ctx.shadowBlur = 14;
+
+      // Dron hexagonal táctico con núcleo brillante
       ctx.beginPath();
-      ctx.arc(node.x, node.y, 10, 0, Math.PI * 2);
+      for (let v = 0; v < 6; v++) {
+        const a = (v * Math.PI) / 3;
+        const px = Math.cos(a) * 10;
+        const py = Math.sin(a) * 10;
+        if (v === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = droneColor;
+      ctx.beginPath();
+      ctx.arc(0, 0, 4.2, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(node.x - 7, node.y - 7, 14, 14);
-
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(node.x - 2, node.y - 2, 4, 4);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
     ctx.restore();
   }

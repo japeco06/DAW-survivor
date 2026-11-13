@@ -87,16 +87,22 @@ export class QuarantineZone extends Entity {
     ctx.arc(this.x, this.y, this.radius, this.pulseTime * 0.25, Math.PI * 2 + this.pulseTime * 0.25);
     ctx.stroke();
 
-    // 3. Cuadrícula interna de cuarentena
+    // 3. Anillo interior giratorio y retícula de contención
+    ctx.strokeStyle = `rgba(16, 185, 129, ${0.42 * fadeAlpha})`;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius * 0.56, -this.pulseTime * 0.4, Math.PI * 2 - this.pulseTime * 0.4);
+    ctx.stroke();
     ctx.setLineDash([]);
-    ctx.strokeStyle = `rgba(16, 185, 129, ${0.3 * fadeAlpha})`;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(
-      this.x - this.radius * 0.5,
-      this.y - this.radius * 0.5,
-      this.radius,
-      this.radius
-    );
+
+    ctx.strokeStyle = `rgba(52, 211, 153, ${0.32 * fadeAlpha})`;
+    ctx.beginPath();
+    ctx.moveTo(this.x - this.radius * 0.3, this.y);
+    ctx.lineTo(this.x + this.radius * 0.3, this.y);
+    ctx.moveTo(this.x, this.y - this.radius * 0.3);
+    ctx.lineTo(this.x, this.y + this.radius * 0.3);
+    ctx.stroke();
 
     ctx.restore();
   }

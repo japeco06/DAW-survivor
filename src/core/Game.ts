@@ -71,7 +71,9 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.16';
+const GAME_VERSION = 'v1.1.17';
+const FONT_DISPLAY = '"Segoe UI", "Trebuchet MS", system-ui, sans-serif';
+const FONT_MONO = '"JetBrains Mono", Consolas, "Courier New", monospace';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -141,8 +143,10 @@ export class Game {
   private runBossesKilled: number = 0;
   private runTotalDamageDealt: number = 0;
   public readonly firestoreDb = db;
-  private menuFeedbackMessage: string =
-    'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.';
+  private menuFeedbackMessage: string = i18n.t(
+    'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.',
+    'Explore Agents, Gacha (Roll x1 / x10) & Hat Inventory.'
+  );
   private damageVignetteAlpha: number = 0;
   private terminalLogs: string[] = [
     `> CYBER_SURVIVOR_KERNEL ${GAME_VERSION} online...`,
@@ -200,8 +204,11 @@ export class Game {
         try {
           this.currentUser = user;
           if (user) {
-            const displayName = user.displayName || user.email || 'Agente';
-            this.menuFeedbackMessage = `Sincronizando datos en la nube de ${displayName}...`;
+            const displayName = user.displayName || user.email || i18n.t('Agente', 'Agent');
+            this.menuFeedbackMessage = i18n.t(
+              `Sincronizando datos en la nube de ${displayName}...`,
+              `Syncing cloud data for ${displayName}...`
+            );
             await this.metaSystem.loadFromCloud(user.uid);
             this.highScoreKills = this.metaSystem.highScore;
             if (this.gameState === 'MENU') {
@@ -211,7 +218,10 @@ export class Game {
                 this.metaSystem.getSelectedProfile()
               );
             }
-            this.menuFeedbackMessage = `Sesión iniciada como ${displayName}. Progreso sincronizado con la nube.`;
+            this.menuFeedbackMessage = i18n.t(
+              `Sesión iniciada como ${displayName}. Progreso sincronizado con la nube.`,
+              `Signed in as ${displayName}. Progress synced to cloud.`
+            );
             this.addTerminalLog(`AUTH: Cloud Save synced (${displayName})`);
             this.achievementSystem.reportProgress('gacha_collector_20', this.metaSystem.unlockedHats.size, true);
             if (this.metaSystem.getUnlockedHatsList().some((h) => h.rarity === 'MITICA' || h.rarity === 'LEGENDARIA')) {
@@ -1974,11 +1984,11 @@ export class Game {
   private drawVersionBadge(): void {
     this.ctx.save();
     this.ctx.textAlign = 'right';
-    this.ctx.fillStyle = '#00ff66';
+    this.ctx.fillStyle = 'rgba(0, 255, 102, 0.78)';
     this.ctx.shadowColor = '#00ff66';
-    this.ctx.shadowBlur = 8;
-    this.ctx.font = 'bold 14px "Courier New", monospace';
-    this.ctx.fillText(GAME_VERSION, this.canvas.width - 16, this.canvas.height - 14);
+    this.ctx.shadowBlur = 6;
+    this.ctx.font = `bold 12px ${FONT_MONO}`;
+    this.ctx.fillText(GAME_VERSION, this.canvas.width - 18, this.canvas.height - 14);
     this.ctx.restore();
   }
 
@@ -1995,11 +2005,14 @@ export class Game {
     this.ctx.fillStyle = blink ? '#ff1e42' : '#fde047';
     this.ctx.shadowColor = '#ff0044';
     this.ctx.shadowBlur = 16;
-    this.ctx.font = 'bold 20px "Courier New", monospace';
+    this.ctx.font = `bold 18px ${FONT_DISPLAY}`;
     this.ctx.fillText(
-      `⚠️ ALERTA DE PLAGA: EL ENJAMBRE (${this.spawner.swarmActiveTimer.toFixed(1)}s) // ¡50 ENEMIGOS DETECTADOS! ⚠️`,
+      i18n.t(
+        `⚠️ ALERTA DE PLAGA: EL ENJAMBRE (${this.spawner.swarmActiveTimer.toFixed(1)}s) // ¡50 ENEMIGOS DETECTADOS! ⚠️`,
+        `⚠️ PLAGUE ALERT: THE SWARM (${this.spawner.swarmActiveTimer.toFixed(1)}s) // 50 HOSTILES DETECTED! ⚠️`
+      ),
       this.canvas.width / 2,
-      82
+      102
     );
     this.ctx.restore();
   }
@@ -2137,48 +2150,88 @@ export class Game {
 
   private drawThermalOverclockIndicator(): void {
     this.ctx.save();
-    this.ctx.font = 'bold 15px "JetBrains Mono", Consolas, monospace';
+    this.ctx.font = `bold 15px ${FONT_MONO}`;
     this.ctx.fillStyle = '#f97316';
     this.ctx.shadowColor = '#fbbf24';
     this.ctx.shadowBlur = 12;
     this.ctx.textAlign = 'center';
     this.ctx.fillText(
-      `⚡ OVERCLOCK TÉRMICO (x2 CADENCIA + 100% CRIT): ${this.thermalOverclockTimer.toFixed(1)}s`,
+      i18n.t(
+        `⚡ OVERCLOCK TÉRMICO (x2 CADENCIA + 100% CRIT): ${this.thermalOverclockTimer.toFixed(1)}s`,
+        `⚡ THERMAL OVERCLOCK (2x FIRE RATE + 100% CRIT): ${this.thermalOverclockTimer.toFixed(1)}s`
+      ),
       this.canvas.width / 2,
-      94
+      110
     );
     this.ctx.restore();
   }
 
   private drawCRTScanlines(): void {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const arm = 26;
+    const pad = 8;
+
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 255, 102, 0.018)';
-    for (let y = 0; y < this.canvas.height; y += 4) {
-      this.ctx.fillRect(0, y, this.canvas.width, 1);
+    this.ctx.fillStyle = 'rgba(0, 255, 102, 0.014)';
+    for (let y = 0; y < h; y += 4) {
+      this.ctx.fillRect(0, y, w, 1);
     }
 
-    this.ctx.strokeStyle = 'rgba(0, 255, 102, 0.22)';
+    // Esquinas tácticas estilo visor cibernético (sin marco cuadrado completo)
+    this.ctx.strokeStyle = 'rgba(0, 255, 102, 0.34)';
     this.ctx.lineWidth = 2;
-    this.ctx.strokeRect(4, 4, this.canvas.width - 8, this.canvas.height - 8);
+    this.ctx.beginPath();
+    // Arriba-izq
+    this.ctx.moveTo(pad, pad + arm);
+    this.ctx.lineTo(pad, pad);
+    this.ctx.lineTo(pad + arm, pad);
+    // Arriba-der
+    this.ctx.moveTo(w - pad - arm, pad);
+    this.ctx.lineTo(w - pad, pad);
+    this.ctx.lineTo(w - pad, pad + arm);
+    // Abajo-izq
+    this.ctx.moveTo(pad, h - pad - arm);
+    this.ctx.lineTo(pad, h - pad);
+    this.ctx.lineTo(pad + arm, h - pad);
+    // Abajo-der
+    this.ctx.moveTo(w - pad - arm, h - pad);
+    this.ctx.lineTo(w - pad, h - pad);
+    this.ctx.lineTo(w - pad, h - pad - arm);
+    this.ctx.stroke();
     this.ctx.restore();
   }
 
   private drawTerminalLogBox(): void {
+    const recent = this.terminalLogs.slice(-2);
+    if (recent.length === 0) return;
+
     const boxX = 16;
-    const boxY = this.canvas.height - 115;
+    const boxH = 44;
+    const boxY = this.canvas.height - boxH - 14;
+    const boxW = 430;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 12, 6, 0.72)';
-    this.ctx.strokeStyle = 'rgba(0, 255, 102, 0.3)';
-    this.ctx.lineWidth = 1;
-    this.ctx.fillRect(boxX, boxY, 540, 98);
-    this.ctx.strokeRect(boxX, boxY, 540, 98);
+    this.ctx.fillStyle = 'rgba(2, 12, 8, 0.45)';
+    this.ctx.fillRect(boxX, boxY, boxW, boxH);
 
-    this.ctx.font = '12px "Courier New", monospace';
-    for (let i = 0; i < this.terminalLogs.length; i++) {
-      const isLatest = i === this.terminalLogs.length - 1;
-      this.ctx.fillStyle = isLatest ? '#00ff66' : 'rgba(0, 255, 102, 0.55)';
-      this.ctx.fillText(this.terminalLogs[i], boxX + 10, boxY + 20 + i * 17);
+    // Barra vertical neón a la izquierda
+    this.ctx.fillStyle = 'rgba(0, 255, 102, 0.72)';
+    this.ctx.fillRect(boxX, boxY, 3, boxH);
+
+    this.ctx.font = `11.5px ${FONT_MONO}`;
+    const maxLineW = boxW - 20;
+    for (let i = 0; i < recent.length; i++) {
+      const isLatest = i === recent.length - 1;
+      this.ctx.fillStyle = isLatest ? 'rgba(0, 255, 136, 0.9)' : 'rgba(148, 163, 184, 0.65)';
+      let line = recent[i];
+      if (this.ctx.measureText(line).width > maxLineW) {
+        while (line.length > 8 && this.ctx.measureText(line + '…').width > maxLineW) {
+          line = line.slice(0, -1);
+        }
+        line += '…';
+      }
+      this.ctx.fillText(line, boxX + 11, boxY + 17 + i * 17);
     }
     this.ctx.restore();
   }
@@ -2278,7 +2331,7 @@ export class Game {
       {
         count: 1,
         cost: GACHA_PULL_SINGLE_COST,
-        label: `🔌 TIRADA x1 (${GACHA_PULL_SINGLE_COST} 🪙)`,
+        label: `🔌 ${i18n.t('TIRADA x1', 'ROLL x1')} (${GACHA_PULL_SINGLE_COST} 🪙)`,
         x: startX,
         y,
         width: btnW,
@@ -2287,7 +2340,7 @@ export class Game {
       {
         count: 10,
         cost: GACHA_PULL_TEN_COST,
-        label: `⚡ TIRADA x10 (${GACHA_PULL_TEN_COST} 🪙)`,
+        label: `⚡ ${i18n.t('TIRADA x10', 'ROLL x10')} (${GACHA_PULL_TEN_COST} 🪙)`,
         x: startX + btnW + gap,
         y,
         width: btnW,
@@ -2350,7 +2403,7 @@ export class Game {
     return [
       {
         dir: 'PREV',
-        label: '<< ANTERIOR',
+        label: i18n.t('<< ANTERIOR', '<< PREV'),
         x: cx - 220,
         y,
         width: btnW,
@@ -2358,7 +2411,7 @@ export class Game {
       },
       {
         dir: 'NEXT',
-        label: 'SIGUIENTE >>',
+        label: i18n.t('SIGUIENTE >>', 'NEXT >>'),
         x: cx + 90,
         y,
         width: btnW,
@@ -2426,6 +2479,130 @@ export class Game {
     };
   }
 
+  /** Traza un rectángulo con esquinas biseladas estilo HUD cibernético. */
+  private traceChamferRect(x: number, y: number, w: number, h: number, cut: number = 10): void {
+    const c = Math.max(0, Math.min(cut, w * 0.4, h * 0.4));
+    this.ctx.beginPath();
+    this.ctx.moveTo(x + c, y);
+    this.ctx.lineTo(x + w - c, y);
+    this.ctx.lineTo(x + w, y + c);
+    this.ctx.lineTo(x + w, y + h - c);
+    this.ctx.lineTo(x + w - c, y + h);
+    this.ctx.lineTo(x + c, y + h);
+    this.ctx.lineTo(x, y + h - c);
+    this.ctx.lineTo(x, y + c);
+    this.ctx.closePath();
+  }
+
+  /** Dibuja un panel o botón biselado reutilizable en el HUD y menús. */
+  private drawCyberPanel(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    cut: number,
+    fill: string,
+    stroke: string,
+    lineWidth: number = 1.8,
+    glowColor?: string,
+    glowBlur: number = 0
+  ): void {
+    this.ctx.save();
+    this.ctx.fillStyle = fill;
+    this.ctx.strokeStyle = stroke;
+    this.ctx.lineWidth = lineWidth;
+    if (glowColor && glowBlur > 0) {
+      this.ctx.shadowColor = glowColor;
+      this.ctx.shadowBlur = glowBlur;
+    }
+    this.traceChamferRect(x, y, w, h, cut);
+    this.ctx.fill();
+    this.ctx.stroke();
+    this.ctx.restore();
+  }
+
+  /** Fondo animado de modo atractivo detrás del Kernel Hub para dar vida al menú inicial. */
+  private drawMenuAttractBackdrop(): void {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    const t = performance.now() * 0.001;
+
+    this.ctx.save();
+
+    // Anillos holográficos orbitales centrados detrás del panel
+    this.ctx.strokeStyle = 'rgba(0, 255, 136, 0.14)';
+    this.ctx.lineWidth = 1.5;
+    this.ctx.setLineDash([18, 14]);
+    this.ctx.save();
+    this.ctx.translate(cx, cy);
+    this.ctx.rotate(t * 0.12);
+    this.ctx.beginPath();
+    this.ctx.arc(0, 0, 420, 0, Math.PI * 2);
+    this.ctx.stroke();
+
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.16)';
+    this.ctx.rotate(-t * 0.24);
+    this.ctx.setLineDash([10, 22]);
+    this.ctx.beginPath();
+    this.ctx.arc(0, 0, 505, 0, Math.PI * 2);
+    this.ctx.stroke();
+    this.ctx.restore();
+    this.ctx.setLineDash([]);
+
+    // Flujos verticales de datos en los márgenes laterales
+    const lanes = [96, 188, 284, w - 284, w - 188, w - 96];
+    for (let i = 0; i < lanes.length; i++) {
+      const lx = lanes[i];
+      const streamY = (((t * (75 + i * 19) + i * 210) % (h + 240)) - 120);
+      const grad = this.ctx.createLinearGradient(lx, streamY - 70, lx, streamY + 70);
+      const col = i % 2 === 0 ? '0, 255, 136' : '56, 189, 248';
+      grad.addColorStop(0, `rgba(${col}, 0)`);
+      grad.addColorStop(0.5, `rgba(${col}, 0.28)`);
+      grad.addColorStop(1, `rgba(${col}, 0)`);
+      this.ctx.strokeStyle = grad;
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.moveTo(lx, streamY - 70);
+      this.ctx.lineTo(lx, streamY + 70);
+      this.ctx.stroke();
+    }
+
+    // Dron/caza holográfico y señuelos patrullando en los laterales
+    for (let i = 0; i < 6; i++) {
+      const side = i < 3 ? -1 : 1;
+      const baseX = side < 0 ? 220 : w - 220;
+      const phase = t * 0.75 + i * 1.45;
+      const px = baseX + Math.sin(phase * 1.2) * 115;
+      const py = cy + Math.cos(phase * 0.85 + i) * (h * 0.32);
+      const angle = Math.atan2(
+        -Math.sin(phase * 0.85 + i) * 0.85,
+        Math.cos(phase * 1.2) * 1.2
+      );
+      const isHostile = i % 2 === 1;
+
+      this.ctx.save();
+      this.ctx.globalAlpha = 0.42;
+      this.ctx.translate(px, py);
+      this.ctx.rotate(angle);
+      this.ctx.strokeStyle = isHostile ? '#ff1e42' : '#00ff66';
+      this.ctx.fillStyle = isHostile ? 'rgba(255, 30, 66, 0.22)' : 'rgba(0, 255, 102, 0.22)';
+      this.ctx.lineWidth = 1.6;
+      this.ctx.beginPath();
+      this.ctx.moveTo(12, 0);
+      this.ctx.lineTo(-9, -8);
+      this.ctx.lineTo(-5, 0);
+      this.ctx.lineTo(-9, 8);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
+      this.ctx.restore();
+    }
+
+    this.ctx.restore();
+  }
+
   private drawClippedButton(
     rect: { x: number; y: number; width: number; height: number },
     bgFill: string,
@@ -2438,32 +2615,33 @@ export class Game {
     shadowBlur?: number
   ): void {
     this.ctx.save();
-    this.ctx.fillStyle = bgFill;
-    this.ctx.strokeStyle = strokeColor;
-    this.ctx.lineWidth = lineWidth;
-    if (shadowColor && shadowBlur) {
-      this.ctx.shadowColor = shadowColor;
-      this.ctx.shadowBlur = shadowBlur;
-    }
-    this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-    this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-    this.ctx.shadowBlur = 0;
+    this.drawCyberPanel(
+      rect.x,
+      rect.y,
+      rect.width,
+      rect.height,
+      8,
+      bgFill,
+      strokeColor,
+      lineWidth,
+      shadowColor,
+      shadowBlur ?? 0
+    );
 
-    // Recorte estricto dentro de la caja del botón
-    this.ctx.beginPath();
-    this.ctx.rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
+    // Recorte estricto dentro del botón biselado
+    this.traceChamferRect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4, 6);
     this.ctx.clip();
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = textColor;
 
-    const maxW = rect.width - 12;
+    const maxW = rect.width - 14;
     let fontSize = baseFontSize;
-    this.ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+    this.ctx.font = `bold ${fontSize}px ${FONT_DISPLAY}`;
     const m = this.ctx.measureText(text).width;
     if (m > maxW) {
       fontSize = Math.max(9, Math.floor(baseFontSize * (maxW / m)));
-      this.ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+      this.ctx.font = `bold ${fontSize}px ${FONT_DISPLAY}`;
     }
 
     this.ctx.fillText(text, rect.x + rect.width / 2, rect.y + Math.round(rect.height / 2) + 5);
@@ -2625,22 +2803,34 @@ export class Game {
       signOut(auth)
         .then(() => {
           this.sound.playShoot(false);
-          this.menuFeedbackMessage = 'Sesión de Google cerrada correctamente.';
+          this.menuFeedbackMessage = i18n.t(
+            'Sesión de Google cerrada correctamente.',
+            'Signed out of Google successfully.'
+          );
           this.addTerminalLog('AUTH: Google Session Terminated.');
         })
         .catch((err) => {
           console.error('Error al cerrar sesión:', err);
-          this.menuFeedbackMessage = 'Error al cerrar sesión.';
+          this.menuFeedbackMessage = i18n.t(
+            'Error al cerrar sesión.',
+            'Error signing out.'
+          );
         });
     } else {
       googleProvider.setCustomParameters({ prompt: 'select_account' });
-      this.menuFeedbackMessage = 'Abriendo ventana de inicio de sesión con Google...';
+      this.menuFeedbackMessage = i18n.t(
+        'Abriendo ventana de inicio de sesión con Google...',
+        'Opening Google sign-in window...'
+      );
       signInWithPopup(auth, googleProvider)
         .then((result) => {
           this.sound.playCoinPickup();
           logAnalyticsEvent('login', { method: 'google' });
           const name = result.user.displayName || result.user.email || 'Survivor';
-          this.menuFeedbackMessage = `¡Bienvenido, ${name}! Autenticación completada.`;
+          this.menuFeedbackMessage = i18n.t(
+            `¡Bienvenido, ${name}! Autenticación completada.`,
+            `Welcome, ${name}! Authentication complete.`
+          );
         })
         .catch((err: { code?: string; message?: string }) => {
           console.error('Error en Google Login:', err);
@@ -2648,24 +2838,40 @@ export class Game {
           const isIframe = window.self !== window.top;
           if (code === 'auth/popup-blocked') {
             if (isIframe) {
-              this.menuFeedbackMessage =
-                'Popup bloqueado por el navegador. Permite ventanas emergentes en la barra de tu navegador.';
+              this.menuFeedbackMessage = i18n.t(
+                'Popup bloqueado por el navegador. Permite ventanas emergentes en la barra de tu navegador.',
+                'Popup blocked by browser. Allow popups in your address bar.'
+              );
             } else {
-              this.menuFeedbackMessage = 'Popup bloqueado. Redirigiendo a Google Login...';
+              this.menuFeedbackMessage = i18n.t(
+                'Popup bloqueado. Redirigiendo a Google Login...',
+                'Popup blocked. Redirecting to Google Login...'
+              );
               void signInWithRedirect(auth, googleProvider);
             }
           } else if (code === 'auth/unauthorized-domain') {
-            this.menuFeedbackMessage = `Añade "${window.location.hostname}" en Firebase > Auth > Settings > Dominios autorizados.`;
+            this.menuFeedbackMessage = i18n.t(
+              `Añade "${window.location.hostname}" en Firebase > Auth > Settings > Dominios autorizados.`,
+              `Add "${window.location.hostname}" in Firebase > Auth > Settings > Authorized domains.`
+            );
           } else if (
             code === 'auth/operation-not-allowed' ||
             code === 'auth/configuration-not-found'
           ) {
-            this.menuFeedbackMessage =
-              'Activa el proveedor Google en Firebase > Authentication > Sign-in method.';
+            this.menuFeedbackMessage = i18n.t(
+              'Activa el proveedor Google en Firebase > Authentication > Sign-in method.',
+              'Enable Google provider in Firebase > Authentication > Sign-in method.'
+            );
           } else if (code === 'auth/popup-closed-by-user') {
-            this.menuFeedbackMessage = 'Ventana de inicio de sesión cerrada por el usuario.';
+            this.menuFeedbackMessage = i18n.t(
+              'Ventana de inicio de sesión cerrada por el usuario.',
+              'Sign-in window closed by user.'
+            );
           } else {
-            this.menuFeedbackMessage = `Error de inicio de sesión (${code || 'verifica Firebase Auth'}).`;
+            this.menuFeedbackMessage = i18n.t(
+              `Error de inicio de sesión (${code || 'verifica Firebase Auth'}).`,
+              `Sign-in error (${code || 'check Firebase Auth'}).`
+            );
           }
         });
     }
@@ -2676,8 +2882,9 @@ export class Game {
     const cy = this.canvas.height / 2;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 6, 3, 0.85)';
+    this.ctx.fillStyle = 'rgba(0, 6, 4, 0.72)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.drawMenuAttractBackdrop();
 
     // ==========================================
     // 1. ESQUINA SUPERIOR IZQUIERDA: HUD JUGADOR / AUTH
@@ -2691,28 +2898,31 @@ export class Game {
       const statusBoxH = 44;
 
       this.ctx.save();
-      this.ctx.fillStyle = 'rgba(2, 22, 14, 0.94)';
-      this.ctx.strokeStyle = '#00ff66';
-      this.ctx.lineWidth = 1.5;
-      this.ctx.shadowColor = '#00ff66';
-      this.ctx.shadowBlur = 10;
-      this.ctx.fillRect(statusBoxX, statusBoxY, statusBoxW, statusBoxH);
-      this.ctx.strokeRect(statusBoxX, statusBoxY, statusBoxW, statusBoxH);
-      this.ctx.shadowBlur = 0;
+      this.drawCyberPanel(
+        statusBoxX,
+        statusBoxY,
+        statusBoxW,
+        statusBoxH,
+        8,
+        'rgba(2, 22, 14, 0.94)',
+        '#00ff66',
+        1.5,
+        '#00ff66',
+        10
+      );
 
       // Recorte estricto para evitar cualquier desbordamiento de texto
-      this.ctx.beginPath();
-      this.ctx.rect(statusBoxX + 2, statusBoxY + 2, statusBoxW - 4, statusBoxH - 4);
+      this.traceChamferRect(statusBoxX + 2, statusBoxY + 2, statusBoxW - 4, statusBoxH - 4, 6);
       this.ctx.clip();
 
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = '#00ff66';
-      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
       this.ctx.fillText(`${i18n.t('AGENTE', 'AGENT')}: ${truncatedName}`, statusBoxX + 14, statusBoxY + 20);
 
       this.ctx.fillStyle = '#38bdf8';
-      this.ctx.font = 'bold 11px "Courier New", monospace';
-      this.ctx.fillText(`☁ ${i18n.t('NUBE SINCRONIZADA', 'CLOUD SYNCED')}`, statusBoxX + 14, statusBoxY + 34);
+      this.ctx.font = `bold 11px ${FONT_MONO}`;
+      this.ctx.fillText(`☁ ${i18n.t('NUBE SINCRONIZADA', 'CLOUD SYNCED')}`, statusBoxX + 14, statusBoxY + 35);
       this.ctx.restore();
 
       // Botón Cerrar Sesión con auto-fit y recorte
@@ -2824,24 +3034,37 @@ export class Game {
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
 
-    this.ctx.fillStyle = 'rgba(2, 14, 9, 0.96)';
-    this.ctx.strokeStyle = '#00ff66';
-    this.ctx.lineWidth = 2;
-    this.ctx.shadowColor = '#00ff66';
-    this.ctx.shadowBlur = 20;
-    this.ctx.fillRect(px, py, panelW, panelH);
-    this.ctx.strokeRect(px, py, panelW, panelH);
+    this.drawCyberPanel(
+      px,
+      py,
+      panelW,
+      panelH,
+      18,
+      'rgba(3, 15, 11, 0.95)',
+      '#00ff66',
+      2.2,
+      '#00ff66',
+      22
+    );
+
+    // Línea luminosa superior decorativa dentro del Kernel Hub
+    const headerGrad = this.ctx.createLinearGradient(px + 60, py + 4, px + panelW - 60, py + 4);
+    headerGrad.addColorStop(0, 'rgba(0, 255, 102, 0)');
+    headerGrad.addColorStop(0.5, 'rgba(0, 240, 255, 0.85)');
+    headerGrad.addColorStop(1, 'rgba(0, 255, 102, 0)');
+    this.ctx.fillStyle = headerGrad;
+    this.ctx.fillRect(px + 60, py + 2, panelW - 120, 2.5);
 
     this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#00ff66';
-    this.ctx.font = 'bold 30px "Courier New", monospace';
-    this.ctx.fillText(`CYBER SURVIVOR // KERNEL HUB (${GAME_VERSION})`, cx, py + 40);
+    this.ctx.font = `bold 29px ${FONT_DISPLAY}`;
+    this.ctx.fillText(`CYBER SURVIVOR // KERNEL HUB (${GAME_VERSION})`, cx, py + 41);
 
     const equippedHat = this.metaSystem.getEquippedHat();
     const noneText = i18n.t('Ninguno', 'None');
     this.ctx.fillStyle = '#fbbf24';
-    this.ctx.font = 'bold 14px "Courier New", monospace';
+    this.ctx.font = `bold 13.5px ${FONT_MONO}`;
     this.ctx.fillText(
       `[ ${i18n.t('Récord', 'High Score')}: ${this.metaSystem.highScore} (${this.formatTimeMMSS(this.metaSystem.bestTimeSeconds)}) ]  |  [ CRYPTO: ${this.metaSystem.coins} 🪙 ]  |  [ ${i18n.t('EQUIPADO', 'EQUIPPED')}: ${
         equippedHat ? `${equippedHat.icon} ${equippedHat.name}` : noneText
@@ -2853,14 +3076,21 @@ export class Game {
     // Dibujar barra de pestañas (AGENTES | GACHA | INVENTARIO)
     for (const tabRect of this.getMenuTabRects()) {
       const isActive = this.activeMenuTab === tabRect.tab;
-      this.ctx.fillStyle = isActive ? 'rgba(0, 60, 38, 0.96)' : 'rgba(6, 18, 22, 0.9)';
-      this.ctx.strokeStyle = isActive ? '#00ff66' : '#38bdf8';
-      this.ctx.lineWidth = isActive ? 2.5 : 1.5;
-      this.ctx.fillRect(tabRect.x, tabRect.y, tabRect.width, tabRect.height);
-      this.ctx.strokeRect(tabRect.x, tabRect.y, tabRect.width, tabRect.height);
+      this.drawCyberPanel(
+        tabRect.x,
+        tabRect.y,
+        tabRect.width,
+        tabRect.height,
+        9,
+        isActive ? 'rgba(0, 60, 38, 0.96)' : 'rgba(6, 18, 24, 0.92)',
+        isActive ? '#00ff66' : '#38bdf8',
+        isActive ? 2.4 : 1.5,
+        isActive ? '#00ff66' : undefined,
+        isActive ? 10 : 0
+      );
 
       this.ctx.fillStyle = isActive ? '#00ff66' : '#bae6fd';
-      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
       this.ctx.fillText(tabRect.label, tabRect.x + tabRect.width / 2, tabRect.y + 23);
     }
 
@@ -2874,23 +3104,25 @@ export class Game {
         const hovered = this.hoveredMenuChar === rect.id;
 
         this.ctx.save();
-        this.ctx.fillStyle = selected
-          ? 'rgba(0, 45, 30, 0.95)'
-          : hovered
-          ? 'rgba(12, 30, 45, 0.95)'
-          : 'rgba(6, 14, 18, 0.92)';
-        this.ctx.strokeStyle = selected
-          ? '#00ff66'
-          : unlocked
-          ? profile.borderColor
-          : '#fbbf24';
-        this.ctx.lineWidth = selected || hovered ? 2.5 : 1.5;
-        this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-        this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+        this.drawCyberPanel(
+          rect.x,
+          rect.y,
+          rect.width,
+          rect.height,
+          12,
+          selected
+            ? 'rgba(0, 48, 32, 0.96)'
+            : hovered
+            ? 'rgba(12, 32, 48, 0.96)'
+            : 'rgba(6, 15, 20, 0.93)',
+          selected ? '#00ff66' : unlocked ? profile.borderColor : '#fbbf24',
+          selected || hovered ? 2.4 : 1.5,
+          selected ? '#00ff66' : hovered ? profile.borderColor : undefined,
+          selected || hovered ? 10 : 0
+        );
 
         // Recorte estricto dentro de la tarjeta de personaje
-        this.ctx.beginPath();
-        this.ctx.rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
+        this.traceChamferRect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4, 10);
         this.ctx.clip();
 
         const previewX = rect.x + 32;
@@ -2908,12 +3140,16 @@ export class Game {
         );
 
         if (rect.id === 'MORCILLITA') {
-          // Miniatura del cuadrado acompañante marrón junto al chasis rosa
+          // Dron mascota en rombo biselado junto al chasis rosa
+          this.ctx.save();
+          this.ctx.translate(previewX + 14, previewY - 12);
+          this.ctx.rotate(Math.PI / 4);
           this.ctx.fillStyle = '#92400e';
           this.ctx.strokeStyle = '#fbbf24';
           this.ctx.lineWidth = 1.5;
-          this.ctx.fillRect(previewX + 10, previewY - 18, 11, 11);
-          this.ctx.strokeRect(previewX + 10, previewY - 18, 11, 11);
+          this.ctx.fillRect(-5, -5, 10, 10);
+          this.ctx.strokeRect(-5, -5, 10, 10);
+          this.ctx.restore();
         }
 
         this.ctx.shadowBlur = 0;
@@ -2925,19 +3161,19 @@ export class Game {
         this.ctx.fillStyle = '#ffffff';
         this.ctx.font =
           pName.length > 20
-            ? 'bold 13px "Courier New", monospace'
-            : 'bold 15px "Courier New", monospace';
-        this.ctx.fillText(`[${i + 1}] ${pName}`, rect.x + 56, rect.y + 28);
+            ? `bold 13.5px ${FONT_DISPLAY}`
+            : `bold 15px ${FONT_DISPLAY}`;
+        this.ctx.fillText(`[${i + 1}] ${pName}`, rect.x + 58, rect.y + 28);
 
         this.ctx.fillStyle = '#38bdf8';
-        this.ctx.font = 'bold 11px "Courier New", monospace';
-        this.ctx.fillText(pSub, rect.x + 56, rect.y + 45);
+        this.ctx.font = `bold 11.5px ${FONT_MONO}`;
+        this.ctx.fillText(pSub, rect.x + 58, rect.y + 45);
 
         this.ctx.fillStyle = '#cbd5e1';
-        this.ctx.font = '12px "Courier New", monospace';
-        this.wrapText(pDesc, rect.x + 14, rect.y + 68, rect.width - 28, 15, 3);
+        this.ctx.font = `12px ${FONT_DISPLAY}`;
+        this.wrapText(pDesc, rect.x + 14, rect.y + 68, rect.width - 28, 16, 3);
 
-        this.ctx.font = 'bold 12px "Courier New", monospace';
+        this.ctx.font = `bold 12px ${FONT_MONO}`;
         if (selected) {
           this.ctx.fillStyle = '#00ff66';
           this.ctx.fillText(i18n.t('✔ EQUIPADO Y LISTO', '✔ EQUIPPED & READY'), rect.x + 14, rect.y + rect.height - 12);
@@ -2962,7 +3198,7 @@ export class Game {
       }
     } else if (this.activeMenuTab === 'GACHA') {
       this.ctx.fillStyle = '#94a3b8';
-      this.ctx.font = 'bold 11.5px "Courier New", monospace';
+      this.ctx.font = `bold 12px ${FONT_DISPLAY}`;
       this.ctx.fillText(
         i18n.t(
           'PROBABILIDADES: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%  (Repetido: +10 🪙)',
@@ -2975,21 +3211,26 @@ export class Game {
       for (const pullBtn of this.getGachaPullButtonRects()) {
         const canAfford = this.metaSystem.coins >= pullBtn.cost;
         const isTen = pullBtn.count === 10;
-        this.ctx.fillStyle = canAfford
-          ? isTen
-            ? 'rgba(69, 26, 3, 0.95)'
-            : 'rgba(46, 16, 101, 0.95)'
-          : 'rgba(30, 10, 18, 0.9)';
-        this.ctx.strokeStyle = canAfford ? (isTen ? '#fbbf24' : '#c084fc') : '#ff1e42';
-        this.ctx.lineWidth = 2.5;
-        this.ctx.shadowColor = canAfford ? (isTen ? '#fbbf24' : '#c084fc') : '#ff1e42';
-        this.ctx.shadowBlur = 12;
-        this.ctx.fillRect(pullBtn.x, pullBtn.y, pullBtn.width, pullBtn.height);
-        this.ctx.strokeRect(pullBtn.x, pullBtn.y, pullBtn.width, pullBtn.height);
+        const strokeCol = canAfford ? (isTen ? '#fbbf24' : '#c084fc') : '#ff1e42';
+        this.drawCyberPanel(
+          pullBtn.x,
+          pullBtn.y,
+          pullBtn.width,
+          pullBtn.height,
+          10,
+          canAfford
+            ? isTen
+              ? 'rgba(69, 26, 3, 0.95)'
+              : 'rgba(46, 16, 101, 0.95)'
+            : 'rgba(30, 10, 18, 0.9)',
+          strokeCol,
+          2.2,
+          strokeCol,
+          10
+        );
 
-        this.ctx.shadowBlur = 0;
         this.ctx.fillStyle = canAfford ? '#fde047' : '#fca5a5';
-        this.ctx.font = 'bold 15px "Courier New", monospace';
+        this.ctx.font = `bold 15px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           pullBtn.label,
           pullBtn.x + pullBtn.width / 2,
@@ -3011,37 +3252,47 @@ export class Game {
         this.ctx.scale(pulseScale, pulseScale);
         this.ctx.translate(-cx, -(ry + revealBoxH / 2));
 
-        this.ctx.fillStyle = rConf.bgColor;
-        this.ctx.strokeStyle = rConf.color;
-        this.ctx.lineWidth = 3;
-        this.ctx.shadowColor = rConf.color;
-        this.ctx.shadowBlur = this.gachaRevealTimer > 0 ? 26 : 12;
-        this.ctx.fillRect(rx, ry, revealBoxW, revealBoxH);
-        this.ctx.strokeRect(rx, ry, revealBoxW, revealBoxH);
+        this.drawCyberPanel(
+          rx,
+          ry,
+          revealBoxW,
+          revealBoxH,
+          14,
+          rConf.bgColor,
+          rConf.color,
+          2.8,
+          rConf.color,
+          this.gachaRevealTimer > 0 ? 24 : 12
+        );
 
-        this.ctx.shadowBlur = 0;
         this.ctx.fillStyle = rConf.color;
-        this.ctx.font = 'bold 14px "Courier New", monospace';
-        this.ctx.fillText(`★ RAREZA ${rConf.label} ★`, cx, ry + 26);
+        this.ctx.font = `bold 13.5px ${FONT_MONO}`;
+        this.ctx.fillText(`★ ${i18n.t('RAREZA', 'RARITY')} ${rConf.label} ★`, cx, ry + 26);
 
         this.ctx.font = '36px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
         this.ctx.fillText(entry.hat.icon, cx, ry + 66);
 
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = 'bold 19px "Courier New", monospace';
+        this.ctx.font = `bold 19px ${FONT_DISPLAY}`;
         this.ctx.fillText(entry.hat.name, cx, ry + 104);
 
         this.ctx.fillStyle = entry.isNew ? '#00ff66' : '#fbbf24';
-        this.ctx.font = 'bold 14px "Courier New", monospace';
+        this.ctx.font = `bold 14px ${FONT_DISPLAY}`;
         this.ctx.fillText(
-          entry.isNew ? '¡NUEVO DESBLOQUEO!' : 'Repetido: +10 Monedas 🪙',
+          entry.isNew
+            ? i18n.t('¡NUEVO DESBLOQUEO!', 'NEW UNLOCK!')
+            : i18n.t('Repetido: +10 Monedas 🪙', 'Duplicate: +10 Coins 🪙'),
           cx,
           ry + 130
         );
 
         this.ctx.fillStyle = '#a3e635';
-        this.ctx.font = 'bold 13px "Courier New", monospace';
-        this.ctx.fillText(`MODIFICADORES: [ ${entry.hat.statsLabel} ]`, cx, ry + 156);
+        this.ctx.font = `bold 13px ${FONT_MONO}`;
+        this.ctx.fillText(
+          `${i18n.t('MODIFICADORES', 'MODIFIERS')}: [ ${entry.hat.statsLabel} ]`,
+          cx,
+          ry + 156
+        );
         this.ctx.restore();
       } else if (this.lastGachaResults.length > 1) {
         const cols = 5;
@@ -3062,15 +3313,10 @@ export class Game {
           const y = startY + row * (cardH + gapY);
 
           this.ctx.save();
-          this.ctx.fillStyle = rConf.bgColor;
-          this.ctx.strokeStyle = rConf.color;
-          this.ctx.lineWidth = 2;
-          this.ctx.fillRect(x, y, cardW, cardH);
-          this.ctx.strokeRect(x, y, cardW, cardH);
+          this.drawCyberPanel(x, y, cardW, cardH, 9, rConf.bgColor, rConf.color, 1.8);
 
           // Recorte estricto por carta gacha
-          this.ctx.beginPath();
-          this.ctx.rect(x + 2, y + 2, cardW - 4, cardH - 4);
+          this.traceChamferRect(x + 2, y + 2, cardW - 4, cardH - 4, 7);
           this.ctx.clip();
 
           this.ctx.textAlign = 'center';
@@ -3078,25 +3324,25 @@ export class Game {
           this.ctx.fillText(entry.hat.icon, x + cardW / 2, y + 24);
 
           this.ctx.fillStyle = '#ffffff';
-          this.ctx.font = 'bold 10px "Courier New", monospace';
+          this.ctx.font = `bold 10.5px ${FONT_DISPLAY}`;
           const shortName =
             entry.hat.name.length > 16 ? entry.hat.name.slice(0, 15) + '…' : entry.hat.name;
           this.ctx.fillText(shortName, x + cardW / 2, y + 48);
 
           this.ctx.fillStyle = rConf.color;
-          this.ctx.font = 'bold 9px "Courier New", monospace';
+          this.ctx.font = `bold 9.5px ${FONT_MONO}`;
           this.ctx.fillText(rConf.label.split(' ')[0], x + cardW / 2, y + 64);
 
           this.ctx.fillStyle = entry.isNew ? '#00ff66' : '#fbbf24';
-          this.ctx.font = 'bold 9px "Courier New", monospace';
+          this.ctx.font = `bold 9.5px ${FONT_DISPLAY}`;
           this.ctx.fillText(
-            entry.isNew ? '¡NUEVO!' : 'Repetido: +10 Monedas',
+            entry.isNew ? i18n.t('¡NUEVO!', 'NEW!') : i18n.t('Repetido: +10 🪙', 'Dup: +10 🪙'),
             x + cardW / 2,
             y + 82
           );
 
           this.ctx.fillStyle = '#cbd5e1';
-          this.ctx.font = '9px "Courier New", monospace';
+          this.ctx.font = `9px ${FONT_MONO}`;
           const shortStats =
             entry.hat.statsLabel.length > 18
               ? entry.hat.statsLabel.slice(0, 17) + '…'
@@ -3110,15 +3356,20 @@ export class Game {
         const rx = cx - revealBoxW / 2;
         const ry = py + 252;
 
-        this.ctx.fillStyle = 'rgba(4, 20, 24, 0.94)';
-        this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
-        this.ctx.lineWidth = 1.5;
-        this.ctx.fillRect(rx, ry, revealBoxW, revealBoxH);
-        this.ctx.strokeRect(rx, ry, revealBoxW, revealBoxH);
+        this.drawCyberPanel(
+          rx,
+          ry,
+          revealBoxW,
+          revealBoxH,
+          14,
+          'rgba(4, 20, 26, 0.94)',
+          'rgba(56, 189, 248, 0.55)',
+          1.6
+        );
 
         // Cabecera decorativa
         this.ctx.fillStyle = '#38bdf8';
-        this.ctx.font = 'bold 15px "Courier New", monospace';
+        this.ctx.font = `bold 15px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t('📦 BÓVEDA DE EQUIPAMIENTO // COFRES CUÁNTICOS', '📦 QUANTUM CHEST VAULT // EQUIPMENT'),
           cx,
@@ -3126,7 +3377,7 @@ export class Game {
         );
 
         this.ctx.fillStyle = '#e2e8f0';
-        this.ctx.font = '13px "Courier New", monospace';
+        this.ctx.font = `13.5px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t(
             'Elige "Tirada x1" (20 🪙) o "Tirada x10" (200 🪙) para abrir cofres.',
@@ -3137,7 +3388,7 @@ export class Game {
         );
 
         this.ctx.fillStyle = '#94a3b8';
-        this.ctx.font = '12px "Courier New", monospace';
+        this.ctx.font = `12.5px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t(
             'Desbloquea sombreros con bufos de combate para tu Agente Antivirus.',
@@ -3148,7 +3399,7 @@ export class Game {
         );
 
         this.ctx.fillStyle = '#fbbf24';
-        this.ctx.font = 'bold 12.5px "Courier New", monospace';
+        this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t(
             '⚡ ¡Si obtienes un sombrero repetido, recibirás automáticamente +10 Monedas! ⚡',
@@ -3162,7 +3413,7 @@ export class Game {
       const unlockedList = this.metaSystem.getUnlockedHatsList();
       if (unlockedList.length === 0) {
         this.ctx.fillStyle = '#94a3b8';
-        this.ctx.font = '15px "Courier New", monospace';
+        this.ctx.font = `15px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t(
             'Tu inventario está vacío. Ve a la pestaña [G] GACHA para Tirar del Cable.',
@@ -3179,15 +3430,19 @@ export class Game {
           const isHovered = this.hoveredHatId === slot.hat.id;
 
           this.ctx.save();
-          this.ctx.fillStyle = isEquipped ? 'rgba(0, 50, 32, 0.95)' : rConf.bgColor;
-          this.ctx.strokeStyle = isEquipped ? '#00ff66' : isHovered ? '#ffffff' : rConf.color;
-          this.ctx.lineWidth = isEquipped || isHovered ? 2.5 : 1.5;
-          this.ctx.fillRect(slot.x, slot.y, slot.width, slot.height);
-          this.ctx.strokeRect(slot.x, slot.y, slot.width, slot.height);
+          this.drawCyberPanel(
+            slot.x,
+            slot.y,
+            slot.width,
+            slot.height,
+            10,
+            isEquipped ? 'rgba(0, 50, 32, 0.95)' : rConf.bgColor,
+            isEquipped ? '#00ff66' : isHovered ? '#ffffff' : rConf.color,
+            isEquipped || isHovered ? 2.4 : 1.5
+          );
 
           // Recorte estricto por ranura de inventario
-          this.ctx.beginPath();
-          this.ctx.rect(slot.x + 2, slot.y + 2, slot.width - 4, slot.height - 4);
+          this.traceChamferRect(slot.x + 2, slot.y + 2, slot.width - 4, slot.height - 4, 8);
           this.ctx.clip();
 
           this.ctx.textAlign = 'left';
@@ -3195,15 +3450,15 @@ export class Game {
           this.ctx.fillText(slot.hat.icon, slot.x + 10, slot.y + 28);
 
           this.ctx.fillStyle = '#ffffff';
-          this.ctx.font = 'bold 12px "Courier New", monospace';
+          this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
           const shortName =
             slot.hat.name.length > 20 ? slot.hat.name.slice(0, 19) + '…' : slot.hat.name;
           this.ctx.fillText(shortName, slot.x + 40, slot.y + 22);
 
           this.ctx.fillStyle = rConf.color;
-          this.ctx.font = 'bold 10px "Courier New", monospace';
+          this.ctx.font = `bold 10.5px ${FONT_MONO}`;
           this.ctx.fillText(
-            isEquipped ? '✔ EQUIPADO' : rConf.label.split(' ')[0],
+            isEquipped ? i18n.t('✔ EQUIPADO', '✔ EQUIPPED') : rConf.label.split(' ')[0],
             slot.x + 40,
             slot.y + 38
           );
@@ -3211,11 +3466,11 @@ export class Game {
           this.ctx.fillStyle = '#a3e635';
           let statFont = 11;
           const maxStatW = slot.width - 20;
-          this.ctx.font = `${statFont}px "Courier New", monospace`;
+          this.ctx.font = `${statFont}px ${FONT_MONO}`;
           const statMetrics = this.ctx.measureText(slot.hat.statsLabel).width;
           if (statMetrics > maxStatW) {
             statFont = Math.max(9, Math.floor(11 * (maxStatW / statMetrics)));
-            this.ctx.font = `${statFont}px "Courier New", monospace`;
+            this.ctx.font = `${statFont}px ${FONT_MONO}`;
           }
           this.ctx.fillText(slot.hat.statsLabel, slot.x + 10, slot.y + 62);
           this.ctx.restore();
@@ -3224,7 +3479,7 @@ export class Game {
         const totalPages = Math.max(1, Math.ceil(unlockedList.length / 9));
         this.ctx.textAlign = 'center';
         this.ctx.fillStyle = '#cbd5e1';
-        this.ctx.font = 'bold 12px "Courier New", monospace';
+        this.ctx.font = `bold 12px ${FONT_MONO}`;
         this.ctx.fillText(
           `${i18n.t('PÁG', 'PAGE')} ${this.inventoryPage + 1}/${totalPages}`,
           cx,
@@ -3232,14 +3487,19 @@ export class Game {
         );
 
         for (const pageBtn of this.getInventoryPaginationRects()) {
-          this.ctx.fillStyle = 'rgba(12, 30, 45, 0.95)';
-          this.ctx.strokeStyle = '#38bdf8';
-          this.ctx.lineWidth = 1.5;
-          this.ctx.fillRect(pageBtn.x, pageBtn.y, pageBtn.width, pageBtn.height);
-          this.ctx.strokeRect(pageBtn.x, pageBtn.y, pageBtn.width, pageBtn.height);
+          this.drawCyberPanel(
+            pageBtn.x,
+            pageBtn.y,
+            pageBtn.width,
+            pageBtn.height,
+            7,
+            'rgba(12, 30, 45, 0.95)',
+            '#38bdf8',
+            1.5
+          );
 
           this.ctx.fillStyle = '#38bdf8';
-          this.ctx.font = 'bold 12px "Courier New", monospace';
+          this.ctx.font = `bold 12px ${FONT_DISPLAY}`;
           this.ctx.fillText(pageBtn.label, pageBtn.x + pageBtn.width / 2, pageBtn.y + 17);
         }
       }
@@ -3250,31 +3510,32 @@ export class Game {
     this.ctx.fillStyle = '#a3e635';
     let feedbackFont = 13;
     const maxFeedbackW = panelW - 40;
-    this.ctx.font = `bold ${feedbackFont}px "Courier New", monospace`;
+    this.ctx.font = `bold ${feedbackFont}px ${FONT_DISPLAY}`;
     let fbMetrics = this.ctx.measureText(this.menuFeedbackMessage).width;
     if (fbMetrics > maxFeedbackW) {
       feedbackFont = Math.max(10, Math.floor(13 * (maxFeedbackW / fbMetrics)));
-      this.ctx.font = `bold ${feedbackFont}px "Courier New", monospace`;
+      this.ctx.font = `bold ${feedbackFont}px ${FONT_DISPLAY}`;
     }
     this.ctx.fillText(this.menuFeedbackMessage, cx, py + 478);
     this.ctx.restore();
 
     const startBtn = this.getStartButtonRect();
     this.ctx.save();
-    this.ctx.fillStyle = this.hoveredStartBtn ? 'rgba(0, 60, 34, 0.96)' : 'rgba(0, 36, 20, 0.94)';
-    this.ctx.strokeStyle = this.hoveredStartBtn ? '#ffffff' : '#00ff66';
-    this.ctx.lineWidth = this.hoveredStartBtn ? 2.5 : 2;
-    this.ctx.shadowColor = '#00ff66';
-    this.ctx.shadowBlur = this.hoveredStartBtn
-      ? 16
-      : 8 + Math.sin(performance.now() * 0.006) * 6;
-    this.ctx.fillRect(startBtn.x, startBtn.y, startBtn.width, startBtn.height);
-    this.ctx.strokeRect(startBtn.x, startBtn.y, startBtn.width, startBtn.height);
-    this.ctx.shadowBlur = 0;
+    this.drawCyberPanel(
+      startBtn.x,
+      startBtn.y,
+      startBtn.width,
+      startBtn.height,
+      12,
+      this.hoveredStartBtn ? 'rgba(0, 68, 38, 0.98)' : 'rgba(0, 38, 22, 0.95)',
+      this.hoveredStartBtn ? '#ffffff' : '#00ff66',
+      this.hoveredStartBtn ? 2.5 : 2.2,
+      '#00ff66',
+      this.hoveredStartBtn ? 18 : 10 + Math.sin(performance.now() * 0.006) * 6
+    );
 
     // Recorte estricto dentro del botón de despliegue
-    this.ctx.beginPath();
-    this.ctx.rect(startBtn.x + 2, startBtn.y + 2, startBtn.width - 4, startBtn.height - 4);
+    this.traceChamferRect(startBtn.x + 2, startBtn.y + 2, startBtn.width - 4, startBtn.height - 4, 10);
     this.ctx.clip();
 
     this.ctx.textAlign = 'center';
@@ -3282,11 +3543,11 @@ export class Game {
     let startFont = 16;
     const maxStartW = startBtn.width - 24;
     const startText = `> ${i18n.t('PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR', 'PRESS [ENTER] OR CLICK HERE TO DEPLOY')} <`;
-    this.ctx.font = `bold ${startFont}px "Courier New", monospace`;
+    this.ctx.font = `bold ${startFont}px ${FONT_DISPLAY}`;
     let stMetrics = this.ctx.measureText(startText).width;
     if (stMetrics > maxStartW) {
       startFont = Math.max(11, Math.floor(16 * (maxStartW / stMetrics)));
-      this.ctx.font = `bold ${startFont}px "Courier New", monospace`;
+      this.ctx.font = `bold ${startFont}px ${FONT_DISPLAY}`;
     }
     this.ctx.fillText(startText, cx, startBtn.y + 29);
     this.ctx.restore();
@@ -4270,17 +4531,40 @@ export class Game {
   }
 
   private drawXpBar(): void {
-    const barHeight = 8;
-    const ratio = Math.min(1, this.upgradeSystem.currentXp / this.upgradeSystem.xpToNextLevel);
+    const barHeight = 9;
+    const w = this.canvas.width;
+    const ratio = Math.max(
+      0,
+      Math.min(1, this.upgradeSystem.currentXp / Math.max(1, this.upgradeSystem.xpToNextLevel))
+    );
+    const fillW = w * ratio;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 20, 30, 0.9)';
-    this.ctx.fillRect(0, 0, this.canvas.width, barHeight);
+    this.ctx.fillStyle = 'rgba(4, 16, 26, 0.94)';
+    this.ctx.fillRect(0, 0, w, barHeight);
 
-    this.ctx.fillStyle = '#00f0ff';
-    this.ctx.shadowColor = '#00f0ff';
-    this.ctx.shadowBlur = 10;
-    this.ctx.fillRect(0, 0, this.canvas.width * ratio, barHeight);
+    if (fillW > 0) {
+      const xpGrad = this.ctx.createLinearGradient(0, 0, Math.max(40, fillW), 0);
+      xpGrad.addColorStop(0, '#0284c7');
+      xpGrad.addColorStop(0.6, '#00f0ff');
+      xpGrad.addColorStop(1, '#00ff88');
+      this.ctx.fillStyle = xpGrad;
+      this.ctx.shadowColor = '#00f0ff';
+      this.ctx.shadowBlur = 10;
+      this.ctx.fillRect(0, 0, fillW, barHeight);
+
+      // Destello brillante en el borde de avance
+      this.ctx.shadowBlur = 0;
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fillRect(Math.max(0, fillW - 3), 0, Math.min(3, fillW), barHeight);
+    }
+
+    // Marcas sutiles de cuartos (25%, 50%, 75%)
+    this.ctx.shadowBlur = 0;
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+    this.ctx.fillRect(w * 0.25, 0, 1, barHeight);
+    this.ctx.fillRect(w * 0.5, 0, 1, barHeight);
+    this.ctx.fillRect(w * 0.75, 0, 1, barHeight);
     this.ctx.restore();
   }
 
@@ -4292,32 +4576,164 @@ export class Game {
   }
 
   private drawHUD(): void {
+    const w = this.canvas.width;
+    const hpRatio = Math.max(0, Math.min(1, this.player.hp / Math.max(1, this.player.maxHp)));
+
     this.ctx.save();
-    this.ctx.fillStyle = '#00ff66';
-    this.ctx.font = 'bold 14px "Courier New", monospace';
+
+    // ==========================================
+    // 1. POD SUPERIOR IZQUIERDO: AGENTE, NIVEL, HP BAR Y ARSENAL
+    // ==========================================
+    const lx = 16;
+    const ly = 18;
+    const lw = 348;
+    const lh = 74;
+    this.drawCyberPanel(lx, ly, lw, lh, 10, 'rgba(3, 14, 18, 0.84)', 'rgba(0, 255, 136, 0.55)', 1.6);
+
+    this.ctx.save();
+    this.traceChamferRect(lx + 2, ly + 2, lw - 4, lh - 4, 8);
+    this.ctx.clip();
+
+    // Indicador del agente + Nivel + Multiplicador XP
+    this.ctx.fillStyle = this.player.color;
+    this.ctx.beginPath();
+    this.ctx.arc(lx + 18, ly + 17, 4.5, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
+    this.ctx.fillText(this.player.profileName, lx + 29, ly + 22);
+
+    const nameW = this.ctx.measureText(this.player.profileName).width;
+    this.ctx.fillStyle = '#00f0ff';
+    this.ctx.font = `bold 11.5px ${FONT_MONO}`;
+    this.ctx.fillText(`LVL ${this.upgradeSystem.level}.0`, lx + 38 + nameW, ly + 22);
+
+    this.ctx.textAlign = 'right';
+    this.ctx.fillStyle = '#a3e635';
+    this.ctx.font = `bold 11.5px ${FONT_MONO}`;
+    this.ctx.fillText(`XP x${this.player.xpMultiplier.toFixed(2)}`, lx + lw - 14, ly + 22);
+
+    // Barra gráfica de HP
+    const hpBarX = lx + 14;
+    const hpBarY = ly + 31;
+    const hpBarW = lw - 28;
+    const hpBarH = 16;
+
+    this.ctx.fillStyle = 'rgba(12, 8, 16, 0.94)';
+    this.ctx.fillRect(hpBarX, hpBarY, hpBarW, hpBarH);
+
+    if (hpRatio > 0) {
+      const hpGrad = this.ctx.createLinearGradient(hpBarX, 0, hpBarX + hpBarW * hpRatio, 0);
+      if (hpRatio > 0.5) {
+        hpGrad.addColorStop(0, '#059669');
+        hpGrad.addColorStop(1, '#00ff88');
+      } else if (hpRatio > 0.25) {
+        hpGrad.addColorStop(0, '#d97706');
+        hpGrad.addColorStop(1, '#fbbf24');
+      } else {
+        hpGrad.addColorStop(0, '#b91c1c');
+        hpGrad.addColorStop(1, '#ff1e42');
+      }
+      this.ctx.fillStyle = hpGrad;
+      this.ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, hpBarH);
+
+      // Brillo superior sutil
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      this.ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, 4);
+    }
+
+    this.ctx.strokeStyle = hpRatio <= 0.25 ? '#ff4d6d' : 'rgba(255, 255, 255, 0.25)';
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeRect(hpBarX, hpBarY, hpBarW, hpBarH);
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+    this.ctx.shadowBlur = 3;
+    this.ctx.font = `bold 11px ${FONT_MONO}`;
+    this.ctx.fillText(
+      `HP ${Math.max(0, Math.ceil(this.player.hp))} / ${this.player.maxHp}`,
+      hpBarX + hpBarW / 2,
+      hpBarY + 12
+    );
+    this.ctx.shadowBlur = 0;
+
+    // Armas activas con auto-fit
+    const weaponsStatus = this.combatSystem.getActiveWeaponsList(this.player).join(' • ');
+    const weaponsLabel = `${i18n.t('ARMAS', 'WEAPONS')}: ${weaponsStatus}`;
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = '#7dd3fc';
+    let wFont = 11.5;
+    const maxWeaponW = lw - 28;
+    this.ctx.font = `bold ${wFont}px ${FONT_DISPLAY}`;
+    const wMetrics = this.ctx.measureText(weaponsLabel).width;
+    if (wMetrics > maxWeaponW) {
+      wFont = Math.max(9.5, Math.floor(11.5 * (maxWeaponW / wMetrics)));
+      this.ctx.font = `bold ${wFont}px ${FONT_DISPLAY}`;
+    }
+    this.ctx.fillText(weaponsLabel, lx + 14, ly + 64);
+    this.ctx.restore();
+
+    // ==========================================
+    // 2. POD SUPERIOR DERECHO: CRONÓMETRO, BAJAS, CRIPTO Y PROTOCOLO TORO
+    // ==========================================
+    const rw = 312;
+    const rx = w - rw - 16;
+    const ry = 18;
+    const rh = 74;
     const timeUntilToro = Math.max(0, FINAL_BOSS_ARRIVAL_TIME - this.elapsedTime);
+    const toroStroke = this.spawner.finalBossMode
+      ? 'rgba(255, 30, 66, 0.85)'
+      : 'rgba(56, 189, 248, 0.55)';
+    this.drawCyberPanel(rx, ry, rw, rh, 10, 'rgba(3, 14, 18, 0.84)', toroStroke, 1.6);
+
+    this.ctx.save();
+    this.traceChamferRect(rx + 2, ry + 2, rw - 4, rh - 4, 8);
+    this.ctx.clip();
+
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.font = `bold 18px ${FONT_MONO}`;
+    this.ctx.fillText(this.formatTimeMMSS(this.elapsedTime), rx + 14, ry + 26);
+
+    this.ctx.fillStyle = '#fda4af';
+    this.ctx.font = `bold 12px ${FONT_MONO}`;
+    this.ctx.fillText(`☠ ${this.killCount}`, rx + 92, ry + 25);
+
+    this.ctx.fillStyle = '#fbbf24';
+    this.ctx.fillText(`🪙 ${this.runCoinsCollected}`, rx + 162, ry + 25);
+
+    this.ctx.textAlign = 'right';
+    this.ctx.fillStyle = '#94a3b8';
+    this.ctx.font = `bold 11px ${FONT_MONO}`;
+    this.ctx.fillText(`[P] ${i18n.t('PAUSA', 'PAUSE')}`, rx + rw - 14, ry + 24);
+
+    // Separador fino
+    this.ctx.fillStyle = 'rgba(56, 189, 248, 0.24)';
+    this.ctx.fillRect(rx + 14, ry + 36, rw - 28, 1);
+
     const bossProgressLabel = this.spawner.finalBossMode
-      ? i18n.t('FASE: JEFE FINAL [EL TORO]', 'PHASE: FINAL BOSS [EL TORO]')
+      ? i18n.t('⚔ FASE: JEFE FINAL [EL TORO]', '⚔ PHASE: FINAL BOSS [EL TORO]')
       : i18n.t(
-          `OBJETIVO: PROTOCOLO TORO EN ${this.formatTimeMMSS(timeUntilToro)} | JEFES: ${this.runBossesKilled}`,
-          `OBJECTIVE: TORO PROTOCOL IN ${this.formatTimeMMSS(timeUntilToro)} | BOSSES: ${this.runBossesKilled}`
+          `OBJETIVO: TORO EN ${this.formatTimeMMSS(timeUntilToro)} • JEFES: ${this.runBossesKilled}`,
+          `TARGET: TORO IN ${this.formatTimeMMSS(timeUntilToro)} • BOSSES: ${this.runBossesKilled}`
         );
 
-    this.ctx.fillText(
-      `[${this.player.profileName} v${this.upgradeSystem.level}.0] | HP: ${this.player.hp}/${this.player.maxHp} | XP_MULT: x${this.player.xpMultiplier.toFixed(2)} | ${bossProgressLabel} | TIME: ${this.formatTimeMMSS(this.elapsedTime)}`,
-      16,
-      30
-    );
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = this.spawner.finalBossMode ? '#ff4d6d' : '#38bdf8';
+    let objFont = 11.5;
+    const maxObjW = rw - 26;
+    this.ctx.font = `bold ${objFont}px ${FONT_DISPLAY}`;
+    const objMetrics = this.ctx.measureText(bossProgressLabel).width;
+    if (objMetrics > maxObjW) {
+      objFont = Math.max(9.5, Math.floor(11.5 * (maxObjW / objMetrics)));
+      this.ctx.font = `bold ${objFont}px ${FONT_DISPLAY}`;
+    }
+    this.ctx.fillText(bossProgressLabel, rx + rw / 2, ry + 58);
+    this.ctx.restore();
 
-    const weaponsStatus = this.combatSystem.getActiveWeaponsList(this.player).join(' + ');
-
-    this.ctx.fillStyle = 'rgba(0, 240, 255, 0.85)';
-    this.ctx.font = '13px "Courier New", monospace';
-    this.ctx.fillText(
-      `[ARMAS]: ${weaponsStatus} | [P]: Pausa`,
-      16,
-      52
-    );
     this.ctx.restore();
   }
 
@@ -4332,31 +4748,38 @@ export class Game {
       const px = (this.canvas.width - panelW) / 2;
       const py = this.canvas.height - 84;
 
-      this.ctx.fillStyle = 'rgba(28, 4, 8, 0.92)';
-      this.ctx.strokeStyle = this.finalBoss.state === 'TELEGRAPH' ? '#facc15' : '#ef4444';
-      this.ctx.lineWidth = 2.5;
-      this.ctx.shadowColor = '#dc2626';
-      this.ctx.shadowBlur = 18;
-      this.ctx.fillRect(px, py, panelW, panelH);
-      this.ctx.strokeRect(px, py, panelW, panelH);
+      this.drawCyberPanel(
+        px,
+        py,
+        panelW,
+        panelH,
+        12,
+        'rgba(28, 4, 8, 0.92)',
+        this.finalBoss.state === 'TELEGRAPH' ? '#facc15' : '#ef4444',
+        2.4,
+        '#dc2626',
+        18
+      );
 
-      this.ctx.shadowBlur = 0;
       this.ctx.fillStyle = '#fca5a5';
-      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
       this.ctx.fillText(
-        `🐂 JEFE FINAL: EL TORO [INVENCIBLE // CONTACTO: 50% HP MÁX] | ${this.finalBoss.getDashStatusText()}`,
+        i18n.t(
+          `🐂 JEFE FINAL: EL TORO [INVENCIBLE // CONTACTO: 50% HP MÁX] | ${this.finalBoss.getDashStatusText()}`,
+          `🐂 FINAL BOSS: EL TORO [INVINCIBLE // CONTACT: 50% MAX HP] | ${this.finalBoss.getDashStatusText()}`
+        ),
         this.canvas.width / 2,
-        py + 22
+        py + 24
       );
 
       this.ctx.fillStyle = '#facc15';
       this.ctx.shadowColor = '#f59e0b';
       this.ctx.shadowBlur = 12;
-      this.ctx.font = 'bold 20px "Courier New", monospace';
+      this.ctx.font = `bold 20px ${FONT_MONO}`;
       this.ctx.fillText(
-        `DAÑO TOTAL ACUMULADO: ${Math.round(this.finalBoss.totalDamageTaken)}`,
+        `${i18n.t('DAÑO TOTAL ACUMULADO', 'TOTAL DAMAGE DEALT')}: ${Math.round(this.finalBoss.totalDamageTaken)}`,
         this.canvas.width / 2,
-        py + 50
+        py + 52
       );
 
       this.ctx.restore();
@@ -4374,11 +4797,11 @@ export class Game {
         this.ctx.fillStyle = alertColor;
         this.ctx.shadowColor = alertColor;
         this.ctx.shadowBlur = 18;
-        this.ctx.font = 'bold 20px "Courier New", monospace';
+        this.ctx.font = `bold 20px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           `!! WARNING: ${this.spawner.lastBossSpawnedName} DETECTED !!`,
           this.canvas.width / 2,
-          92
+          104
         );
       }
     }
@@ -4393,25 +4816,25 @@ export class Game {
 
       this.ctx.shadowBlur = 0;
       this.ctx.fillStyle = bossColor;
-      this.ctx.font = 'bold 14px "Courier New", monospace';
+      this.ctx.font = `bold 13.5px ${FONT_MONO}`;
       this.ctx.fillText(
         `${activeBoss.bossName} // INTEGRITY: ${activeBoss.hp}/${activeBoss.maxHp}`,
         this.canvas.width / 2,
         y - 8
       );
 
-      this.ctx.fillStyle = 'rgba(20, 0, 10, 0.88)';
-      this.ctx.fillRect(x, y, barWidth, barHeight);
+      this.drawCyberPanel(x, y, barWidth, barHeight, 4, 'rgba(20, 0, 10, 0.9)', '#ffffff', 1.5);
 
-      this.ctx.fillStyle = bossColor;
-      this.ctx.shadowColor = bossColor;
-      this.ctx.shadowBlur = 12;
-      this.ctx.fillRect(x, y, barWidth * ratio, barHeight);
-
-      this.ctx.shadowBlur = 0;
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 1.5;
-      this.ctx.strokeRect(x, y, barWidth, barHeight);
+      if (ratio > 0) {
+        this.ctx.save();
+        this.traceChamferRect(x + 1, y + 1, barWidth - 2, barHeight - 2, 3);
+        this.ctx.clip();
+        this.ctx.fillStyle = bossColor;
+        this.ctx.shadowColor = bossColor;
+        this.ctx.shadowBlur = 12;
+        this.ctx.fillRect(x, y, barWidth * ratio, barHeight);
+        this.ctx.restore();
+      }
     }
 
     this.ctx.restore();
@@ -4440,14 +4863,14 @@ export class Game {
     const cards = this.getUpgradeCardRects();
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 8, 4, 0.86)';
+    this.ctx.fillStyle = 'rgba(0, 8, 5, 0.88)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#00ff66';
     this.ctx.shadowColor = '#00ff66';
     this.ctx.shadowBlur = 16;
-    this.ctx.font = 'bold 28px "Courier New", monospace';
+    this.ctx.font = `bold 28px ${FONT_DISPLAY}`;
     this.ctx.fillText(
       `// ${i18n.t('TARJETAS DE MEJORA', 'UPGRADE CARDS')} :: ${i18n.t('NIVEL', 'LEVEL')} ${this.upgradeSystem.level}.0 //`,
       this.canvas.width / 2,
@@ -4456,7 +4879,7 @@ export class Game {
 
     this.ctx.shadowBlur = 0;
     this.ctx.fillStyle = '#00f0ff';
-    this.ctx.font = '15px "Courier New", monospace';
+    this.ctx.font = `15px ${FONT_DISPLAY}`;
     this.ctx.fillText(
       i18n.t(
         'Elige 1 de las 3 Tarjetas de Mejora con las teclas [1] [2] [3] o haciendo clic:',
@@ -4472,18 +4895,21 @@ export class Game {
       const isHovered = this.hoveredCardIndex === i;
 
       this.ctx.save();
-      this.ctx.fillStyle = isHovered ? 'rgba(0, 40, 28, 0.95)' : 'rgba(5, 15, 12, 0.92)';
-      this.ctx.strokeStyle = isHovered ? '#ffffff' : opt.color;
-      this.ctx.lineWidth = isHovered ? 2.5 : 1.5;
-      this.ctx.shadowColor = opt.color;
-      this.ctx.shadowBlur = isHovered ? 18 : 8;
+      this.drawCyberPanel(
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        14,
+        isHovered ? 'rgba(0, 42, 30, 0.96)' : 'rgba(5, 16, 14, 0.94)',
+        isHovered ? '#ffffff' : opt.color,
+        isHovered ? 2.5 : 1.8,
+        opt.color,
+        isHovered ? 18 : 9
+      );
 
-      this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-      this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-
-      // Recorte estricto dentro de la tarjeta de mejora
-      this.ctx.beginPath();
-      this.ctx.rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
+      // Recorte estricto dentro de la tarjeta de mejora biselada
+      this.traceChamferRect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4, 12);
       this.ctx.clip();
 
       const cardCategory = i18n.currentLang === 'EN' && opt.categoryEn ? opt.categoryEn : opt.category;
@@ -4494,23 +4920,23 @@ export class Game {
       this.ctx.shadowBlur = 0;
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = opt.color;
-      this.ctx.font = 'bold 12px "Courier New", monospace';
+      this.ctx.font = `bold 12px ${FONT_MONO}`;
       this.ctx.fillText(`[KEY ${i + 1}] // ${cardCategory}`, rect.x + 18, rect.y + 26);
 
       // Auto-fit para el nombre de la carta
       const nameMaxW = rect.width - 36;
-      let nameFont = 17;
-      this.ctx.font = `bold ${nameFont}px "Courier New", monospace`;
+      let nameFont = 18;
+      this.ctx.font = `bold ${nameFont}px ${FONT_DISPLAY}`;
       const nMetrics = this.ctx.measureText(cardName).width;
       if (nMetrics > nameMaxW) {
-        nameFont = Math.max(12, Math.floor(17 * (nameMaxW / nMetrics)));
-        this.ctx.font = `bold ${nameFont}px "Courier New", monospace`;
+        nameFont = Math.max(12.5, Math.floor(18 * (nameMaxW / nMetrics)));
+        this.ctx.font = `bold ${nameFont}px ${FONT_DISPLAY}`;
       }
       this.ctx.fillStyle = '#ffffff';
       this.ctx.fillText(cardName, rect.x + 18, rect.y + 54);
 
       this.ctx.fillStyle = '#00ff66';
-      this.ctx.font = '12px "Courier New", monospace';
+      this.ctx.font = `bold 12px ${FONT_MONO}`;
       this.ctx.fillText(
         opt.level === 0
           ? i18n.t('Estado: NUEVA TARJETA -> v1.0', 'Status: NEW CARD -> v1.0')
@@ -4523,7 +4949,7 @@ export class Game {
       );
 
       this.ctx.fillStyle = '#cbd5e1';
-      this.ctx.font = '13px "Courier New", monospace';
+      this.ctx.font = `13px ${FONT_DISPLAY}`;
       this.wrapText(cardDesc, rect.x + 18, rect.y + 104, rect.width - 36, 18, 2);
 
       // Estadísticas de mejora presentadas limpiamente sin caja tosca
@@ -4551,11 +4977,11 @@ export class Game {
         this.ctx.fillStyle = '#ffffff';
         let badgeFont = 12.5;
         const badgeMaxW = rect.width - 36;
-        this.ctx.font = `bold ${badgeFont}px "Courier New", monospace`;
+        this.ctx.font = `bold ${badgeFont}px ${FONT_MONO}`;
         const bMetrics = this.ctx.measureText(cardStat).width;
         if (bMetrics > badgeMaxW) {
           badgeFont = Math.max(9.5, Math.floor(12.5 * (badgeMaxW / bMetrics)));
-          this.ctx.font = `bold ${badgeFont}px "Courier New", monospace`;
+          this.ctx.font = `bold ${badgeFont}px ${FONT_MONO}`;
         }
         this.ctx.fillText(cardStat, rect.x + rect.width / 2, dividerY + 23);
 
@@ -4571,7 +4997,7 @@ export class Game {
 
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = isHovered ? '#ffffff' : opt.color;
-      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
       this.ctx.fillText(
         `> ${i18n.t('SELECCIONAR TARJETA', 'SELECT CARD')} [${i + 1}] <`,
         rect.x + rect.width / 2,
@@ -4636,23 +5062,28 @@ export class Game {
 
     const boxW = 880;
     const boxH = 580;
-    this.ctx.fillStyle = 'rgba(18, 2, 6, 0.96)';
-    this.ctx.strokeStyle = '#ff1e42';
-    this.ctx.lineWidth = 2.5;
-    this.ctx.shadowColor = '#ff1e42';
-    this.ctx.shadowBlur = 24;
-    this.ctx.fillRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
-    this.ctx.strokeRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
+    this.drawCyberPanel(
+      cx - boxW / 2,
+      cy - boxH / 2,
+      boxW,
+      boxH,
+      16,
+      'rgba(18, 2, 6, 0.96)',
+      '#ff1e42',
+      2.5,
+      '#ff1e42',
+      24
+    );
 
     this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#ff1e42';
-    this.ctx.font = 'bold 30px "Courier New", monospace';
+    this.ctx.font = `bold 30px ${FONT_DISPLAY}`;
     this.ctx.fillText('KERNEL PANIC // SYSTEM COMPROMISED', cx, cy - 235);
 
     // Resumen General
     this.ctx.fillStyle = '#00ff66';
-    this.ctx.font = '14px "Courier New", monospace';
+    this.ctx.font = `bold 14px ${FONT_MONO}`;
     this.ctx.fillText(
       `${i18n.t('Agente', 'Agent')}: ${this.player.profileName} (v${this.upgradeSystem.level}.0)  |  ${i18n.t('Tiempo', 'Time')}: ${this.formatTimeMMSS(this.elapsedTime)}  |  ${i18n.t('Bajas', 'Kills')}: ${this.killCount}  |  ${i18n.t('Cripto', 'Crypto')}: +${this.runCoinsCollected} 🪙`,
       cx,
@@ -4661,7 +5092,7 @@ export class Game {
 
     if (this.runDamageToToro > 0) {
       this.ctx.fillStyle = '#fbbf24';
-      this.ctx.font = 'bold 14px "Courier New", monospace';
+      this.ctx.font = `bold 14px ${FONT_MONO}`;
       this.ctx.fillText(
         `🐂 ${i18n.t('DAÑO AL JEFE FINAL (EL TORO)', 'DAMAGE TO FINAL BOSS (EL TORO)')}: ${this.runDamageToToro.toLocaleString('en-US')} DMG`,
         cx,
@@ -4678,20 +5109,15 @@ export class Game {
 
     // Panel Izquierdo: Rendimiento de Arsenal
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(10, 2, 6, 0.9)';
-    this.ctx.strokeStyle = '#f43f5e';
-    this.ctx.lineWidth = 1.5;
-    this.ctx.fillRect(leftX, panelY, subW, subH);
-    this.ctx.strokeRect(leftX, panelY, subW, subH);
+    this.drawCyberPanel(leftX, panelY, subW, subH, 10, 'rgba(10, 2, 6, 0.9)', '#f43f5e', 1.5);
 
     // Recorte estricto para el panel izquierdo
-    this.ctx.beginPath();
-    this.ctx.rect(leftX + 2, panelY + 2, subW - 4, subH - 4);
+    this.traceChamferRect(leftX + 2, panelY + 2, subW - 4, subH - 4, 8);
     this.ctx.clip();
 
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#fb7185';
-    this.ctx.font = 'bold 14px "Courier New", monospace';
+    this.ctx.font = `bold 14px ${FONT_DISPLAY}`;
     this.ctx.fillText(`⚔️ ${i18n.t('RENDIMIENTO DE ARSENAL (DAÑO)', 'ARSENAL PERFORMANCE (DAMAGE)')}`, leftX + 16, panelY + 28);
 
     const weaponDamages = Object.entries(this.combatSystem.weaponDamageStats)
@@ -4734,20 +5160,15 @@ export class Game {
 
     // Panel Derecho: Amenazas Purgadas
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(10, 2, 6, 0.9)';
-    this.ctx.strokeStyle = '#38bdf8';
-    this.ctx.lineWidth = 1.5;
-    this.ctx.fillRect(rightX, panelY, subW, subH);
-    this.ctx.strokeRect(rightX, panelY, subW, subH);
+    this.drawCyberPanel(rightX, panelY, subW, subH, 10, 'rgba(10, 2, 6, 0.9)', '#38bdf8', 1.5);
 
     // Recorte estricto para el panel derecho
-    this.ctx.beginPath();
-    this.ctx.rect(rightX + 2, panelY + 2, subW - 4, subH - 4);
+    this.traceChamferRect(rightX + 2, panelY + 2, subW - 4, subH - 4, 8);
     this.ctx.clip();
 
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#7dd3fc';
-    this.ctx.font = 'bold 14px "Courier New", monospace';
+    this.ctx.font = `bold 14px ${FONT_DISPLAY}`;
     this.ctx.fillText(`👾 ${i18n.t('REGISTRO DE AMENAZAS PURGADAS', 'PURGED THREATS LOG')}`, rightX + 16, panelY + 28);
 
     const enemyRows = [
