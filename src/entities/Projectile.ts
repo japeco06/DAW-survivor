@@ -43,26 +43,31 @@ export class Projectile extends Entity {
   }
 
   public override draw(ctx: CanvasRenderingContext2D): void {
+    const angle = Math.atan2(this.vy, this.vx);
     ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(angle);
+
+    // Estela de energía cian afilada
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.moveTo(this.size * 1.15, 0);
+    ctx.lineTo(-this.size * 0.55, -this.size * 0.42);
+    ctx.lineTo(-this.size * 1.35, 0);
+    ctx.lineTo(-this.size * 0.55, this.size * 0.42);
+    ctx.closePath();
+    ctx.fill();
+
+    // Núcleo de plasma blanco incandescente
     ctx.fillStyle = '#ffffff';
-    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.moveTo(this.size * 0.85, 0);
+    ctx.lineTo(-this.size * 0.35, -this.size * 0.2);
+    ctx.lineTo(-this.size * 0.65, 0);
+    ctx.lineTo(-this.size * 0.35, this.size * 0.2);
+    ctx.closePath();
+    ctx.fill();
 
-    // Dibujar pulso energético cian con núcleo blanco
-    ctx.fillRect(
-      this.x - this.size / 2,
-      this.y - this.size / 2,
-      this.size,
-      this.size
-    );
-
-    ctx.strokeStyle = this.color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(
-      this.x - this.size / 2 - 1,
-      this.y - this.size / 2 - 1,
-      this.size + 2,
-      this.size + 2
-    );
     ctx.restore();
   }
 }

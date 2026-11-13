@@ -27,6 +27,8 @@ export class Adware extends Entity {
   public knockbackResistance: number = 0; // 0 = retroceso normal, 1 = inmune
   public networkFreezeTimer: number = 0; // Congelación de Red (Fibra Óptica Lvl 10: -80% velocidad)
   protected hitFlashTimer: number = 0;
+  protected facingAngle: number = 0;
+  private readonly animSeed: number = Math.random() * 100;
 
   constructor(
     x: number,
@@ -59,6 +61,7 @@ export class Adware extends Entity {
     const distance = Math.hypot(dx, dy);
 
     if (distance > 0) {
+      this.facingAngle = Math.atan2(dy, dx);
       this.x += (dx / distance) * this.speed * slowFactor * dt;
       this.y += (dy / distance) * this.speed * slowFactor * dt;
     }
@@ -90,39 +93,60 @@ export class Adware extends Entity {
   public override draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
     const isFlashing = this.hitFlashTimer > 0;
-    const drawColor = isFlashing ? '#ffffff' : this.color;
+    const isFrozen = this.networkFreezeTimer > 0;
+    const drawColor = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : this.color;
     const half = this.size / 2;
+    const t = performance.now() * 0.014 + this.animSeed;
 
     ctx.translate(this.x, this.y);
-    ctx.fillStyle = drawColor;
-    ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 14 : 5;
+    ctx.rotate(this.facingAngle);
 
-    // Cuerpo angulado estilo malware / bug cibernético
-    const cut = half * 0.35;
+    if (isFlashing) {
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 12;
+    }
+
+    // Patas / pinzas cibernéticas animadas (3 pares)
+    ctx.strokeStyle = drawColor;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.moveTo(-half + cut, -half);
-    ctx.lineTo(half - cut, -half);
-    ctx.lineTo(half, -half + cut);
-    ctx.lineTo(half, half - cut);
-    ctx.lineTo(half - cut, half);
-    ctx.lineTo(-half + cut, half);
-    ctx.lineTo(-half, half - cut);
-    ctx.lineTo(-half, -half + cut);
+    for (let i = -1; i <= 1; i++) {
+      const legX = i * (half * 0.45);
+      const wiggle = Math.sin(t + i * 2.1) * 2.4;
+      ctx.moveTo(legX, -half * 0.55);
+      ctx.lineTo(legX - 3 + wiggle, -half - 4);
+      ctx.moveTo(legX, half * 0.55);
+      ctx.lineTo(legX - 3 - wiggle, half + 4);
+    }
+    ctx.stroke();
+
+    // Caparazón agresivo en punta (arácnido/virus digital)
+    ctx.fillStyle = drawColor;
+    ctx.beginPath();
+    ctx.moveTo(half + 4, 0);              // Punta frontal
+    ctx.lineTo(half * 0.25, -half * 0.85);
+    ctx.lineTo(-half * 0.85, -half * 0.65);
+    ctx.lineTo(-half * 0.45, 0);          // Muesca trasera
+    ctx.lineTo(-half * 0.85, half * 0.65);
+    ctx.lineTo(half * 0.25, half * 0.85);
     ctx.closePath();
     ctx.fill();
 
     if (!isFlashing) {
-      // Núcleo interno oscuro
-      ctx.fillStyle = '#1e0007';
-      ctx.fillRect(-half * 0.5, -half * 0.5, half, half);
+      // Visor oscuro interno
+      ctx.fillStyle = isFrozen ? '#082f49' : '#260009';
+      ctx.beginPath();
+      ctx.moveTo(half * 0.72, 0);
+      ctx.lineTo(-half * 0.1, -half * 0.46);
+      ctx.lineTo(-half * 0.42, 0);
+      ctx.lineTo(-half * 0.1, half * 0.46);
+      ctx.closePath();
+      ctx.fill();
 
-      // Ojo/Luz de sensor cibernético pulsante
-      const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.008 + this.x);
-      ctx.fillStyle = `rgba(255, 60, 90, ${0.7 + 0.3 * pulse})`;
-      ctx.shadowColor = '#ff2a55';
-      ctx.shadowBlur = 4;
-      ctx.fillRect(-half * 0.25, -half * 0.25, half * 0.5, half * 0.5);
+      // Dos ojos digitales brillantes orientados al objetivo
+      ctx.fillStyle = isFrozen ? '#bae6fd' : '#fef08a';
+      ctx.fillRect(half * 0.18, -half * 0.28, 3.2, 2.6);
+      ctx.fillRect(half * 0.18, half * 0.28 - 2.6, 3.2, 2.6);
     }
 
     ctx.restore();

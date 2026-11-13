@@ -222,7 +222,6 @@ export class TrojanOverlordBoss extends WaveBoss {
   public bossColor: string = '#f97316';
   private shootTimer: number = 0;
   private deployTimer: number = 0;
-  private facingAngle: number = 0;
   private activeEscorts: Adware[] = [];
 
   constructor(x: number, y: number, bossLevel: number = 1) {

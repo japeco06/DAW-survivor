@@ -71,7 +71,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.15';
+const GAME_VERSION = 'v1.1.16';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -145,9 +145,18 @@ export class Game {
     'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.';
   private damageVignetteAlpha: number = 0;
   private terminalLogs: string[] = [
-    '> KERNEL_ANTIVIRUS_DAEMON v0.5.0 initialized...',
-    '> El Borracho (🍺 + Dumbbells) & Water Gun READY.',
+    `> CYBER_SURVIVOR_KERNEL ${GAME_VERSION} online...`,
+    '> Antivirus Agents & Cyber Arsenal READY.',
   ];
+  private ambientNodes: { x: number; y: number; vx: number; vy: number; size: number; alpha: number }[] =
+    Array.from({ length: 28 }, (_, i) => ({
+      x: ((i * 271) % LOGICAL_WIDTH),
+      y: ((i * 193) % LOGICAL_HEIGHT),
+      vx: ((i % 5) - 2) * 8,
+      vy: ((i % 3) - 1) * 10 - 6,
+      size: 1.5 + (i % 3) * 0.8,
+      alpha: 0.14 + (i % 4) * 0.06,
+    }));
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -1758,7 +1767,7 @@ export class Game {
   }
 
   private render(): void {
-    this.ctx.fillStyle = '#000000';
+    this.ctx.fillStyle = '#010305';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const shake = this.sound.screenShakeEnabled
@@ -2334,15 +2343,15 @@ export class Game {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
     const py = cy - 290;
-    const y = py + 456;
-    const btnW = 140;
-    const btnH = 28;
+    const y = py + 424;
+    const btnW = 130;
+    const btnH = 26;
 
     return [
       {
         dir: 'PREV',
         label: '<< ANTERIOR',
-        x: cx - 170,
+        x: cx - 220,
         y,
         width: btnW,
         height: btnH,
@@ -2350,7 +2359,7 @@ export class Game {
       {
         dir: 'NEXT',
         label: 'SIGUIENTE >>',
-        x: cx + 30,
+        x: cx + 90,
         y,
         width: btnW,
         height: btnH,
@@ -2886,13 +2895,17 @@ export class Game {
 
         const previewX = rect.x + 32;
         const previewY = rect.y + 34;
-        this.ctx.fillStyle = profile.color;
-        this.ctx.shadowColor = profile.borderColor;
-        this.ctx.shadowBlur = 12;
-        this.ctx.fillRect(previewX - 13, previewY - 13, 26, 26);
-        this.ctx.strokeStyle = profile.borderColor;
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(previewX - 9, previewY - 9, 18, 18);
+        Player.drawCyberChassis(
+          this.ctx,
+          previewX,
+          previewY,
+          26,
+          profile.color,
+          profile.borderColor,
+          performance.now(),
+          0,
+          selected || hovered
+        );
 
         if (rect.id === 'MORCILLITA') {
           // Miniatura del cuadrado acompañante marrón junto al chasis rosa
@@ -3151,7 +3164,10 @@ export class Game {
         this.ctx.fillStyle = '#94a3b8';
         this.ctx.font = '15px "Courier New", monospace';
         this.ctx.fillText(
-          'Tu inventario está vacío. Ve a la pestaña [G] GACHA para Tirar del Cable.',
+          i18n.t(
+            'Tu inventario está vacío. Ve a la pestaña [G] GACHA para Tirar del Cable.',
+            'Your inventory is empty. Go to the [G] GACHA tab to Pull the Cable.'
+          ),
           cx,
           cy + 20
         );
@@ -3193,7 +3209,14 @@ export class Game {
           );
 
           this.ctx.fillStyle = '#a3e635';
-          this.ctx.font = '11px "Courier New", monospace';
+          let statFont = 11;
+          const maxStatW = slot.width - 20;
+          this.ctx.font = `${statFont}px "Courier New", monospace`;
+          const statMetrics = this.ctx.measureText(slot.hat.statsLabel).width;
+          if (statMetrics > maxStatW) {
+            statFont = Math.max(9, Math.floor(11 * (maxStatW / statMetrics)));
+            this.ctx.font = `${statFont}px "Courier New", monospace`;
+          }
           this.ctx.fillText(slot.hat.statsLabel, slot.x + 10, slot.y + 62);
           this.ctx.restore();
         }
@@ -3203,9 +3226,9 @@ export class Game {
         this.ctx.fillStyle = '#cbd5e1';
         this.ctx.font = 'bold 12px "Courier New", monospace';
         this.ctx.fillText(
-          `PÁGINA ${this.inventoryPage + 1}/${totalPages} (Haz clic en un sombrero para Equipar/Desequipar)`,
+          `${i18n.t('PÁG', 'PAGE')} ${this.inventoryPage + 1}/${totalPages}`,
           cx,
-          cy + 154
+          py + 441
         );
 
         for (const pageBtn of this.getInventoryPaginationRects()) {
@@ -3217,7 +3240,7 @@ export class Game {
 
           this.ctx.fillStyle = '#38bdf8';
           this.ctx.font = 'bold 12px "Courier New", monospace';
-          this.ctx.fillText(pageBtn.label, pageBtn.x + pageBtn.width / 2, pageBtn.y + 18);
+          this.ctx.fillText(pageBtn.label, pageBtn.x + pageBtn.width / 2, pageBtn.y + 17);
         }
       }
     }
@@ -3233,7 +3256,7 @@ export class Game {
       feedbackFont = Math.max(10, Math.floor(13 * (maxFeedbackW / fbMetrics)));
       this.ctx.font = `bold ${feedbackFont}px "Courier New", monospace`;
     }
-    this.ctx.fillText(this.menuFeedbackMessage, cx, py + 470);
+    this.ctx.fillText(this.menuFeedbackMessage, cx, py + 478);
     this.ctx.restore();
 
     const startBtn = this.getStartButtonRect();
@@ -3242,7 +3265,9 @@ export class Game {
     this.ctx.strokeStyle = this.hoveredStartBtn ? '#ffffff' : '#00ff66';
     this.ctx.lineWidth = this.hoveredStartBtn ? 2.5 : 2;
     this.ctx.shadowColor = '#00ff66';
-    this.ctx.shadowBlur = this.hoveredStartBtn ? 16 : 8;
+    this.ctx.shadowBlur = this.hoveredStartBtn
+      ? 16
+      : 8 + Math.sin(performance.now() * 0.006) * 6;
     this.ctx.fillRect(startBtn.x, startBtn.y, startBtn.width, startBtn.height);
     this.ctx.strokeRect(startBtn.x, startBtn.y, startBtn.width, startBtn.height);
     this.ctx.shadowBlur = 0;
@@ -4159,23 +4184,86 @@ export class Game {
   }
 
   private drawCyberGrid(): void {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
     const gridSize = 48;
+    const majorSize = gridSize * 4;
+    const tSec = performance.now() * 0.001;
+
     this.ctx.save();
-    this.ctx.strokeStyle = 'rgba(0, 255, 102, 0.06)';
+
+    // Fondo radial profundo (con margen extra por si hay screen shake)
+    const bgGrad = this.ctx.createRadialGradient(
+      w * 0.5,
+      h * 0.5,
+      60,
+      w * 0.5,
+      h * 0.5,
+      Math.max(w, h) * 0.72
+    );
+    bgGrad.addColorStop(0, '#041a14');
+    bgGrad.addColorStop(1, '#010305');
+    this.ctx.fillStyle = bgGrad;
+    this.ctx.fillRect(-24, -24, w + 48, h + 48);
+
+    // Rejilla secundaria verde
+    this.ctx.strokeStyle = 'rgba(0, 255, 102, 0.045)';
     this.ctx.lineWidth = 1;
-
-    for (let x = 0; x < this.canvas.width; x += gridSize) {
-      this.ctx.beginPath();
+    this.ctx.beginPath();
+    for (let x = 0; x <= w; x += gridSize) {
       this.ctx.moveTo(x, 0);
-      this.ctx.lineTo(x, this.canvas.height);
-      this.ctx.stroke();
+      this.ctx.lineTo(x, h);
     }
-
-    for (let y = 0; y < this.canvas.height; y += gridSize) {
-      this.ctx.beginPath();
+    for (let y = 0; y <= h; y += gridSize) {
       this.ctx.moveTo(0, y);
-      this.ctx.lineTo(this.canvas.width, y);
-      this.ctx.stroke();
+      this.ctx.lineTo(w, y);
+    }
+    this.ctx.stroke();
+
+    // Rejilla principal cian
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.11)';
+    this.ctx.beginPath();
+    for (let x = majorSize; x < w; x += majorSize) {
+      this.ctx.moveTo(x, 0);
+      this.ctx.lineTo(x, h);
+    }
+    for (let y = majorSize; y < h; y += majorSize) {
+      this.ctx.moveTo(0, y);
+      this.ctx.lineTo(w, y);
+    }
+    this.ctx.stroke();
+
+    // Nodos (+) en intersecciones principales
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+    this.ctx.beginPath();
+    for (let x = majorSize; x < w; x += majorSize) {
+      for (let y = majorSize; y < h; y += majorSize) {
+        this.ctx.moveTo(x - 4, y);
+        this.ctx.lineTo(x + 4, y);
+        this.ctx.moveTo(x, y - 4);
+        this.ctx.lineTo(x, y + 4);
+      }
+    }
+    this.ctx.stroke();
+
+    // Barrido de escaneo cibernético sutil
+    const scanY = ((tSec * 90) % (h + 160)) - 80;
+    const scanGrad = this.ctx.createLinearGradient(0, scanY - 40, 0, scanY + 40);
+    scanGrad.addColorStop(0, 'rgba(0, 255, 102, 0)');
+    scanGrad.addColorStop(0.5, 'rgba(0, 255, 150, 0.055)');
+    scanGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    this.ctx.fillStyle = scanGrad;
+    this.ctx.fillRect(-24, scanY - 40, w + 48, 80);
+
+    // Partículas ambientales flotantes del kernel
+    for (let i = 0; i < this.ambientNodes.length; i++) {
+      const node = this.ambientNodes[i];
+      const nx = (((node.x + node.vx * tSec) % w) + w) % w;
+      const ny = (((node.y + node.vy * tSec) % h) + h) % h;
+      const pulse = 0.7 + 0.3 * Math.sin(tSec * 2.2 + i);
+      this.ctx.fillStyle = i % 3 === 0 ? '#38bdf8' : '#00ff66';
+      this.ctx.globalAlpha = node.alpha * pulse;
+      this.ctx.fillRect(nx - node.size * 0.5, ny - node.size * 0.5, node.size, node.size);
     }
 
     this.ctx.restore();
