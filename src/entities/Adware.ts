@@ -91,25 +91,38 @@ export class Adware extends Entity {
     ctx.save();
     const isFlashing = this.hitFlashTimer > 0;
     const drawColor = isFlashing ? '#ffffff' : this.color;
+    const half = this.size / 2;
 
+    ctx.translate(this.x, this.y);
     ctx.fillStyle = drawColor;
     ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 14 : 0;
-    ctx.fillRect(
-      this.x - this.size / 2,
-      this.y - this.size / 2,
-      this.size,
-      this.size
-    );
+    ctx.shadowBlur = isFlashing ? 14 : 5;
+
+    // Cuerpo angulado estilo malware / bug cibernético
+    const cut = half * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(-half + cut, -half);
+    ctx.lineTo(half - cut, -half);
+    ctx.lineTo(half, -half + cut);
+    ctx.lineTo(half, half - cut);
+    ctx.lineTo(half - cut, half);
+    ctx.lineTo(-half + cut, half);
+    ctx.lineTo(-half, half - cut);
+    ctx.lineTo(-half, -half + cut);
+    ctx.closePath();
+    ctx.fill();
 
     if (!isFlashing) {
-      ctx.fillStyle = '#33000a';
-      ctx.fillRect(
-        this.x - this.size / 4,
-        this.y - this.size / 4,
-        this.size / 2,
-        this.size / 2
-      );
+      // Núcleo interno oscuro
+      ctx.fillStyle = '#1e0007';
+      ctx.fillRect(-half * 0.5, -half * 0.5, half, half);
+
+      // Ojo/Luz de sensor cibernético pulsante
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.008 + this.x);
+      ctx.fillStyle = `rgba(255, 60, 90, ${0.7 + 0.3 * pulse})`;
+      ctx.shadowColor = '#ff2a55';
+      ctx.shadowBlur = 4;
+      ctx.fillRect(-half * 0.25, -half * 0.25, half * 0.5, half * 0.5);
     }
 
     ctx.restore();

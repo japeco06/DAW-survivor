@@ -71,7 +71,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.14';
+const GAME_VERSION = 'v1.1.15';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -262,7 +262,16 @@ export class Game {
   }
 
   private setupEventListeners(): void {
+    const unlockAudio = () => {
+      this.sound.ensureContext();
+      if (this.gameState === 'MENU' && this.sound.getCurrentTrack() === 'NONE') {
+        this.sound.setTrack('MENU');
+      }
+    };
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+
     window.addEventListener('keydown', (e) => {
+      unlockAudio();
       const key = e.key.toLowerCase();
 
       if (key === 'm') {
@@ -2251,10 +2260,10 @@ export class Game {
     const cy = this.canvas.height / 2;
     const py = cy - 290;
     const btnW = 310;
-    const btnH = 44;
+    const btnH = 46;
     const gap = 20;
     const startX = cx - btnW - gap / 2;
-    const y = py + 180;
+    const y = py + 184;
 
     return [
       {
@@ -2939,15 +2948,15 @@ export class Game {
         this.ctx.restore();
       }
     } else if (this.activeMenuTab === 'GACHA') {
-      this.ctx.fillStyle = '#cbd5e1';
-      this.ctx.font = 'bold 12px "Courier New", monospace';
+      this.ctx.fillStyle = '#94a3b8';
+      this.ctx.font = 'bold 11.5px "Courier New", monospace';
       this.ctx.fillText(
         i18n.t(
-          'PROBABILIDADES: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%  (Repetido = +10 🪙)',
-          'ODDS: Common 40% | Rare 30% | Epic 20% | Legendary 9% | Mythic 1%  (Duplicate = +10 🪙)'
+          'PROBABILIDADES: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%  (Repetido: +10 🪙)',
+          'ODDS: Common 40% | Rare 30% | Epic 20% | Legendary 9% | Mythic 1%  (Duplicate: +10 🪙)'
         ),
         cx,
-        cy - 106
+        py + 162
       );
 
       for (const pullBtn of this.getGachaPullButtonRects()) {
@@ -2971,7 +2980,7 @@ export class Game {
         this.ctx.fillText(
           pullBtn.label,
           pullBtn.x + pullBtn.width / 2,
-          pullBtn.y + 26
+          pullBtn.y + 28
         );
       }
 
@@ -2981,7 +2990,7 @@ export class Game {
         const revealBoxW = 540;
         const revealBoxH = 175;
         const rx = cx - revealBoxW / 2;
-        const ry = cy - 34;
+        const ry = py + 252;
         const pulseScale = 1 + Math.sin(this.gachaRevealTimer * 14) * 0.025;
 
         this.ctx.save();
@@ -3029,7 +3038,7 @@ export class Game {
         const gapY = 10;
         const totalW = cols * cardW + (cols - 1) * gapX;
         const startX = cx - totalW / 2;
-        const startY = cy - 38;
+        const startY = py + 248;
 
         for (let i = 0; i < this.lastGachaResults.length; i++) {
           const entry = this.lastGachaResults[i];
@@ -3083,30 +3092,57 @@ export class Game {
           this.ctx.restore();
         }
       } else {
-        const revealBoxW = 540;
-        const revealBoxH = 165;
+        const revealBoxW = 560;
+        const revealBoxH = 175;
         const rx = cx - revealBoxW / 2;
-        const ry = cy - 28;
+        const ry = py + 252;
 
-        this.ctx.fillStyle = 'rgba(8, 20, 26, 0.9)';
-        this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+        this.ctx.fillStyle = 'rgba(4, 20, 24, 0.94)';
+        this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
         this.ctx.lineWidth = 1.5;
         this.ctx.fillRect(rx, ry, revealBoxW, revealBoxH);
         this.ctx.strokeRect(rx, ry, revealBoxW, revealBoxH);
 
-        this.ctx.fillStyle = '#94a3b8';
-        this.ctx.font = '14px "Courier New", monospace';
+        // Cabecera decorativa
+        this.ctx.fillStyle = '#38bdf8';
+        this.ctx.font = 'bold 15px "Courier New", monospace';
         this.ctx.fillText(
-          'Elige "Tirada x1" (20 🪙) o "Tirada x10" (200 🪙) para abrir cofres.',
+          i18n.t('📦 BÓVEDA DE EQUIPAMIENTO // COFRES CUÁNTICOS', '📦 QUANTUM CHEST VAULT // EQUIPMENT'),
           cx,
-          ry + 68
+          ry + 38
         );
-        this.ctx.fillStyle = '#fbbf24';
-        this.ctx.font = 'bold 13px "Courier New", monospace';
+
+        this.ctx.fillStyle = '#e2e8f0';
+        this.ctx.font = '13px "Courier New", monospace';
         this.ctx.fillText(
-          'Si te sale un sombrero repetido, recibirás automáticamente +10 Monedas.',
+          i18n.t(
+            'Elige "Tirada x1" (20 🪙) o "Tirada x10" (200 🪙) para abrir cofres.',
+            'Choose "Roll x1" (20 🪙) or "Roll x10" (200 🪙) to open chests.'
+          ),
           cx,
-          ry + 100
+          ry + 74
+        );
+
+        this.ctx.fillStyle = '#94a3b8';
+        this.ctx.font = '12px "Courier New", monospace';
+        this.ctx.fillText(
+          i18n.t(
+            'Desbloquea sombreros con bufos de combate para tu Agente Antivirus.',
+            'Unlock hats with combat buffs for your Antivirus Agent.'
+          ),
+          cx,
+          ry + 102
+        );
+
+        this.ctx.fillStyle = '#fbbf24';
+        this.ctx.font = 'bold 12.5px "Courier New", monospace';
+        this.ctx.fillText(
+          i18n.t(
+            '⚡ ¡Si obtienes un sombrero repetido, recibirás automáticamente +10 Monedas! ⚡',
+            '⚡ If you pull a duplicate hat, you will automatically receive +10 Coins! ⚡'
+          ),
+          cx,
+          ry + 138
         );
       }
     } else if (this.activeMenuTab === 'INVENTORY') {
@@ -4402,28 +4438,48 @@ export class Game {
       this.ctx.font = '13px "Courier New", monospace';
       this.wrapText(cardDesc, rect.x + 18, rect.y + 104, rect.width - 36, 18, 2);
 
-      // Subcaja con las estadísticas que mejoran o disminuyen de cada opción
-      const badgeY = rect.y + 148;
-      const badgeH = 44;
-      const badgeW = rect.width - 36;
-      this.ctx.fillStyle = 'rgba(0, 26, 18, 0.95)';
-      this.ctx.strokeStyle = opt.color;
-      this.ctx.lineWidth = 1.5;
-      this.ctx.fillRect(rect.x + 18, badgeY, badgeW, badgeH);
-      this.ctx.strokeRect(rect.x + 18, badgeY, badgeW, badgeH);
+      // Estadísticas de mejora presentadas limpiamente sin caja tosca
+      if (cardStat) {
+        this.ctx.save();
+        this.ctx.textAlign = 'center';
 
-      // Auto-fit en el badge de estadísticas
-      this.ctx.textAlign = 'center';
-      this.ctx.fillStyle = '#ffffff';
-      const badgeMaxW = badgeW - 16;
-      let badgeFont = 12;
-      this.ctx.font = `bold ${badgeFont}px "Courier New", monospace`;
-      const bMetrics = this.ctx.measureText(cardStat || '').width;
-      if (bMetrics > badgeMaxW) {
-        badgeFont = Math.max(9, Math.floor(12 * (badgeMaxW / bMetrics)));
+        const dividerY = rect.y + 148;
+        // Línea divisoria superior sutil con degradado neón
+        const grad = this.ctx.createLinearGradient(rect.x + 24, dividerY, rect.x + rect.width - 24, dividerY);
+        grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        grad.addColorStop(0.25, opt.color);
+        grad.addColorStop(0.75, opt.color);
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        this.ctx.strokeStyle = grad;
+        this.ctx.lineWidth = 1.2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(rect.x + 24, dividerY);
+        this.ctx.lineTo(rect.x + rect.width - 24, dividerY);
+        this.ctx.stroke();
+
+        // Tipografía de estadísticas luminosa y limpia, sin caja
+        this.ctx.shadowColor = opt.color;
+        this.ctx.shadowBlur = 8;
+        this.ctx.fillStyle = '#ffffff';
+        let badgeFont = 12.5;
+        const badgeMaxW = rect.width - 36;
         this.ctx.font = `bold ${badgeFont}px "Courier New", monospace`;
+        const bMetrics = this.ctx.measureText(cardStat).width;
+        if (bMetrics > badgeMaxW) {
+          badgeFont = Math.max(9.5, Math.floor(12.5 * (badgeMaxW / bMetrics)));
+          this.ctx.font = `bold ${badgeFont}px "Courier New", monospace`;
+        }
+        this.ctx.fillText(cardStat, rect.x + rect.width / 2, dividerY + 23);
+
+        // Línea divisoria inferior sutil
+        this.ctx.shadowBlur = 0;
+        this.ctx.beginPath();
+        this.ctx.moveTo(rect.x + 40, dividerY + 38);
+        this.ctx.lineTo(rect.x + rect.width - 40, dividerY + 38);
+        this.ctx.stroke();
+
+        this.ctx.restore();
       }
-      this.ctx.fillText(cardStat || '', rect.x + 18 + badgeW / 2, badgeY + 27);
 
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = isHovered ? '#ffffff' : opt.color;
