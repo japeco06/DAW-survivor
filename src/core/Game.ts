@@ -71,7 +71,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.17';
+const GAME_VERSION = 'v1.1.18';
 const FONT_DISPLAY = '"Segoe UI", "Trebuchet MS", system-ui, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, "Courier New", monospace';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
@@ -4842,12 +4842,12 @@ export class Game {
 
   private getUpgradeCardRects(): CardRect[] {
     const choices = this.upgradeSystem.currentChoices;
-    const cardWidth = 350;
-    const cardHeight = 270;
-    const gap = 32;
+    const cardWidth = 360;
+    const cardHeight = 308;
+    const gap = 30;
     const totalWidth = choices.length * cardWidth + (choices.length - 1) * gap;
     const startX = (this.canvas.width - totalWidth) / 2;
-    const y = this.canvas.height / 2 - cardHeight / 2 + 25;
+    const y = this.canvas.height / 2 - cardHeight / 2 + 28;
 
     return choices.map((_, index) => ({
       index,
@@ -4858,9 +4858,43 @@ export class Game {
     }));
   }
 
+  private parseUpgradeStatRows(
+    raw: string
+  ): { trend: 'UP' | 'DOWN' | 'INFO'; delta: string; label: string }[] {
+    if (!raw) return [];
+    return raw
+      .split('|')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        let trend: 'UP' | 'DOWN' | 'INFO' = 'INFO';
+        let clean = part;
+        if (clean.startsWith('▲')) {
+          trend = 'UP';
+          clean = clean.slice(1).trim();
+        } else if (clean.startsWith('▼')) {
+          trend = 'DOWN';
+          clean = clean.slice(1).trim();
+        }
+
+        const match = clean.match(/^([+-]?\d+(?:\.\d+)?%?(?:px)?(?:\s*HP)?)\s+(.+)$/i);
+        if (match) {
+          const delta = match[1].trim();
+          const label = match[2].trim();
+          if (trend === 'INFO') {
+            trend = delta.startsWith('-') ? 'DOWN' : 'UP';
+          }
+          return { trend, delta, label };
+        }
+
+        return { trend: 'INFO', delta: '', label: clean };
+      });
+  }
+
   private drawUpgradeModal(): void {
     const choices = this.upgradeSystem.currentChoices;
     const cards = this.getUpgradeCardRects();
+    const now = performance.now();
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(0, 8, 5, 0.88)';
@@ -4874,7 +4908,7 @@ export class Game {
     this.ctx.fillText(
       `// ${i18n.t('TARJETAS DE MEJORA', 'UPGRADE CARDS')} :: ${i18n.t('NIVEL', 'LEVEL')} ${this.upgradeSystem.level}.0 //`,
       this.canvas.width / 2,
-      this.canvas.height / 2 - 150
+      this.canvas.height / 2 - 186
     );
 
     this.ctx.shadowBlur = 0;
@@ -4886,7 +4920,7 @@ export class Game {
         'Choose 1 of 3 Upgrade Cards using keys [1] [2] [3] or clicking:'
       ),
       this.canvas.width / 2,
-      this.canvas.height / 2 - 118
+      this.canvas.height / 2 - 154
     );
 
     for (let i = 0; i < choices.length; i++) {
@@ -4901,105 +4935,267 @@ export class Game {
         rect.width,
         rect.height,
         14,
-        isHovered ? 'rgba(0, 42, 30, 0.96)' : 'rgba(5, 16, 14, 0.94)',
+        isHovered ? 'rgba(6, 36, 28, 0.98)' : 'rgba(4, 16, 15, 0.95)',
         isHovered ? '#ffffff' : opt.color,
-        isHovered ? 2.5 : 1.8,
+        isHovered ? 2.6 : 1.8,
         opt.color,
-        isHovered ? 18 : 9
+        isHovered ? 20 : 10
       );
 
       // Recorte estricto dentro de la tarjeta de mejora biselada
       this.traceChamferRect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4, 12);
       this.ctx.clip();
 
+      // Brillo ambiental superior sutil en el color de la tarjeta
+      const topGlow = this.ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + 115);
+      topGlow.addColorStop(0, isHovered ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 255, 136, 0.06)');
+      topGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      this.ctx.fillStyle = topGlow;
+      this.ctx.fillRect(rect.x, rect.y, rect.width, 115);
+
+      // Franja luminosa superior
+      this.ctx.fillStyle = opt.color;
+      this.ctx.fillRect(rect.x + 14, rect.y, rect.width - 28, 3);
+
       const cardCategory = i18n.currentLang === 'EN' && opt.categoryEn ? opt.categoryEn : opt.category;
       const cardName = i18n.currentLang === 'EN' && opt.nameEn ? opt.nameEn : opt.name;
       const cardDesc = i18n.currentLang === 'EN' && opt.descriptionEn ? opt.descriptionEn : opt.description;
       const cardStat = i18n.currentLang === 'EN' && opt.statBadgeEn ? opt.statBadgeEn : opt.statBadge;
 
+      // Cabecera: Etiqueta de categoría a la izquierda + rombos de nivel a la derecha
       this.ctx.shadowBlur = 0;
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = opt.color;
-      this.ctx.font = `bold 12px ${FONT_MONO}`;
-      this.ctx.fillText(`[KEY ${i + 1}] // ${cardCategory}`, rect.x + 18, rect.y + 26);
+      const pipCount = Math.max(1, opt.maxLevel);
+      const pipGap = 13;
+      const firstPipX = rect.x + rect.width - 20 - (pipCount - 1) * pipGap;
+      const catMaxW = Math.max(120, firstPipX - (rect.x + 28));
+      let catFont = 11.5;
+      const catText = `[${i + 1}] // ${cardCategory}`;
+      this.ctx.font = `bold ${catFont}px ${FONT_MONO}`;
+      const catMetrics = this.ctx.measureText(catText).width;
+      if (catMetrics > catMaxW) {
+        catFont = Math.max(9.5, Math.floor(11.5 * (catMaxW / catMetrics)));
+        this.ctx.font = `bold ${catFont}px ${FONT_MONO}`;
+      }
+      this.ctx.fillText(catText, rect.x + 18, rect.y + 27);
 
-      // Auto-fit para el nombre de la carta
+      // Rombos de progreso de nivel (el siguiente rango parpadea suavemente)
+      for (let p = 0; p < pipCount; p++) {
+        const px = firstPipX + p * pipGap;
+        const py = rect.y + 23;
+        const isOwned = p < opt.level;
+        const isNext = p === opt.level;
+        const r = isNext ? 4.8 : 3.8;
+
+        this.ctx.save();
+        this.ctx.translate(px, py);
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, -r);
+        this.ctx.lineTo(r, 0);
+        this.ctx.lineTo(0, r);
+        this.ctx.lineTo(-r, 0);
+        this.ctx.closePath();
+
+        if (isOwned) {
+          this.ctx.fillStyle = opt.color;
+          this.ctx.fill();
+        } else if (isNext) {
+          const pulse = 0.65 + 0.35 * Math.sin(now * 0.008 + i);
+          this.ctx.fillStyle = `rgba(0, 255, 136, ${pulse})`;
+          this.ctx.strokeStyle = '#ffffff';
+          this.ctx.lineWidth = 1;
+          this.ctx.fill();
+          this.ctx.stroke();
+        } else {
+          this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
+          this.ctx.lineWidth = 1.1;
+          this.ctx.stroke();
+        }
+        this.ctx.restore();
+      }
+
+      // Nombre de la tarjeta
       const nameMaxW = rect.width - 36;
-      let nameFont = 18;
+      let nameFont = 18.5;
       this.ctx.font = `bold ${nameFont}px ${FONT_DISPLAY}`;
       const nMetrics = this.ctx.measureText(cardName).width;
       if (nMetrics > nameMaxW) {
-        nameFont = Math.max(12.5, Math.floor(18 * (nameMaxW / nMetrics)));
+        nameFont = Math.max(12.5, Math.floor(18.5 * (nameMaxW / nMetrics)));
         this.ctx.font = `bold ${nameFont}px ${FONT_DISPLAY}`;
       }
       this.ctx.fillStyle = '#ffffff';
-      this.ctx.fillText(cardName, rect.x + 18, rect.y + 54);
+      this.ctx.fillText(cardName, rect.x + 18, rect.y + 56);
 
-      this.ctx.fillStyle = '#00ff66';
+      // Subtítulo limpio de transición de nivel (sin recuadros)
       this.ctx.font = `bold 12px ${FONT_MONO}`;
-      this.ctx.fillText(
-        opt.level === 0
-          ? i18n.t('Estado: NUEVA TARJETA -> v1.0', 'Status: NEW CARD -> v1.0')
-          : i18n.t(
-              `Nivel: v${opt.level}.0 -> v${opt.level + 1}.0 (Máx ${opt.maxLevel})`,
-              `Level: v${opt.level}.0 -> v${opt.level + 1}.0 (Max ${opt.maxLevel})`
-            ),
-        rect.x + 18,
-        rect.y + 78
-      );
+      if (opt.level === 0) {
+        this.ctx.fillStyle = '#00ff88';
+        this.ctx.fillText(
+          i18n.t('✦ NUEVO DESBLOQUEO  ▸  LVL 1', '✦ NEW UNLOCK  ▸  LVL 1'),
+          rect.x + 18,
+          rect.y + 80
+        );
+      } else {
+        const curLbl = `LVL ${opt.level}`;
+        this.ctx.fillStyle = '#94a3b8';
+        this.ctx.fillText(curLbl, rect.x + 18, rect.y + 80);
+        const curW = this.ctx.measureText(curLbl).width;
+
+        this.ctx.fillStyle = opt.color;
+        const arrowLbl = '  ▸  ';
+        this.ctx.fillText(arrowLbl, rect.x + 18 + curW, rect.y + 80);
+        const arrowW = this.ctx.measureText(arrowLbl).width;
+
+        this.ctx.fillStyle = '#00ff88';
+        const nextLbl = `LVL ${opt.level + 1}`;
+        this.ctx.fillText(nextLbl, rect.x + 18 + curW + arrowW, rect.y + 80);
+        const nextW = this.ctx.measureText(nextLbl).width;
+
+        this.ctx.fillStyle = '#64748b';
+        this.ctx.fillText(
+          `  (${i18n.t('Máx', 'Max')} ${opt.maxLevel})`,
+          rect.x + 18 + curW + arrowW + nextW,
+          rect.y + 80
+        );
+      }
 
       this.ctx.fillStyle = '#cbd5e1';
       this.ctx.font = `13px ${FONT_DISPLAY}`;
-      this.wrapText(cardDesc, rect.x + 18, rect.y + 104, rect.width - 36, 18, 2);
+      this.wrapText(cardDesc, rect.x + 18, rect.y + 106, rect.width - 36, 18, 2);
 
-      // Estadísticas de mejora presentadas limpiamente sin caja tosca
-      if (cardStat) {
+      // Zona visual de estadísticas que cambian (desglosadas en filas limpias, SIN cajas)
+      const statRows = this.parseUpgradeStatRows(cardStat);
+      if (statRows.length > 0) {
+        const statsHeaderY = rect.y + 150;
+        const headerLabel = i18n.t('MEJORAS DE ESTADO', 'STAT UPGRADES');
         this.ctx.save();
+        this.ctx.font = `bold 10px ${FONT_MONO}`;
+        const hdrW = this.ctx.measureText(headerLabel).width;
+        const gapHalf = hdrW / 2 + 10;
+
+        // Líneas divisorias con hueco central para la micro-etiqueta
+        const leftGrad = this.ctx.createLinearGradient(rect.x + 18, statsHeaderY, rect.x + rect.width / 2 - gapHalf, statsHeaderY);
+        leftGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        leftGrad.addColorStop(1, opt.color);
+        this.ctx.strokeStyle = leftGrad;
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.moveTo(rect.x + 18, statsHeaderY);
+        this.ctx.lineTo(rect.x + rect.width / 2 - gapHalf, statsHeaderY);
+        this.ctx.stroke();
+
+        const rightGrad = this.ctx.createLinearGradient(rect.x + rect.width / 2 + gapHalf, statsHeaderY, rect.x + rect.width - 18, statsHeaderY);
+        rightGrad.addColorStop(0, opt.color);
+        rightGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        this.ctx.strokeStyle = rightGrad;
+        this.ctx.beginPath();
+        this.ctx.moveTo(rect.x + rect.width / 2 + gapHalf, statsHeaderY);
+        this.ctx.lineTo(rect.x + rect.width - 18, statsHeaderY);
+        this.ctx.stroke();
+
         this.ctx.textAlign = 'center';
+        this.ctx.fillStyle = opt.color;
+        this.ctx.fillText(headerLabel, rect.x + rect.width / 2, statsHeaderY + 3);
 
-        const dividerY = rect.y + 148;
-        // Línea divisoria superior sutil con degradado neón
-        const grad = this.ctx.createLinearGradient(rect.x + 24, dividerY, rect.x + rect.width - 24, dividerY);
-        grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        grad.addColorStop(0.25, opt.color);
-        grad.addColorStop(0.75, opt.color);
-        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        this.ctx.strokeStyle = grad;
-        this.ctx.lineWidth = 1.2;
-        this.ctx.beginPath();
-        this.ctx.moveTo(rect.x + 24, dividerY);
-        this.ctx.lineTo(rect.x + rect.width - 24, dividerY);
-        this.ctx.stroke();
+        // Resplandor abierto sin borde para destacar los cambios numéricos
+        const openGlow = this.ctx.createLinearGradient(rect.x + 16, 0, rect.x + rect.width - 16, 0);
+        openGlow.addColorStop(0, isHovered ? 'rgba(0, 255, 136, 0.09)' : 'rgba(0, 255, 136, 0.04)');
+        openGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        this.ctx.fillStyle = openGlow;
+        this.ctx.fillRect(rect.x + 16, statsHeaderY + 14, rect.width - 32, 86);
 
-        // Tipografía de estadísticas luminosa y limpia, sin caja
-        this.ctx.shadowColor = opt.color;
-        this.ctx.shadowBlur = 8;
-        this.ctx.fillStyle = '#ffffff';
-        let badgeFont = 12.5;
-        const badgeMaxW = rect.width - 36;
-        this.ctx.font = `bold ${badgeFont}px ${FONT_MONO}`;
-        const bMetrics = this.ctx.measureText(cardStat).width;
-        if (bMetrics > badgeMaxW) {
-          badgeFont = Math.max(9.5, Math.floor(12.5 * (badgeMaxW / bMetrics)));
-          this.ctx.font = `bold ${badgeFont}px ${FONT_MONO}`;
+        // Calcular ancho máximo de cifras para alinear limpiamente todas las columnas
+        this.ctx.font = `bold 15px ${FONT_MONO}`;
+        let maxDeltaW = 0;
+        for (const r of statRows) {
+          if (r.delta) {
+            maxDeltaW = Math.max(maxDeltaW, this.ctx.measureText(r.delta).width);
+          }
         }
-        this.ctx.fillText(cardStat, rect.x + rect.width / 2, dividerY + 23);
 
-        // Línea divisoria inferior sutil
-        this.ctx.shadowBlur = 0;
-        this.ctx.beginPath();
-        this.ctx.moveTo(rect.x + 40, dividerY + 38);
-        this.ctx.lineTo(rect.x + rect.width - 40, dividerY + 38);
-        this.ctx.stroke();
+        const rowAnchorX = rect.x + 30;
+        const deltaX = rowAnchorX + 18;
+        const alignedLabelX = maxDeltaW > 0 ? deltaX + maxDeltaW + 12 : deltaX;
+        const midStatY = rect.y + 211;
+        const rowStep = statRows.length >= 3 ? 25 : 29;
+        const firstRowY = midStatY - ((statRows.length - 1) * rowStep) / 2;
+
+        for (let rIdx = 0; rIdx < statRows.length; rIdx++) {
+          const row = statRows[rIdx];
+          const ry = firstRowY + rIdx * rowStep;
+          const accent =
+            row.trend === 'UP'
+              ? '#00ff88'
+              : row.trend === 'DOWN'
+              ? '#38bdf8'
+              : '#fbbf24';
+
+          // Símbolo geométrico vectorial limpio (▲ / ▼ / ◆)
+          this.ctx.fillStyle = accent;
+          this.ctx.shadowColor = accent;
+          this.ctx.shadowBlur = isHovered ? 10 : 5;
+          this.ctx.beginPath();
+          if (row.trend === 'UP') {
+            this.ctx.moveTo(rowAnchorX, ry - 4.5);
+            this.ctx.lineTo(rowAnchorX + 5, ry + 4.5);
+            this.ctx.lineTo(rowAnchorX - 5, ry + 4.5);
+          } else if (row.trend === 'DOWN') {
+            this.ctx.moveTo(rowAnchorX, ry + 4.5);
+            this.ctx.lineTo(rowAnchorX + 5, ry - 4.5);
+            this.ctx.lineTo(rowAnchorX - 5, ry - 4.5);
+          } else {
+            this.ctx.moveTo(rowAnchorX, ry - 5);
+            this.ctx.lineTo(rowAnchorX + 5, ry);
+            this.ctx.lineTo(rowAnchorX, ry + 5);
+            this.ctx.lineTo(rowAnchorX - 5, ry);
+          }
+          this.ctx.closePath();
+          this.ctx.fill();
+
+          this.ctx.textAlign = 'left';
+          if (row.delta) {
+            this.ctx.font = `bold 15px ${FONT_MONO}`;
+            this.ctx.fillStyle = accent;
+            this.ctx.fillText(row.delta, deltaX, ry + 4.5);
+          }
+
+          // Nombre del atributo con auto-fit seguro
+          this.ctx.shadowBlur = 0;
+          const lblStartX = row.delta ? alignedLabelX : deltaX;
+          const lblMaxW = rect.x + rect.width - 20 - lblStartX;
+          let lblFont = 13.5;
+          this.ctx.font = `bold ${lblFont}px ${FONT_DISPLAY}`;
+          const lblW = this.ctx.measureText(row.label).width;
+          if (lblW > lblMaxW) {
+            lblFont = Math.max(10.5, Math.floor(13.5 * (lblMaxW / lblW)));
+            this.ctx.font = `bold ${lblFont}px ${FONT_DISPLAY}`;
+          }
+          this.ctx.fillStyle = '#f8fafc';
+          this.ctx.fillText(row.label, lblStartX, ry + 4.5);
+        }
 
         this.ctx.restore();
       }
 
+      // Pie de tarjeta limpio
+      const footY = rect.y + rect.height - 42;
+      const footGrad = this.ctx.createLinearGradient(rect.x + 28, footY, rect.x + rect.width - 28, footY);
+      footGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      footGrad.addColorStop(0.5, isHovered ? '#ffffff' : opt.color);
+      footGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      this.ctx.strokeStyle = footGrad;
+      this.ctx.lineWidth = 1;
+      this.ctx.beginPath();
+      this.ctx.moveTo(rect.x + 28, footY);
+      this.ctx.lineTo(rect.x + rect.width - 28, footY);
+      this.ctx.stroke();
+
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = isHovered ? '#ffffff' : opt.color;
-      this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
+      this.ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
       this.ctx.fillText(
-        `> ${i18n.t('SELECCIONAR TARJETA', 'SELECT CARD')} [${i + 1}] <`,
+        `▸ ${i18n.t('SELECCIONAR TARJETA', 'SELECT CARD')} [${i + 1}]`,
         rect.x + rect.width / 2,
         rect.y + rect.height - 18
       );
