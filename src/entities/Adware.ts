@@ -28,7 +28,7 @@ export class Adware extends Entity {
   public networkFreezeTimer: number = 0; // Congelación de Red (Fibra Óptica Lvl 10: -80% velocidad)
   protected hitFlashTimer: number = 0;
   protected facingAngle: number = 0;
-  private readonly animSeed: number = Math.random() * 100;
+  protected readonly animSeed: number = Math.random() * 100;
 
   constructor(
     x: number,
@@ -97,6 +97,11 @@ export class Adware extends Entity {
     const drawColor = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : this.color;
     const half = this.size / 2;
     const t = performance.now() * 0.014 + this.animSeed;
+
+    ctx.fillStyle = 'rgba(2, 6, 14, 0.42)';
+    ctx.beginPath();
+    ctx.ellipse(this.x, this.y + half * 0.65, half * 0.8, half * 0.34, 0, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.translate(this.x, this.y);
     ctx.rotate(this.facingAngle);

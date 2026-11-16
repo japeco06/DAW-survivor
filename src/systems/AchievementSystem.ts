@@ -464,45 +464,60 @@ export class AchievementSystem {
 
       ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
 
-      // Fondo cibernético
-      ctx.fillStyle = 'rgba(4, 18, 12, 0.95)';
+      // Fondo hardware táctico slate
+      ctx.fillStyle = 'rgba(11, 19, 34, 0.96)';
       ctx.strokeStyle = '#fbbf24';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.8;
       ctx.shadowColor = '#fbbf24';
-      ctx.shadowBlur = 14;
+      ctx.shadowBlur = 12;
 
       ctx.fillRect(toastX, currentY, toastW, toastH);
       ctx.strokeRect(toastX, currentY, toastW, toastH);
-
-      // Icono
       ctx.shadowBlur = 0;
-      ctx.font = '28px sans-serif';
-      ctx.textAlign = 'left';
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(toastX, currentY, 4, toastH);
+
+      // Insignia vectorial de hito
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.16)';
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(toastX + 32, currentY + toastH / 2 - 14);
+      ctx.lineTo(toastX + 46, currentY + toastH / 2);
+      ctx.lineTo(toastX + 32, currentY + toastH / 2 + 14);
+      ctx.lineTo(toastX + 18, currentY + toastH / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fef08a';
+      ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(toast.icon, toastX + 16, currentY + toastH / 2);
+      ctx.fillText('★', toastX + 32, currentY + toastH / 2 + 1);
 
       // Texto de Hito bilingüe
+      ctx.textAlign = 'left';
       ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 13px "Courier New", monospace';
+      ctx.font = 'bold 11.5px "JetBrains Mono", Consolas, monospace';
       ctx.fillText(
-        i18n.t('¡HITO DEL KERNEL DESBLOQUEADO!', 'KERNEL MILESTONE UNLOCKED!'),
-        toastX + 60,
+        i18n.t('HITO DESBLOQUEADO // KERNEL', 'MILESTONE UNLOCKED // KERNEL'),
+        toastX + 58,
         currentY + 22
       );
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 15px "Courier New", monospace';
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(
         i18n.currentLang === 'EN' ? toast.titleEn : toast.title,
-        toastX + 60,
+        toastX + 58,
         currentY + 44
       );
 
       // Recompensa en monedas a la derecha
       ctx.textAlign = 'right';
-      ctx.fillStyle = '#00ff66';
-      ctx.font = 'bold 15px "Courier New", monospace';
-      ctx.fillText(`+${toast.rewardCoins} 🪙`, toastX + toastW - 16, currentY + toastH / 2);
+      ctx.fillStyle = '#10b981';
+      ctx.font = 'bold 14px "JetBrains Mono", Consolas, monospace';
+      ctx.fillText(`+${toast.rewardCoins} CR`, toastX + toastW - 16, currentY + toastH / 2);
 
       currentY += toastH + 12;
     }

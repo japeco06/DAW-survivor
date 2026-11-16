@@ -70,13 +70,34 @@ export class ArmoredWorm extends Adware {
     const isFlashing = this.hitFlashTimer > 0;
     const drawColor = isFlashing ? '#ffffff' : this.color;
     const half = this.size / 2;
+    const t = performance.now() * 0.008;
+
+    // Sombra de contacto
+    ctx.fillStyle = 'rgba(2, 6, 14, 0.5)';
+    ctx.beginPath();
+    ctx.ellipse(this.x, this.y + half * 0.72, half * 0.95, half * 0.38, 0, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.translate(this.x, this.y);
     ctx.rotate(this.facingAngle);
 
+    // Patas / estabilizadores blindados
+    ctx.strokeStyle = isFlashing ? '#ffffff' : '#2dd4bf';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    for (let i = -1; i <= 1; i += 2) {
+      ctx.moveTo(i * half * 0.32, -half * 0.68);
+      ctx.lineTo(i * half * 0.44, -half - 4);
+      ctx.moveTo(i * half * 0.32, half * 0.68);
+      ctx.lineTo(i * half * 0.44, half + 4);
+    }
+    ctx.stroke();
+
     ctx.fillStyle = drawColor;
+    ctx.strokeStyle = isFlashing ? '#ffffff' : '#042f2e';
+    ctx.lineWidth = 1.8;
     ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 16 : 0;
+    ctx.shadowBlur = isFlashing ? 16 : 6;
 
     const cut = half * 0.38;
     ctx.beginPath();
@@ -90,28 +111,45 @@ export class ArmoredWorm extends Adware {
     ctx.lineTo(-half, -half + cut);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
 
-    // Punto débil trasero/lateral visible
+    // Carcasa superior oscura + núcleo débil trasero pulsante
+    if (!isFlashing) {
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#062c2b';
+      ctx.fillRect(-half * 0.25, -half * 0.52, half * 0.8, this.size * 0.52);
+
+      // Ojos tácticos frontales
+      ctx.fillStyle = '#99f6e4';
+      ctx.fillRect(half * 0.25, -half * 0.32, 4, 3);
+      ctx.fillRect(half * 0.25, half * 0.32 - 3, 4, 3);
+    }
+
+    // Punto débil trasero expuesto (reactor térmico carmesí)
+    const weakPulse = 4.8 + Math.sin(t) * 1.1;
     ctx.fillStyle = isFlashing ? '#ffffff' : '#f43f5e';
+    ctx.shadowColor = '#f43f5e';
+    ctx.shadowBlur = 8;
     ctx.beginPath();
-    ctx.arc(-half * 0.45, 0, 5, 0, Math.PI * 2);
+    ctx.arc(-half * 0.48, 0, weakPulse, 0, Math.PI * 2);
     ctx.fill();
+    ctx.shadowBlur = 0;
 
     // Escudo direccional frontal
     const shieldFlashing = this.shieldBlockFlashTimer > 0;
     const shieldRadius = half + 8;
     ctx.strokeStyle = shieldFlashing ? '#ffffff' : '#38bdf8';
     ctx.shadowColor = '#00f0ff';
-    ctx.shadowBlur = shieldFlashing ? 18 : 0;
+    ctx.shadowBlur = shieldFlashing ? 18 : 6;
     ctx.lineWidth = shieldFlashing ? 7 : 5;
     ctx.beginPath();
     ctx.arc(0, 0, shieldRadius, -this.shieldHalfArc, this.shieldHalfArc);
     ctx.stroke();
 
     ctx.strokeStyle = '#e0f2fe';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.arc(0, 0, shieldRadius + 3, -this.shieldHalfArc * 0.85, this.shieldHalfArc * 0.85);
+    ctx.arc(0, 0, shieldRadius + 3.5, -this.shieldHalfArc * 0.85, this.shieldHalfArc * 0.85);
     ctx.stroke();
 
     ctx.restore();

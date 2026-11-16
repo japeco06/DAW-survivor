@@ -29,6 +29,7 @@ import {
   LeaderboardEntry,
 } from '../systems/MetaSystem';
 import { HatItem, HATS_DATABASE, RARITY_CONFIG } from '../systems/HatSystem';
+import { HatRenderer } from '../utils/HatRenderer';
 import { i18n } from '../utils/i18n';
 import { auth, db, googleProvider, logAnalyticsEvent } from '../firebase';
 import {
@@ -71,9 +72,9 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.1.18';
-const FONT_DISPLAY = '"Segoe UI", "Trebuchet MS", system-ui, sans-serif';
-const FONT_MONO = '"JetBrains Mono", Consolas, "Courier New", monospace';
+const GAME_VERSION = 'v1.2.0';
+const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
+const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -1777,7 +1778,7 @@ export class Game {
   }
 
   private render(): void {
-    this.ctx.fillStyle = '#010305';
+    this.ctx.fillStyle = '#070c16';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const shake = this.sound.screenShakeEnabled
@@ -1924,29 +1925,37 @@ export class Game {
     const cy = this.canvas.height / 2;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 6, 4, 0.82)';
+    this.ctx.fillStyle = 'rgba(5, 9, 18, 0.84)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const boxW = 500;
     const boxH = 320;
-    this.ctx.fillStyle = 'rgba(4, 18, 12, 0.96)';
-    this.ctx.strokeStyle = '#00ff66';
-    this.ctx.lineWidth = 2;
-    this.ctx.shadowColor = '#00ff66';
-    this.ctx.shadowBlur = 18;
-    this.ctx.fillRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
-    this.ctx.strokeRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
+    this.drawCyberPanel(
+      cx - boxW / 2,
+      cy - boxH / 2,
+      boxW,
+      boxH,
+      14,
+      'rgba(11, 19, 34, 0.97)',
+      '#38bdf8',
+      2,
+      '#38bdf8',
+      18
+    );
+
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.fillRect(cx - 120, cy - boxH / 2 + 2, 240, 2.5);
 
     this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#00ff66';
-    this.ctx.font = 'bold 28px "Courier New", monospace';
-    this.ctx.fillText(`// ${i18n.t('SISTEMA EN PAUSA', 'SYSTEM PAUSED')} //`, cx, cy - 95);
+    this.ctx.fillStyle = '#f8fafc';
+    this.ctx.font = `bold 26px ${FONT_DISPLAY}`;
+    this.ctx.fillText(i18n.t('SISTEMA EN PAUSA', 'SYSTEM PAUSED'), cx, cy - 94);
 
-    this.ctx.fillStyle = '#00f0ff';
-    this.ctx.font = '13px "Courier New", monospace';
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.font = `13px ${FONT_MONO}`;
     this.ctx.fillText(
-      i18n.t('Simulación y temporizadores detenidos.', 'Simulation and run timers paused.'),
+      i18n.t('// Simulación y temporizadores en espera', '// Simulation & timers suspended'),
       cx,
       cy - 64
     );
@@ -1955,23 +1964,23 @@ export class Game {
       const hovered = this.hoveredPauseAction === btn.action;
       const isExit = btn.action === 'EXIT_TO_MENU';
       const isSettings = btn.action === 'SETTINGS';
-      const baseColor = isExit ? '#ff1e42' : isSettings ? '#38bdf8' : '#00ff66';
+      const baseColor = isExit ? '#f43f5e' : isSettings ? '#38bdf8' : '#10b981';
 
-      this.ctx.fillStyle = hovered
-        ? isExit
-          ? 'rgba(60, 10, 20, 0.95)'
-          : isSettings
-          ? 'rgba(10, 35, 60, 0.95)'
-          : 'rgba(0, 55, 32, 0.95)'
-        : 'rgba(8, 22, 16, 0.92)';
-      this.ctx.strokeStyle = hovered ? '#ffffff' : baseColor;
-      this.ctx.lineWidth = hovered ? 2.5 : 1.5;
-      this.ctx.fillRect(btn.x, btn.y, btn.width, btn.height);
-      this.ctx.strokeRect(btn.x, btn.y, btn.width, btn.height);
-
-      this.ctx.fillStyle = hovered ? '#ffffff' : baseColor;
-      this.ctx.font = 'bold 15px "Courier New", monospace';
-      this.ctx.fillText(btn.label, cx, btn.y + 28);
+      this.drawClippedButton(
+        btn,
+        hovered
+          ? isExit
+            ? 'rgba(76, 12, 28, 0.96)'
+            : isSettings
+            ? 'rgba(14, 52, 82, 0.96)'
+            : 'rgba(6, 62, 42, 0.96)'
+          : 'rgba(15, 25, 44, 0.94)',
+        hovered ? '#ffffff' : baseColor,
+        hovered ? 2.2 : 1.5,
+        hovered ? '#ffffff' : baseColor,
+        14,
+        btn.label
+      );
     }
 
     if (this.showSettingsOverlay) {
@@ -1984,8 +1993,8 @@ export class Game {
   private drawVersionBadge(): void {
     this.ctx.save();
     this.ctx.textAlign = 'right';
-    this.ctx.fillStyle = 'rgba(0, 255, 102, 0.78)';
-    this.ctx.shadowColor = '#00ff66';
+    this.ctx.fillStyle = 'rgba(125, 211, 252, 0.78)';
+    this.ctx.shadowColor = '#0284c7';
     this.ctx.shadowBlur = 6;
     this.ctx.font = `bold 12px ${FONT_MONO}`;
     this.ctx.fillText(GAME_VERSION, this.canvas.width - 18, this.canvas.height - 14);
@@ -2170,17 +2179,12 @@ export class Game {
     const w = this.canvas.width;
     const h = this.canvas.height;
     const arm = 26;
-    const pad = 8;
+    const pad = 10;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 255, 102, 0.014)';
-    for (let y = 0; y < h; y += 4) {
-      this.ctx.fillRect(0, y, w, 1);
-    }
-
-    // Esquinas tácticas estilo visor cibernético (sin marco cuadrado completo)
-    this.ctx.strokeStyle = 'rgba(0, 255, 102, 0.34)';
-    this.ctx.lineWidth = 2;
+    // Esquinas tácticas de telemetría (sin franjas verdes CRT)
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.34)';
+    this.ctx.lineWidth = 1.8;
     this.ctx.beginPath();
     // Arriba-izq
     this.ctx.moveTo(pad, pad + arm);
@@ -2209,21 +2213,21 @@ export class Game {
     const boxX = 16;
     const boxH = 44;
     const boxY = this.canvas.height - boxH - 14;
-    const boxW = 430;
+    const boxW = 440;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(2, 12, 8, 0.45)';
+    this.ctx.fillStyle = 'rgba(11, 19, 34, 0.72)';
     this.ctx.fillRect(boxX, boxY, boxW, boxH);
 
-    // Barra vertical neón a la izquierda
-    this.ctx.fillStyle = 'rgba(0, 255, 102, 0.72)';
+    // Barra vertical cyan hardware
+    this.ctx.fillStyle = 'rgba(56, 189, 248, 0.85)';
     this.ctx.fillRect(boxX, boxY, 3, boxH);
 
     this.ctx.font = `11.5px ${FONT_MONO}`;
-    const maxLineW = boxW - 20;
+    const maxLineW = boxW - 22;
     for (let i = 0; i < recent.length; i++) {
       const isLatest = i === recent.length - 1;
-      this.ctx.fillStyle = isLatest ? 'rgba(0, 255, 136, 0.9)' : 'rgba(148, 163, 184, 0.65)';
+      this.ctx.fillStyle = isLatest ? '#e0f2fe' : 'rgba(148, 163, 184, 0.7)';
       let line = recent[i];
       if (this.ctx.measureText(line).width > maxLineW) {
         while (line.length > 8 && this.ctx.measureText(line + '…').width > maxLineW) {
@@ -2231,9 +2235,36 @@ export class Game {
         }
         line += '…';
       }
-      this.ctx.fillText(line, boxX + 11, boxY + 17 + i * 17);
+      this.ctx.fillText(line, boxX + 12, boxY + 17 + i * 17);
     }
     this.ctx.restore();
+  }
+
+  private getMenuLayout(): {
+    cx: number;
+    cy: number;
+    panelW: number;
+    panelH: number;
+    px: number;
+    py: number;
+    leftCx: number;
+    bayX: number;
+    bayY: number;
+    bayW: number;
+    bayH: number;
+  } {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const panelW = 1140;
+    const panelH = 626;
+    const px = cx - panelW / 2;
+    const py = cy - panelH / 2 + 12;
+    const leftCx = px + 408;
+    const bayX = px + 806;
+    const bayY = py + 104;
+    const bayW = 308;
+    const bayH = 496;
+    return { cx, cy, panelW, panelH, px, py, leftCx, bayX, bayY, bayW, bayH };
   }
 
   private getMenuTabRects(): {
@@ -2244,14 +2275,12 @@ export class Game {
     width: number;
     height: number;
   }[] {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 290;
-    const tabW = 230;
-    const tabH = 36;
+    const { py, leftCx } = this.getMenuLayout();
+    const tabW = 242;
+    const tabH = 38;
     const gap = 16;
     const totalW = tabW * 3 + gap * 2;
-    const startX = cx - totalW / 2;
+    const startX = leftCx - totalW / 2;
     const y = py + 104;
 
     return [
@@ -2265,7 +2294,7 @@ export class Game {
       },
       {
         tab: 'GACHA',
-        label: `[G] ${i18n.t('GACHA // COFRES', 'GACHA // CHESTS')}`,
+        label: `[G] ${i18n.t('BÓVEDA GACHA', 'GACHA VAULT')}`,
         x: startX + tabW + gap,
         y,
         width: tabW,
@@ -2283,15 +2312,13 @@ export class Game {
   }
 
   private getMenuCharacterRects(): MenuCharacterRect[] {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 290;
-    const cardW = 380;
-    const cardH = 138;
-    const gapX = 22;
+    const { py, leftCx } = this.getMenuLayout();
+    const cardW = 370;
+    const cardH = 148;
+    const gapX = 18;
     const gapY = 14;
-    const startX = cx - cardW - gapX / 2;
-    const startY = py + 154;
+    const startX = leftCx - cardW - gapX / 2;
+    const startY = py + 158;
 
     return this.metaSystem.characterOrder.map((id, idx) => {
       const col = idx % 2;
@@ -2301,7 +2328,7 @@ export class Game {
         this.metaSystem.characterOrder.length % 2 === 1;
       return {
         id,
-        x: isLastSingleRowCard ? cx - cardW / 2 : startX + col * (cardW + gapX),
+        x: isLastSingleRowCard ? leftCx - cardW / 2 : startX + col * (cardW + gapX),
         y: startY + row * (cardH + gapY),
         width: cardW,
         height: cardH,
@@ -2318,20 +2345,18 @@ export class Game {
     width: number;
     height: number;
   }[] {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 290;
-    const btnW = 310;
+    const { py, leftCx } = this.getMenuLayout();
+    const btnW = 328;
     const btnH = 46;
     const gap = 20;
-    const startX = cx - btnW - gap / 2;
-    const y = py + 184;
+    const startX = leftCx - btnW - gap / 2;
+    const y = py + 188;
 
     return [
       {
         count: 1,
         cost: GACHA_PULL_SINGLE_COST,
-        label: `🔌 ${i18n.t('TIRADA x1', 'ROLL x1')} (${GACHA_PULL_SINGLE_COST} 🪙)`,
+        label: `[1x] ${i18n.t('COMPILAR COFRE', 'OPEN CHEST')} (${GACHA_PULL_SINGLE_COST} CR)`,
         x: startX,
         y,
         width: btnW,
@@ -2340,7 +2365,7 @@ export class Game {
       {
         count: 10,
         cost: GACHA_PULL_TEN_COST,
-        label: `⚡ ${i18n.t('TIRADA x10', 'ROLL x10')} (${GACHA_PULL_TEN_COST} 🪙)`,
+        label: `[10x] ${i18n.t('LOTE OVERCLOCK', 'BATCH x10')} (${GACHA_PULL_TEN_COST} CR)`,
         x: startX + btnW + gap,
         y,
         width: btnW,
@@ -2358,16 +2383,14 @@ export class Game {
   }[] {
     const unlockedList = this.metaSystem.getUnlockedHatsList();
     const pageItems = unlockedList.slice(this.inventoryPage * 9, (this.inventoryPage + 1) * 9);
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 290;
-    const cardW = 240;
-    const cardH = 78;
-    const gapX = 16;
+    const { py, leftCx } = this.getMenuLayout();
+    const cardW = 244;
+    const cardH = 84;
+    const gapX = 14;
     const gapY = 12;
     const totalW = cardW * 3 + gapX * 2;
-    const startX = cx - totalW / 2;
-    const startY = py + 154;
+    const startX = leftCx - totalW / 2;
+    const startY = py + 158;
 
     return pageItems.map((hat, idx) => {
       const col = idx % 3;
@@ -2393,18 +2416,16 @@ export class Game {
     const totalUnlocked = this.metaSystem.getUnlockedHatsList().length;
     if (totalUnlocked <= 9) return [];
 
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 290;
-    const y = py + 424;
-    const btnW = 130;
-    const btnH = 26;
+    const { py, leftCx } = this.getMenuLayout();
+    const y = py + 452;
+    const btnW = 135;
+    const btnH = 28;
 
     return [
       {
         dir: 'PREV',
         label: i18n.t('<< ANTERIOR', '<< PREV'),
-        x: cx - 220,
+        x: leftCx - 225,
         y,
         width: btnW,
         height: btnH,
@@ -2412,7 +2433,7 @@ export class Game {
       {
         dir: 'NEXT',
         label: i18n.t('SIGUIENTE >>', 'NEXT >>'),
-        x: cx + 90,
+        x: leftCx + 90,
         y,
         width: btnW,
         height: btnH,
@@ -2421,14 +2442,12 @@ export class Game {
   }
 
   private getStartButtonRect(): { x: number; y: number; width: number; height: number } {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
-    const py = cy - 290;
-    const width = 500;
-    const height = 48;
+    const { py, leftCx } = this.getMenuLayout();
+    const width = 560;
+    const height = 50;
     return {
-      x: cx - width / 2,
-      y: py + 504,
+      x: leftCx - width / 2,
+      y: py + 544,
       width,
       height,
     };
@@ -2521,7 +2540,7 @@ export class Game {
     this.ctx.restore();
   }
 
-  /** Fondo animado de modo atractivo detrás del Kernel Hub para dar vida al menú inicial. */
+  /** Fondo animado de modo atractivo detrás del Kernel Hub con estética de placa base / radar táctico. */
   private drawMenuAttractBackdrop(): void {
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -2531,35 +2550,35 @@ export class Game {
 
     this.ctx.save();
 
-    // Anillos holográficos orbitales centrados detrás del panel
-    this.ctx.strokeStyle = 'rgba(0, 255, 136, 0.14)';
+    // Anillos holográficos orbitales centrados detrás de la bahía de hardware
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.14)';
     this.ctx.lineWidth = 1.5;
-    this.ctx.setLineDash([18, 14]);
+    this.ctx.setLineDash([20, 14]);
     this.ctx.save();
     this.ctx.translate(cx, cy);
-    this.ctx.rotate(t * 0.12);
+    this.ctx.rotate(t * 0.1);
     this.ctx.beginPath();
-    this.ctx.arc(0, 0, 420, 0, Math.PI * 2);
+    this.ctx.arc(0, 0, 440, 0, Math.PI * 2);
     this.ctx.stroke();
 
-    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.16)';
-    this.ctx.rotate(-t * 0.24);
-    this.ctx.setLineDash([10, 22]);
+    this.ctx.strokeStyle = 'rgba(16, 185, 129, 0.14)';
+    this.ctx.rotate(-t * 0.2);
+    this.ctx.setLineDash([12, 24]);
     this.ctx.beginPath();
-    this.ctx.arc(0, 0, 505, 0, Math.PI * 2);
+    this.ctx.arc(0, 0, 535, 0, Math.PI * 2);
     this.ctx.stroke();
     this.ctx.restore();
     this.ctx.setLineDash([]);
 
-    // Flujos verticales de datos en los márgenes laterales
-    const lanes = [96, 188, 284, w - 284, w - 188, w - 96];
+    // Flujos verticales de buses de datos en los márgenes laterales
+    const lanes = [84, 176, 268, w - 268, w - 176, w - 84];
     for (let i = 0; i < lanes.length; i++) {
       const lx = lanes[i];
-      const streamY = (((t * (75 + i * 19) + i * 210) % (h + 240)) - 120);
+      const streamY = ((t * (70 + i * 18) + i * 210) % (h + 240)) - 120;
       const grad = this.ctx.createLinearGradient(lx, streamY - 70, lx, streamY + 70);
-      const col = i % 2 === 0 ? '0, 255, 136' : '56, 189, 248';
+      const col = i % 2 === 0 ? '56, 189, 248' : '16, 185, 129';
       grad.addColorStop(0, `rgba(${col}, 0)`);
-      grad.addColorStop(0.5, `rgba(${col}, 0.28)`);
+      grad.addColorStop(0.5, `rgba(${col}, 0.25)`);
       grad.addColorStop(1, `rgba(${col}, 0)`);
       this.ctx.strokeStyle = grad;
       this.ctx.lineWidth = 2;
@@ -2569,25 +2588,25 @@ export class Game {
       this.ctx.stroke();
     }
 
-    // Dron/caza holográfico y señuelos patrullando en los laterales
+    // Interceptores y bots patrullando en los laterales
     for (let i = 0; i < 6; i++) {
       const side = i < 3 ? -1 : 1;
-      const baseX = side < 0 ? 220 : w - 220;
-      const phase = t * 0.75 + i * 1.45;
-      const px = baseX + Math.sin(phase * 1.2) * 115;
+      const baseX = side < 0 ? 185 : w - 185;
+      const phase = t * 0.72 + i * 1.45;
+      const px = baseX + Math.sin(phase * 1.15) * 95;
       const py = cy + Math.cos(phase * 0.85 + i) * (h * 0.32);
       const angle = Math.atan2(
         -Math.sin(phase * 0.85 + i) * 0.85,
-        Math.cos(phase * 1.2) * 1.2
+        Math.cos(phase * 1.15) * 1.15
       );
       const isHostile = i % 2 === 1;
 
       this.ctx.save();
-      this.ctx.globalAlpha = 0.42;
+      this.ctx.globalAlpha = 0.36;
       this.ctx.translate(px, py);
       this.ctx.rotate(angle);
-      this.ctx.strokeStyle = isHostile ? '#ff1e42' : '#00ff66';
-      this.ctx.fillStyle = isHostile ? 'rgba(255, 30, 66, 0.22)' : 'rgba(0, 255, 102, 0.22)';
+      this.ctx.strokeStyle = isHostile ? '#f43f5e' : '#38bdf8';
+      this.ctx.fillStyle = isHostile ? 'rgba(244, 63, 94, 0.18)' : 'rgba(56, 189, 248, 0.18)';
       this.ctx.lineWidth = 1.6;
       this.ctx.beginPath();
       this.ctx.moveTo(12, 0);
@@ -2877,12 +2896,221 @@ export class Game {
     }
   }
 
-  private drawStartMenuWithShop(): void {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+  private drawHardwareStatRow(
+    x: number,
+    y: number,
+    w: number,
+    label: string,
+    valText: string,
+    ratio: number,
+    color: string
+  ): void {
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = '#94a3b8';
+    this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+    this.ctx.fillText(label, x, y);
+
+    this.ctx.textAlign = 'right';
+    this.ctx.fillStyle = '#f8fafc';
+    this.ctx.fillText(valText, x + w, y);
+
+    this.ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+    this.ctx.fillRect(x, y + 6, w, 6);
+    this.ctx.fillStyle = color;
+    this.ctx.fillRect(x, y + 6, w * Math.max(0.08, Math.min(1, ratio)), 6);
+  }
+
+  /**
+   * Bahía derecha de telemetría en vivo: muestra el Agente táctico y su sombrero vectorial en tiempo real.
+   */
+  private drawLiveHangarBay(bayX: number, bayY: number, bayW: number, bayH: number): void {
+    const now = performance.now();
+    const previewCharId = this.hoveredMenuChar ?? this.metaSystem.selectedCharacter;
+    const profile = this.metaSystem.characters[previewCharId];
+    const unlockedChar = this.metaSystem.isUnlocked(previewCharId);
+    const equippedHat = this.metaSystem.getEquippedHat();
+    const hoveredHat =
+      this.activeMenuTab === 'INVENTORY' && this.hoveredHatId
+        ? this.metaSystem.getUnlockedHatsList().find((h) => h.id === this.hoveredHatId) ?? null
+        : null;
+    const shownHat = hoveredHat ?? equippedHat;
+    const isHatPreview = Boolean(hoveredHat && hoveredHat.id !== equippedHat?.id);
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 6, 4, 0.72)';
+    this.drawCyberPanel(
+      bayX,
+      bayY,
+      bayW,
+      bayH,
+      14,
+      'rgba(8, 14, 26, 0.96)',
+      'rgba(56, 189, 248, 0.45)',
+      1.6
+    );
+    this.traceChamferRect(bayX + 2, bayY + 2, bayW - 4, bayH - 4, 12);
+    this.ctx.clip();
+
+    const cxBay = bayX + bayW / 2;
+    const spotGrad = this.ctx.createRadialGradient(cxBay, bayY + 110, 12, cxBay, bayY + 120, 165);
+    spotGrad.addColorStop(0, 'rgba(56, 189, 248, 0.16)');
+    spotGrad.addColorStop(1, 'rgba(8, 14, 26, 0)');
+    this.ctx.fillStyle = spotGrad;
+    this.ctx.fillRect(bayX, bayY, bayW, 240);
+
+    // Cabecera de bahía
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.font = `bold 11px ${FONT_MONO}`;
+    this.ctx.fillText(
+      this.hoveredMenuChar
+        ? i18n.t('// VISTA PREVIA DE UNIDAD //', '// UNIT HOLOVIEW //')
+        : i18n.t('// BAHÍA DE UNIDAD ACTIVA //', '// ACTIVE HARDWARE BAY //'),
+      cxBay,
+      bayY + 24
+    );
+
+    // Plataforma PCB giratoria debajo del personaje
+    const botY = bayY + 122 + Math.sin(now * 0.004) * 3;
+    this.ctx.save();
+    this.ctx.translate(cxBay, bayY + 162);
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+    this.ctx.lineWidth = 1.4;
+    this.ctx.beginPath();
+    this.ctx.ellipse(0, 0, 74, 22, 0, 0, Math.PI * 2);
+    this.ctx.stroke();
+    this.ctx.setLineDash([8, 8]);
+    this.ctx.strokeStyle = profile.borderColor;
+    this.ctx.beginPath();
+    this.ctx.ellipse(0, 0, 54, 15, 0, (now * 0.001) % (Math.PI * 2), Math.PI * 2 + (now * 0.001) % (Math.PI * 2));
+    this.ctx.stroke();
+    this.ctx.setLineDash([]);
+    this.ctx.restore();
+
+    // Bot táctico a tamaño grande con su sombrero vectorial puesto
+    Player.drawCyberChassis(
+      this.ctx,
+      cxBay,
+      botY,
+      72,
+      profile.color,
+      profile.borderColor,
+      now,
+      Math.sin(now * 0.0015) * 0.45,
+      true,
+      shownHat?.id ?? null
+    );
+
+    if (profile.id === 'MORCILLITA') {
+      const petX = cxBay + 46 + Math.cos(now * 0.003) * 6;
+      const petY = botY - 26 + Math.sin(now * 0.004) * 5;
+      this.ctx.save();
+      this.ctx.translate(petX, petY);
+      this.ctx.rotate(Math.PI / 4 + Math.sin(now * 0.002) * 0.12);
+      this.ctx.fillStyle = '#92400e';
+      this.ctx.strokeStyle = '#fbbf24';
+      this.ctx.lineWidth = 1.8;
+      this.ctx.fillRect(-10, -10, 20, 20);
+      this.ctx.strokeRect(-10, -10, 20, 20);
+      this.ctx.restore();
+    }
+
+    // Nombre del Agente y estado
+    const pName = i18n.currentLang === 'EN' && profile.nameEn ? profile.nameEn : profile.name;
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#f8fafc';
+    this.ctx.font = `bold 15px ${FONT_DISPLAY}`;
+    this.ctx.fillText(pName, cxBay, bayY + 210);
+
+    this.ctx.fillStyle = unlockedChar ? '#10b981' : '#f59e0b';
+    this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+    this.ctx.fillText(
+      unlockedChar
+        ? i18n.t('[ HARDWARE DISPONIBLE ]', '[ HARDWARE ONLINE ]')
+        : i18n.t(`[ BLOQUEADO: ${profile.cost} CR ]`, `[ LOCKED: ${profile.cost} CR ]`),
+      cxBay,
+      bayY + 228
+    );
+
+    // Barras de telemetría de unidad (incluyendo bonos del sombrero si aplican)
+    const hpTotal = Math.round(100 * profile.hpMultiplier + (shownHat?.stats.maxHpBonus ?? 0));
+    const spdPct = Math.round(profile.speedMultiplier * (1 + (shownHat?.stats.speedMult ?? 0)) * 100);
+    const magTotal = Math.round(115 * profile.pickupRadiusMultiplier + (shownHat?.stats.magnetBonus ?? 0));
+
+    const statX = bayX + 22;
+    const statW = bayW - 44;
+    this.drawHardwareStatRow(statX, bayY + 258, statW, 'KERNEL HP', `${hpTotal} HP`, hpTotal / 240, '#10b981');
+    this.drawHardwareStatRow(statX, bayY + 292, statW, 'CLOCK SPD', `${spdPct}%`, spdPct / 150, '#38bdf8');
+    this.drawHardwareStatRow(statX, bayY + 326, statW, 'MAGNET BUS', `${magTotal}px`, magTotal / 200, '#a855f7');
+
+    // Módulo de Sombrero / Accesorio Vectorial Activo
+    const modX = bayX + 16;
+    const modY = bayY + 362;
+    const modW = bayW - 32;
+    const modH = 114;
+    const rConf = shownHat ? RARITY_CONFIG[shownHat.rarity] : null;
+
+    this.drawCyberPanel(
+      modX,
+      modY,
+      modW,
+      modH,
+      10,
+      'rgba(15, 23, 42, 0.94)',
+      rConf ? rConf.color : 'rgba(100, 116, 139, 0.45)',
+      1.5
+    );
+
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = isHatPreview ? '#fbbf24' : '#38bdf8';
+    this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+    this.ctx.fillText(
+      isHatPreview
+        ? i18n.t('MODULO // PREVIEW', 'MODULE // PREVIEW')
+        : i18n.t('MODULO // EQUIPADO', 'MODULE // EQUIPPED'),
+      modX + 12,
+      modY + 20
+    );
+
+    if (shownHat && rConf) {
+      HatRenderer.drawHatIcon(this.ctx, shownHat.id, modX + 34, modY + 62, 34, now);
+
+      this.ctx.textAlign = 'left';
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
+      const hatTitle =
+        shownHat.name.length > 22 ? shownHat.name.slice(0, 21) + '…' : shownHat.name;
+      this.ctx.fillText(hatTitle, modX + 66, modY + 52);
+
+      this.ctx.fillStyle = rConf.color;
+      this.ctx.font = `bold 10px ${FONT_MONO}`;
+      this.ctx.fillText(rConf.label.split(' ')[0], modX + 66, modY + 70);
+
+      this.ctx.fillStyle = '#a3e635';
+      this.ctx.font = `bold 11.5px ${FONT_MONO}`;
+      this.ctx.fillText(shownHat.statsLabel, modX + 66, modY + 92);
+    } else {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#64748b';
+      this.ctx.font = `12px ${FONT_DISPLAY}`;
+      this.ctx.fillText(
+        i18n.t('Sin accesorio equipado', 'No headgear module equipped'),
+        cxBay,
+        modY + 62
+      );
+      this.ctx.fillStyle = '#38bdf8';
+      this.ctx.font = `11px ${FONT_MONO}`;
+      this.ctx.fillText(i18n.t('Abre cofres en [G] Gacha', 'Unlock hats in [G] Gacha'), cxBay, modY + 84);
+    }
+
+    this.ctx.restore();
+  }
+
+  private drawStartMenuWithShop(): void {
+    const { cx, panelW, panelH, px, py, leftCx, bayX, bayY, bayW, bayH } = this.getMenuLayout();
+    const now = performance.now();
+
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(5, 9, 18, 0.78)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.drawMenuAttractBackdrop();
 
@@ -2904,28 +3132,26 @@ export class Game {
         statusBoxW,
         statusBoxH,
         8,
-        'rgba(2, 22, 14, 0.94)',
-        '#00ff66',
+        'rgba(11, 19, 34, 0.95)',
+        '#10b981',
         1.5,
-        '#00ff66',
-        10
+        '#10b981',
+        8
       );
 
-      // Recorte estricto para evitar cualquier desbordamiento de texto
       this.traceChamferRect(statusBoxX + 2, statusBoxY + 2, statusBoxW - 4, statusBoxH - 4, 6);
       this.ctx.clip();
 
       this.ctx.textAlign = 'left';
-      this.ctx.fillStyle = '#00ff66';
+      this.ctx.fillStyle = '#f8fafc';
       this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
       this.ctx.fillText(`${i18n.t('AGENTE', 'AGENT')}: ${truncatedName}`, statusBoxX + 14, statusBoxY + 20);
 
       this.ctx.fillStyle = '#38bdf8';
-      this.ctx.font = `bold 11px ${FONT_MONO}`;
-      this.ctx.fillText(`☁ ${i18n.t('NUBE SINCRONIZADA', 'CLOUD SYNCED')}`, statusBoxX + 14, statusBoxY + 35);
+      this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+      this.ctx.fillText(`SYNC // ${i18n.t('NUBE CONECTADA', 'CLOUD ONLINE')}`, statusBoxX + 14, statusBoxY + 35);
       this.ctx.restore();
 
-      // Botón Cerrar Sesión con auto-fit y recorte
       const authBtn = this.getAuthActionButtonRect();
       this.drawClippedButton(
         authBtn,
@@ -2940,140 +3166,142 @@ export class Game {
       const authBtn = this.getAuthActionButtonRect();
       this.drawClippedButton(
         authBtn,
-        this.hoveredAuthBtn ? 'rgba(14, 55, 85, 0.96)' : 'rgba(8, 28, 46, 0.92)',
-        this.hoveredAuthBtn ? '#00ff66' : '#38bdf8',
+        this.hoveredAuthBtn ? 'rgba(14, 55, 85, 0.96)' : 'rgba(11, 22, 40, 0.94)',
+        this.hoveredAuthBtn ? '#10b981' : '#38bdf8',
         this.hoveredAuthBtn ? 2.2 : 1.5,
-        this.hoveredAuthBtn ? '#00ff66' : '#e0f2fe',
+        this.hoveredAuthBtn ? '#10b981' : '#e0f2fe',
         12,
-        `🔐 [L] ${i18n.t('INICIAR SESIÓN CON GOOGLE', 'SIGN IN WITH GOOGLE')}`,
-        this.hoveredAuthBtn ? '#00ff66' : '#38bdf8',
-        this.hoveredAuthBtn ? 14 : 6
+        `[L] ${i18n.t('CONECTAR CON GOOGLE', 'SIGN IN WITH GOOGLE')}`,
+        this.hoveredAuthBtn ? '#10b981' : '#38bdf8',
+        this.hoveredAuthBtn ? 12 : 4
       );
     }
 
     // ==========================================
-    // 2. ESQUINA SUPERIOR DERECHA: PANTALLA COMPLETA, RANKINGS, LOGROS, AJUSTES
+    // 2. ESQUINA SUPERIOR DERECHA: CONTROLES DEL WORKSTATION
     // ==========================================
-    // Botón Pantalla Completa (Destacado y fuera de opciones para máxima visibilidad)
     const fsBtn = this.getFullscreenButtonRect();
     this.drawClippedButton(
       fsBtn,
-      this.hoveredFullscreenBtn ? 'rgba(0, 55, 45, 0.96)' : 'rgba(4, 28, 28, 0.92)',
-      this.hoveredFullscreenBtn ? '#ffffff' : '#00f0ff',
-      this.hoveredFullscreenBtn ? 2.5 : 1.8,
-      this.hoveredFullscreenBtn ? '#ffffff' : '#00f0ff',
+      this.hoveredFullscreenBtn ? 'rgba(14, 52, 74, 0.96)' : 'rgba(11, 22, 40, 0.94)',
+      this.hoveredFullscreenBtn ? '#ffffff' : '#38bdf8',
+      this.hoveredFullscreenBtn ? 2.2 : 1.5,
+      this.hoveredFullscreenBtn ? '#ffffff' : '#bae6fd',
       12,
-      `⛶ [F] ${i18n.t('PANTALLA COMPLETA', 'FULLSCREEN')}`,
-      '#00f0ff',
-      this.hoveredFullscreenBtn ? 16 : 8
+      `[F] ${i18n.t('PANTALLA COMPLETA', 'FULLSCREEN')}`,
+      '#38bdf8',
+      this.hoveredFullscreenBtn ? 12 : 4
     );
 
-    // Botón Cómo Jugar (Tutorial / Guía)
     const helpBtn = this.getHelpButtonRect();
     this.drawClippedButton(
       helpBtn,
-      this.hoveredHelpBtn ? 'rgba(55, 18, 70, 0.96)' : 'rgba(32, 10, 42, 0.92)',
-      this.hoveredHelpBtn ? '#ffffff' : '#d946ef',
+      this.hoveredHelpBtn ? 'rgba(55, 22, 75, 0.96)' : 'rgba(20, 16, 38, 0.94)',
+      this.hoveredHelpBtn ? '#ffffff' : '#c084fc',
       this.hoveredHelpBtn ? 2.2 : 1.5,
-      this.hoveredHelpBtn ? '#ffffff' : '#f0abfc',
+      this.hoveredHelpBtn ? '#ffffff' : '#e9d5ff',
       12,
-      `📖 [H] ${i18n.t('CÓMO JUGAR', 'HOW TO PLAY')}`,
-      '#d946ef',
-      this.hoveredHelpBtn ? 14 : 6
+      `[H] ${i18n.t('CÓMO JUGAR', 'HOW TO PLAY')}`,
+      '#c084fc',
+      this.hoveredHelpBtn ? 12 : 4
     );
 
-    // Botón Clasificación Global (Rankings)
     const rankingsBtn = this.getGlobalRankingsButtonRect();
     this.drawClippedButton(
       rankingsBtn,
-      this.hoveredRankingsBtn ? 'rgba(85, 50, 5, 0.96)' : 'rgba(42, 24, 4, 0.92)',
+      this.hoveredRankingsBtn ? 'rgba(72, 44, 12, 0.96)' : 'rgba(28, 22, 16, 0.94)',
       this.hoveredRankingsBtn ? '#ffffff' : '#fbbf24',
       this.hoveredRankingsBtn ? 2.2 : 1.5,
-      this.hoveredRankingsBtn ? '#ffffff' : '#fde047',
+      this.hoveredRankingsBtn ? '#ffffff' : '#fde68a',
       12,
-      `🏆 [R] ${i18n.t('RANKINGS', 'RANKINGS')}`,
+      `[R] ${i18n.t('RANKINGS', 'RANKINGS')}`,
       '#fbbf24',
-      this.hoveredRankingsBtn ? 14 : 6
+      this.hoveredRankingsBtn ? 12 : 4
     );
 
-    // Botón Logros
     const achBtn = this.getAchievementsButtonRect();
     const achUnlocked = this.achievementSystem.getUnlockedCount();
     const totalAch = this.achievementSystem.achievements.length;
     this.drawClippedButton(
       achBtn,
-      this.hoveredAchievementsBtn ? 'rgba(30, 50, 15, 0.96)' : 'rgba(15, 26, 8, 0.92)',
-      this.hoveredAchievementsBtn ? '#ffffff' : '#84cc16',
-      this.hoveredAchievementsBtn ? 2 : 1.5,
-      this.hoveredAchievementsBtn ? '#ffffff' : '#bef264',
+      this.hoveredAchievementsBtn ? 'rgba(14, 58, 42, 0.96)' : 'rgba(12, 26, 28, 0.94)',
+      this.hoveredAchievementsBtn ? '#ffffff' : '#10b981',
+      this.hoveredAchievementsBtn ? 2.2 : 1.5,
+      this.hoveredAchievementsBtn ? '#ffffff' : '#a7f3d0',
       11.5,
-      `🏆 [A] ${i18n.t('LOGROS', 'ACHIEVEMENTS')} (${achUnlocked}/${totalAch})`,
-      '#84cc16',
-      this.hoveredAchievementsBtn ? 12 : 6
+      `[A] ${i18n.t('LOGROS', 'ACHIEVEMENTS')} (${achUnlocked}/${totalAch})`,
+      '#10b981',
+      this.hoveredAchievementsBtn ? 12 : 4
     );
 
-    // Botón Ajustes
     const setBtn = this.getSettingsButtonRect();
     this.drawClippedButton(
       setBtn,
-      this.hoveredSettingsBtn ? 'rgba(12, 40, 65, 0.96)' : 'rgba(6, 22, 36, 0.92)',
-      this.hoveredSettingsBtn ? '#ffffff' : '#0284c7',
-      this.hoveredSettingsBtn ? 2 : 1.5,
-      this.hoveredSettingsBtn ? '#ffffff' : '#7dd3fc',
+      this.hoveredSettingsBtn ? 'rgba(24, 42, 68, 0.96)' : 'rgba(11, 22, 40, 0.94)',
+      this.hoveredSettingsBtn ? '#ffffff' : '#64748b',
+      this.hoveredSettingsBtn ? 2.2 : 1.5,
+      this.hoveredSettingsBtn ? '#ffffff' : '#cbd5e1',
       12,
-      `⚙️ [O] ${i18n.t('AJUSTES', 'SETTINGS')}`,
-      '#0284c7',
-      this.hoveredSettingsBtn ? 12 : 6
+      `[O] ${i18n.t('AJUSTES', 'SETTINGS')}`,
+      '#38bdf8',
+      this.hoveredSettingsBtn ? 10 : 3
     );
 
     // ==========================================
-    // 3. PANEL CENTRAL (KERNEL HUB)
+    // 3. PANEL CENTRAL (CYBER HARDWARE WORKSTATION)
     // ==========================================
-    const panelW = 860;
-    const panelH = 580;
-    const px = cx - panelW / 2;
-    const py = cy - panelH / 2;
-
     this.drawCyberPanel(
       px,
       py,
       panelW,
       panelH,
-      18,
-      'rgba(3, 15, 11, 0.95)',
-      '#00ff66',
-      2.2,
-      '#00ff66',
-      22
+      16,
+      'rgba(11, 19, 34, 0.96)',
+      '#38bdf8',
+      2.0,
+      '#0284c7',
+      24
     );
 
-    // Línea luminosa superior decorativa dentro del Kernel Hub
+    // Barra decorativa superior de silicio/cobre-cyan
     const headerGrad = this.ctx.createLinearGradient(px + 60, py + 4, px + panelW - 60, py + 4);
-    headerGrad.addColorStop(0, 'rgba(0, 255, 102, 0)');
-    headerGrad.addColorStop(0.5, 'rgba(0, 240, 255, 0.85)');
-    headerGrad.addColorStop(1, 'rgba(0, 255, 102, 0)');
+    headerGrad.addColorStop(0, 'rgba(56, 189, 248, 0)');
+    headerGrad.addColorStop(0.35, 'rgba(56, 189, 248, 0.9)');
+    headerGrad.addColorStop(0.65, 'rgba(16, 185, 129, 0.9)');
+    headerGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
     this.ctx.fillStyle = headerGrad;
-    this.ctx.fillRect(px + 60, py + 2, panelW - 120, 2.5);
+    this.ctx.fillRect(px + 60, py + 2, panelW - 120, 3);
 
+    // Cabecera izquierda limpia + píldoras de telemetría derecha
     this.ctx.shadowBlur = 0;
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#00ff66';
-    this.ctx.font = `bold 29px ${FONT_DISPLAY}`;
-    this.ctx.fillText(`CYBER SURVIVOR // KERNEL HUB (${GAME_VERSION})`, cx, py + 41);
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = '#f8fafc';
+    this.ctx.font = `bold 27px ${FONT_DISPLAY}`;
+    this.ctx.fillText('CYBER SURVIVOR', px + 34, py + 44);
+
+    const titleW = this.ctx.measureText('CYBER SURVIVOR').width;
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.font = `bold 13px ${FONT_MONO}`;
+    this.ctx.fillText(`// HARDWARE HANGAR ${GAME_VERSION}`, px + 46 + titleW, py + 43);
 
     const equippedHat = this.metaSystem.getEquippedHat();
     const noneText = i18n.t('Ninguno', 'None');
-    this.ctx.fillStyle = '#fbbf24';
-    this.ctx.font = `bold 13.5px ${FONT_MONO}`;
+    this.ctx.fillStyle = '#94a3b8';
+    this.ctx.font = `bold 12.5px ${FONT_MONO}`;
     this.ctx.fillText(
-      `[ ${i18n.t('Récord', 'High Score')}: ${this.metaSystem.highScore} (${this.formatTimeMMSS(this.metaSystem.bestTimeSeconds)}) ]  |  [ CRYPTO: ${this.metaSystem.coins} 🪙 ]  |  [ ${i18n.t('EQUIPADO', 'EQUIPPED')}: ${
-        equippedHat ? `${equippedHat.icon} ${equippedHat.name}` : noneText
-      } ]`,
-      cx,
+      `${i18n.t('RÉCORD', 'BEST')}: ${this.metaSystem.highScore} (${this.formatTimeMMSS(this.metaSystem.bestTimeSeconds)})   •   CRYPTO: ${this.metaSystem.coins} CR   •   ${i18n.t('SOMBRERO', 'HAT')}: ${equippedHat ? equippedHat.name : noneText}`,
+      px + 34,
       py + 72
     );
 
-    // Dibujar barra de pestañas (AGENTES | GACHA | INVENTARIO)
+    // Separador sutil entre consola izquierda y bahía derecha
+    this.ctx.fillStyle = 'rgba(56, 189, 248, 0.16)';
+    this.ctx.fillRect(px + 26, py + 88, panelW - 52, 1);
+
+    // Bahía derecha fija con el Bot + Sombrero vectorial en vivo
+    this.drawLiveHangarBay(bayX, bayY, bayW, bayH);
+
+    // Barra de pestañas de consola izquierda ([Q] | [G] | [I])
     for (const tabRect of this.getMenuTabRects()) {
       const isActive = this.activeMenuTab === tabRect.tab;
       this.drawCyberPanel(
@@ -3081,17 +3309,18 @@ export class Game {
         tabRect.y,
         tabRect.width,
         tabRect.height,
-        9,
-        isActive ? 'rgba(0, 60, 38, 0.96)' : 'rgba(6, 18, 24, 0.92)',
-        isActive ? '#00ff66' : '#38bdf8',
-        isActive ? 2.4 : 1.5,
-        isActive ? '#00ff66' : undefined,
-        isActive ? 10 : 0
+        8,
+        isActive ? 'rgba(14, 52, 82, 0.96)' : 'rgba(15, 25, 44, 0.9)',
+        isActive ? '#38bdf8' : 'rgba(71, 85, 105, 0.65)',
+        isActive ? 2.0 : 1.4,
+        isActive ? '#38bdf8' : undefined,
+        isActive ? 8 : 0
       );
 
-      this.ctx.fillStyle = isActive ? '#00ff66' : '#bae6fd';
-      this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
-      this.ctx.fillText(tabRect.label, tabRect.x + tabRect.width / 2, tabRect.y + 23);
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = isActive ? '#f8fafc' : '#94a3b8';
+      this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
+      this.ctx.fillText(tabRect.label, tabRect.x + tabRect.width / 2, tabRect.y + 24);
     }
 
     if (this.activeMenuTab === 'SHOP') {
@@ -3111,38 +3340,37 @@ export class Game {
           rect.height,
           12,
           selected
-            ? 'rgba(0, 48, 32, 0.96)'
+            ? 'rgba(10, 46, 56, 0.96)'
             : hovered
-            ? 'rgba(12, 32, 48, 0.96)'
-            : 'rgba(6, 15, 20, 0.93)',
-          selected ? '#00ff66' : unlocked ? profile.borderColor : '#fbbf24',
-          selected || hovered ? 2.4 : 1.5,
-          selected ? '#00ff66' : hovered ? profile.borderColor : undefined,
+            ? 'rgba(20, 36, 62, 0.96)'
+            : 'rgba(15, 24, 42, 0.93)',
+          selected ? '#10b981' : hovered ? '#38bdf8' : unlocked ? 'rgba(148, 163, 184, 0.45)' : '#f59e0b',
+          selected || hovered ? 2.2 : 1.4,
+          selected ? '#10b981' : hovered ? '#38bdf8' : undefined,
           selected || hovered ? 10 : 0
         );
 
-        // Recorte estricto dentro de la tarjeta de personaje
         this.traceChamferRect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4, 10);
         this.ctx.clip();
 
-        const previewX = rect.x + 32;
-        const previewY = rect.y + 34;
+        const previewX = rect.x + 34;
+        const previewY = rect.y + 38;
         Player.drawCyberChassis(
           this.ctx,
           previewX,
           previewY,
-          26,
+          28,
           profile.color,
           profile.borderColor,
-          performance.now(),
+          now,
           0,
-          selected || hovered
+          selected || hovered,
+          selected && equippedHat ? equippedHat.id : null
         );
 
         if (rect.id === 'MORCILLITA') {
-          // Dron mascota en rombo biselado junto al chasis rosa
           this.ctx.save();
-          this.ctx.translate(previewX + 14, previewY - 12);
+          this.ctx.translate(previewX + 16, previewY - 12);
           this.ctx.rotate(Math.PI / 4);
           this.ctx.fillStyle = '#92400e';
           this.ctx.strokeStyle = '#fbbf24';
@@ -3159,59 +3387,57 @@ export class Game {
 
         this.ctx.textAlign = 'left';
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.font =
-          pName.length > 20
-            ? `bold 13.5px ${FONT_DISPLAY}`
-            : `bold 15px ${FONT_DISPLAY}`;
-        this.ctx.fillText(`[${i + 1}] ${pName}`, rect.x + 58, rect.y + 28);
+        this.ctx.font = pName.length > 20 ? `bold 13.5px ${FONT_DISPLAY}` : `bold 15px ${FONT_DISPLAY}`;
+        this.ctx.fillText(`[${i + 1}] ${pName}`, rect.x + 62, rect.y + 30);
 
         this.ctx.fillStyle = '#38bdf8';
-        this.ctx.font = `bold 11.5px ${FONT_MONO}`;
-        this.ctx.fillText(pSub, rect.x + 58, rect.y + 45);
+        this.ctx.font = `bold 11px ${FONT_MONO}`;
+        this.ctx.fillText(pSub, rect.x + 62, rect.y + 48);
 
         this.ctx.fillStyle = '#cbd5e1';
         this.ctx.font = `12px ${FONT_DISPLAY}`;
-        this.wrapText(pDesc, rect.x + 14, rect.y + 68, rect.width - 28, 16, 3);
+        this.wrapText(pDesc, rect.x + 14, rect.y + 74, rect.width - 28, 16, 3);
 
-        this.ctx.font = `bold 12px ${FONT_MONO}`;
+        this.ctx.font = `bold 11.5px ${FONT_MONO}`;
         if (selected) {
-          this.ctx.fillStyle = '#00ff66';
-          this.ctx.fillText(i18n.t('✔ EQUIPADO Y LISTO', '✔ EQUIPPED & READY'), rect.x + 14, rect.y + rect.height - 12);
+          this.ctx.fillStyle = '#10b981';
+          this.ctx.fillText(i18n.t('[✓] EQUIPADO Y LISTO', '[✓] EQUIPPED & READY'), rect.x + 14, rect.y + rect.height - 13);
         } else if (unlocked) {
-          this.ctx.fillStyle = '#00f0ff';
+          this.ctx.fillStyle = '#38bdf8';
           this.ctx.fillText(
-            i18n.t(`> PULSA [${i + 1}] O CLIC PARA EQUIPAR`, `> PRESS [${i + 1}] OR CLICK TO EQUIP`),
+            i18n.t(`▸ PULSA [${i + 1}] O CLIC PARA EQUIPAR`, `▸ PRESS [${i + 1}] OR CLICK TO EQUIP`),
             rect.x + 14,
-            rect.y + rect.height - 12
+            rect.y + rect.height - 13
           );
         } else {
           const canAfford = this.metaSystem.coins >= profile.cost;
-          this.ctx.fillStyle = canAfford ? '#fbbf24' : '#ff1e42';
+          this.ctx.fillStyle = canAfford ? '#fbbf24' : '#f43f5e';
           this.ctx.fillText(
-            i18n.t(`🔒 DESBLOQUEAR (${profile.cost} CRIPTO)`, `🔒 UNLOCK (${profile.cost} CRYPTO)`),
+            i18n.t(`DESBLOQUEAR (${profile.cost} CR)`, `UNLOCK (${profile.cost} CR)`),
             rect.x + 14,
-            rect.y + rect.height - 12
+            rect.y + rect.height - 13
           );
         }
 
         this.ctx.restore();
       }
     } else if (this.activeMenuTab === 'GACHA') {
+      this.ctx.textAlign = 'center';
       this.ctx.fillStyle = '#94a3b8';
-      this.ctx.font = `bold 12px ${FONT_DISPLAY}`;
+      this.ctx.font = `bold 12px ${FONT_MONO}`;
       this.ctx.fillText(
         i18n.t(
-          'PROBABILIDADES: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%  (Repetido: +10 🪙)',
-          'ODDS: Common 40% | Rare 30% | Epic 20% | Legendary 9% | Mythic 1%  (Duplicate: +10 🪙)'
+          'DROP: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%  (Duplicado: +10 CR)',
+          'ODDS: Common 40% | Rare 30% | Epic 20% | Legendary 9% | Mythic 1%  (Duplicate: +10 CR)'
         ),
-        cx,
-        py + 162
+        leftCx,
+        py + 166
       );
 
       for (const pullBtn of this.getGachaPullButtonRects()) {
         const canAfford = this.metaSystem.coins >= pullBtn.cost;
         const isTen = pullBtn.count === 10;
-        const strokeCol = canAfford ? (isTen ? '#fbbf24' : '#c084fc') : '#ff1e42';
+        const strokeCol = canAfford ? (isTen ? '#fbbf24' : '#c084fc') : '#f43f5e';
         this.drawCyberPanel(
           pullBtn.x,
           pullBtn.y,
@@ -3220,37 +3446,33 @@ export class Game {
           10,
           canAfford
             ? isTen
-              ? 'rgba(69, 26, 3, 0.95)'
-              : 'rgba(46, 16, 101, 0.95)'
-            : 'rgba(30, 10, 18, 0.9)',
+              ? 'rgba(69, 36, 8, 0.95)'
+              : 'rgba(46, 20, 82, 0.95)'
+            : 'rgba(34, 14, 24, 0.92)',
           strokeCol,
-          2.2,
+          2.0,
           strokeCol,
-          10
+          8
         );
 
-        this.ctx.fillStyle = canAfford ? '#fde047' : '#fca5a5';
-        this.ctx.font = `bold 15px ${FONT_DISPLAY}`;
-        this.ctx.fillText(
-          pullBtn.label,
-          pullBtn.x + pullBtn.width / 2,
-          pullBtn.y + 28
-        );
+        this.ctx.fillStyle = canAfford ? '#f8fafc' : '#fca5a5';
+        this.ctx.font = `bold 14.5px ${FONT_DISPLAY}`;
+        this.ctx.fillText(pullBtn.label, pullBtn.x + pullBtn.width / 2, pullBtn.y + 28);
       }
 
       if (this.lastGachaResults.length === 1) {
         const entry = this.lastGachaResults[0];
         const rConf = RARITY_CONFIG[entry.hat.rarity];
-        const revealBoxW = 540;
-        const revealBoxH = 175;
-        const rx = cx - revealBoxW / 2;
-        const ry = py + 252;
-        const pulseScale = 1 + Math.sin(this.gachaRevealTimer * 14) * 0.025;
+        const revealBoxW = 580;
+        const revealBoxH = 210;
+        const rx = leftCx - revealBoxW / 2;
+        const ry = py + 260;
+        const pulseScale = 1 + Math.sin(this.gachaRevealTimer * 14) * 0.02;
 
         this.ctx.save();
-        this.ctx.translate(cx, ry + revealBoxH / 2);
+        this.ctx.translate(leftCx, ry + revealBoxH / 2);
         this.ctx.scale(pulseScale, pulseScale);
-        this.ctx.translate(-cx, -(ry + revealBoxH / 2));
+        this.ctx.translate(-leftCx, -(ry + revealBoxH / 2));
 
         this.drawCyberPanel(
           rx,
@@ -3260,49 +3482,44 @@ export class Game {
           14,
           rConf.bgColor,
           rConf.color,
-          2.8,
+          2.5,
           rConf.color,
-          this.gachaRevealTimer > 0 ? 24 : 12
+          this.gachaRevealTimer > 0 ? 22 : 10
         );
 
         this.ctx.fillStyle = rConf.color;
-        this.ctx.font = `bold 13.5px ${FONT_MONO}`;
-        this.ctx.fillText(`★ ${i18n.t('RAREZA', 'RARITY')} ${rConf.label} ★`, cx, ry + 26);
+        this.ctx.font = `bold 13px ${FONT_MONO}`;
+        this.ctx.fillText(`${i18n.t('RAREZA', 'RARITY')} // ${rConf.label}`, leftCx, ry + 30);
 
-        this.ctx.font = '36px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
-        this.ctx.fillText(entry.hat.icon, cx, ry + 66);
+        HatRenderer.drawHatIcon(this.ctx, entry.hat.id, leftCx, ry + 78, 46, now);
 
         this.ctx.fillStyle = '#ffffff';
         this.ctx.font = `bold 19px ${FONT_DISPLAY}`;
-        this.ctx.fillText(entry.hat.name, cx, ry + 104);
+        this.ctx.fillText(entry.hat.name, leftCx, ry + 130);
 
-        this.ctx.fillStyle = entry.isNew ? '#00ff66' : '#fbbf24';
-        this.ctx.font = `bold 14px ${FONT_DISPLAY}`;
+        this.ctx.fillStyle = entry.isNew ? '#10b981' : '#fbbf24';
+        this.ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           entry.isNew
-            ? i18n.t('¡NUEVO DESBLOQUEO!', 'NEW UNLOCK!')
-            : i18n.t('Repetido: +10 Monedas 🪙', 'Duplicate: +10 Coins 🪙'),
-          cx,
-          ry + 130
+            ? i18n.t('¡NUEVO ACCESORIO DESBLOQUEADO!', 'NEW GEAR MODULE UNLOCKED!')
+            : i18n.t('Repetido: +10 CR reembolsados', 'Duplicate: +10 CR refunded'),
+          leftCx,
+          ry + 158
         );
 
         this.ctx.fillStyle = '#a3e635';
         this.ctx.font = `bold 13px ${FONT_MONO}`;
-        this.ctx.fillText(
-          `${i18n.t('MODIFICADORES', 'MODIFIERS')}: [ ${entry.hat.statsLabel} ]`,
-          cx,
-          ry + 156
-        );
+        this.ctx.fillText(`[ ${entry.hat.statsLabel} ]`, leftCx, ry + 186);
         this.ctx.restore();
       } else if (this.lastGachaResults.length > 1) {
         const cols = 5;
-        const cardW = 132;
-        const cardH = 104;
+        const cardW = 142;
+        const cardH = 114;
         const gapX = 10;
         const gapY = 10;
         const totalW = cols * cardW + (cols - 1) * gapX;
-        const startX = cx - totalW / 2;
-        const startY = py + 248;
+        const startX = leftCx - totalW / 2;
+        const startY = py + 252;
 
         for (let i = 0; i < this.lastGachaResults.length; i++) {
           const entry = this.lastGachaResults[i];
@@ -3313,48 +3530,45 @@ export class Game {
           const y = startY + row * (cardH + gapY);
 
           this.ctx.save();
-          this.drawCyberPanel(x, y, cardW, cardH, 9, rConf.bgColor, rConf.color, 1.8);
-
-          // Recorte estricto por carta gacha
+          this.drawCyberPanel(x, y, cardW, cardH, 9, rConf.bgColor, rConf.color, 1.6);
           this.traceChamferRect(x + 2, y + 2, cardW - 4, cardH - 4, 7);
           this.ctx.clip();
 
-          this.ctx.textAlign = 'center';
-          this.ctx.font = '22px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
-          this.ctx.fillText(entry.hat.icon, x + cardW / 2, y + 24);
+          HatRenderer.drawHatIcon(this.ctx, entry.hat.id, x + cardW / 2, y + 28, 28, now);
 
+          this.ctx.textAlign = 'center';
           this.ctx.fillStyle = '#ffffff';
           this.ctx.font = `bold 10.5px ${FONT_DISPLAY}`;
           const shortName =
-            entry.hat.name.length > 16 ? entry.hat.name.slice(0, 15) + '…' : entry.hat.name;
-          this.ctx.fillText(shortName, x + cardW / 2, y + 48);
+            entry.hat.name.length > 18 ? entry.hat.name.slice(0, 17) + '…' : entry.hat.name;
+          this.ctx.fillText(shortName, x + cardW / 2, y + 56);
 
           this.ctx.fillStyle = rConf.color;
           this.ctx.font = `bold 9.5px ${FONT_MONO}`;
-          this.ctx.fillText(rConf.label.split(' ')[0], x + cardW / 2, y + 64);
+          this.ctx.fillText(rConf.label.split(' ')[0], x + cardW / 2, y + 72);
 
-          this.ctx.fillStyle = entry.isNew ? '#00ff66' : '#fbbf24';
+          this.ctx.fillStyle = entry.isNew ? '#10b981' : '#fbbf24';
           this.ctx.font = `bold 9.5px ${FONT_DISPLAY}`;
           this.ctx.fillText(
-            entry.isNew ? i18n.t('¡NUEVO!', 'NEW!') : i18n.t('Repetido: +10 🪙', 'Dup: +10 🪙'),
+            entry.isNew ? i18n.t('¡NUEVO!', 'NEW!') : '+10 CR',
             x + cardW / 2,
-            y + 82
+            y + 90
           );
 
           this.ctx.fillStyle = '#cbd5e1';
           this.ctx.font = `9px ${FONT_MONO}`;
           const shortStats =
-            entry.hat.statsLabel.length > 18
-              ? entry.hat.statsLabel.slice(0, 17) + '…'
+            entry.hat.statsLabel.length > 20
+              ? entry.hat.statsLabel.slice(0, 19) + '…'
               : entry.hat.statsLabel;
-          this.ctx.fillText(shortStats, x + cardW / 2, y + 96);
+          this.ctx.fillText(shortStats, x + cardW / 2, y + 104);
           this.ctx.restore();
         }
       } else {
-        const revealBoxW = 560;
-        const revealBoxH = 175;
-        const rx = cx - revealBoxW / 2;
-        const ry = py + 252;
+        const revealBoxW = 620;
+        const revealBoxH = 200;
+        const rx = leftCx - revealBoxW / 2;
+        const ry = py + 260;
 
         this.drawCyberPanel(
           rx,
@@ -3362,65 +3576,65 @@ export class Game {
           revealBoxW,
           revealBoxH,
           14,
-          'rgba(4, 20, 26, 0.94)',
-          'rgba(56, 189, 248, 0.55)',
+          'rgba(15, 25, 44, 0.94)',
+          'rgba(56, 189, 248, 0.45)',
           1.6
         );
 
-        // Cabecera decorativa
         this.ctx.fillStyle = '#38bdf8';
         this.ctx.font = `bold 15px ${FONT_DISPLAY}`;
         this.ctx.fillText(
-          i18n.t('📦 BÓVEDA DE EQUIPAMIENTO // COFRES CUÁNTICOS', '📦 QUANTUM CHEST VAULT // EQUIPMENT'),
-          cx,
-          ry + 38
+          i18n.t('BÓVEDA DE EQUIPAMIENTO // COFRES CUÁNTICOS', 'EQUIPMENT VAULT // QUANTUM CHESTS'),
+          leftCx,
+          ry + 42
         );
 
         this.ctx.fillStyle = '#e2e8f0';
         this.ctx.font = `13.5px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t(
-            'Elige "Tirada x1" (20 🪙) o "Tirada x10" (200 🪙) para abrir cofres.',
-            'Choose "Roll x1" (20 🪙) or "Roll x10" (200 🪙) to open chests.'
+            'Pulsa "Compilar Cofre (20 CR)" o "Lote x10 (200 CR)" para fabricar piezas.',
+            'Choose "Open Chest (20 CR)" or "Batch x10 (200 CR)" to fabricate gear.'
           ),
-          cx,
-          ry + 74
+          leftCx,
+          ry + 84
         );
 
         this.ctx.fillStyle = '#94a3b8';
         this.ctx.font = `12.5px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t(
-            'Desbloquea sombreros con bufos de combate para tu Agente Antivirus.',
-            'Unlock hats with combat buffs for your Antivirus Agent.'
+            'Cada sombrero se acopla sobre el chasis y otorga bonificaciones permanentes.',
+            'Every headgear piece mounts directly onto your bot with permanent buffs.'
           ),
-          cx,
-          ry + 102
+          leftCx,
+          ry + 114
         );
 
         this.ctx.fillStyle = '#fbbf24';
         this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t(
-            '⚡ ¡Si obtienes un sombrero repetido, recibirás automáticamente +10 Monedas! ⚡',
-            '⚡ If you pull a duplicate hat, you will automatically receive +10 Coins! ⚡'
+            'Los módulos repetidos devuelven +10 CR automáticamente.',
+            'Duplicate modules automatically refund +10 CR.'
           ),
-          cx,
-          ry + 138
+          leftCx,
+          ry + 152
         );
       }
     } else if (this.activeMenuTab === 'INVENTORY') {
       const unlockedList = this.metaSystem.getUnlockedHatsList();
       if (unlockedList.length === 0) {
+        this.ctx.textAlign = 'center';
         this.ctx.fillStyle = '#94a3b8';
         this.ctx.font = `15px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t(
-            'Tu inventario está vacío. Ve a la pestaña [G] GACHA para Tirar del Cable.',
-            'Your inventory is empty. Go to the [G] GACHA tab to Pull the Cable.'
+            'Tu inventario está vacío. Abre cofres en [G] Bóveda Gacha.',
+            'Your inventory is empty. Open chests in [G] Gacha Vault.'
           ),
-          cx,
-          cy + 20
+          leftCx,
+          py + 310
         );
       } else {
         const hatSlots = this.getInventoryHatRects();
@@ -3436,43 +3650,48 @@ export class Game {
             slot.width,
             slot.height,
             10,
-            isEquipped ? 'rgba(0, 50, 32, 0.95)' : rConf.bgColor,
-            isEquipped ? '#00ff66' : isHovered ? '#ffffff' : rConf.color,
-            isEquipped || isHovered ? 2.4 : 1.5
+            isEquipped ? 'rgba(6, 52, 42, 0.96)' : 'rgba(15, 24, 42, 0.95)',
+            isEquipped ? '#10b981' : isHovered ? '#ffffff' : rConf.color,
+            isEquipped || isHovered ? 2.2 : 1.5
           );
 
-          // Recorte estricto por ranura de inventario
           this.traceChamferRect(slot.x + 2, slot.y + 2, slot.width - 4, slot.height - 4, 8);
           this.ctx.clip();
 
-          this.ctx.textAlign = 'left';
-          this.ctx.font = '22px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
-          this.ctx.fillText(slot.hat.icon, slot.x + 10, slot.y + 28);
+          // Caja pequeña para el icono vectorial del sombrero
+          this.ctx.fillStyle = 'rgba(8, 14, 26, 0.85)';
+          this.ctx.fillRect(slot.x + 8, slot.y + 10, 44, 44);
+          this.ctx.strokeStyle = rConf.color;
+          this.ctx.lineWidth = 1;
+          this.ctx.strokeRect(slot.x + 8, slot.y + 10, 44, 44);
 
+          HatRenderer.drawHatIcon(this.ctx, slot.hat.id, slot.x + 30, slot.y + 32, 26, now);
+
+          this.ctx.textAlign = 'left';
           this.ctx.fillStyle = '#ffffff';
-          this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
+          this.ctx.font = `bold 12px ${FONT_DISPLAY}`;
           const shortName =
             slot.hat.name.length > 20 ? slot.hat.name.slice(0, 19) + '…' : slot.hat.name;
-          this.ctx.fillText(shortName, slot.x + 40, slot.y + 22);
+          this.ctx.fillText(shortName, slot.x + 60, slot.y + 24);
 
-          this.ctx.fillStyle = rConf.color;
-          this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+          this.ctx.fillStyle = isEquipped ? '#10b981' : rConf.color;
+          this.ctx.font = `bold 10px ${FONT_MONO}`;
           this.ctx.fillText(
-            isEquipped ? i18n.t('✔ EQUIPADO', '✔ EQUIPPED') : rConf.label.split(' ')[0],
-            slot.x + 40,
-            slot.y + 38
+            isEquipped ? i18n.t('[✓] EQUIPADO', '[✓] EQUIPPED') : rConf.label.split(' ')[0],
+            slot.x + 60,
+            slot.y + 41
           );
 
           this.ctx.fillStyle = '#a3e635';
           let statFont = 11;
           const maxStatW = slot.width - 20;
-          this.ctx.font = `${statFont}px ${FONT_MONO}`;
+          this.ctx.font = `bold ${statFont}px ${FONT_MONO}`;
           const statMetrics = this.ctx.measureText(slot.hat.statsLabel).width;
           if (statMetrics > maxStatW) {
             statFont = Math.max(9, Math.floor(11 * (maxStatW / statMetrics)));
-            this.ctx.font = `${statFont}px ${FONT_MONO}`;
+            this.ctx.font = `bold ${statFont}px ${FONT_MONO}`;
           }
-          this.ctx.fillText(slot.hat.statsLabel, slot.x + 10, slot.y + 62);
+          this.ctx.fillText(slot.hat.statsLabel, slot.x + 10, slot.y + 70);
           this.ctx.restore();
         }
 
@@ -3482,8 +3701,8 @@ export class Game {
         this.ctx.font = `bold 12px ${FONT_MONO}`;
         this.ctx.fillText(
           `${i18n.t('PÁG', 'PAGE')} ${this.inventoryPage + 1}/${totalPages}`,
-          cx,
-          py + 441
+          leftCx,
+          py + 471
         );
 
         for (const pageBtn of this.getInventoryPaginationRects()) {
@@ -3493,30 +3712,30 @@ export class Game {
             pageBtn.width,
             pageBtn.height,
             7,
-            'rgba(12, 30, 45, 0.95)',
+            'rgba(15, 25, 44, 0.95)',
             '#38bdf8',
             1.5
           );
 
           this.ctx.fillStyle = '#38bdf8';
           this.ctx.font = `bold 12px ${FONT_DISPLAY}`;
-          this.ctx.fillText(pageBtn.label, pageBtn.x + pageBtn.width / 2, pageBtn.y + 17);
+          this.ctx.fillText(pageBtn.label, pageBtn.x + pageBtn.width / 2, pageBtn.y + 18);
         }
       }
     }
 
     this.ctx.save();
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#a3e635';
-    let feedbackFont = 13;
-    const maxFeedbackW = panelW - 40;
+    this.ctx.fillStyle = '#38bdf8';
+    let feedbackFont = 12.5;
+    const maxFeedbackW = 740;
     this.ctx.font = `bold ${feedbackFont}px ${FONT_DISPLAY}`;
-    let fbMetrics = this.ctx.measureText(this.menuFeedbackMessage).width;
+    const fbMetrics = this.ctx.measureText(this.menuFeedbackMessage).width;
     if (fbMetrics > maxFeedbackW) {
-      feedbackFont = Math.max(10, Math.floor(13 * (maxFeedbackW / fbMetrics)));
+      feedbackFont = Math.max(10, Math.floor(12.5 * (maxFeedbackW / fbMetrics)));
       this.ctx.font = `bold ${feedbackFont}px ${FONT_DISPLAY}`;
     }
-    this.ctx.fillText(this.menuFeedbackMessage, cx, py + 478);
+    this.ctx.fillText(this.menuFeedbackMessage, leftCx, py + 522);
     this.ctx.restore();
 
     const startBtn = this.getStartButtonRect();
@@ -3527,29 +3746,28 @@ export class Game {
       startBtn.width,
       startBtn.height,
       12,
-      this.hoveredStartBtn ? 'rgba(0, 68, 38, 0.98)' : 'rgba(0, 38, 22, 0.95)',
-      this.hoveredStartBtn ? '#ffffff' : '#00ff66',
-      this.hoveredStartBtn ? 2.5 : 2.2,
-      '#00ff66',
-      this.hoveredStartBtn ? 18 : 10 + Math.sin(performance.now() * 0.006) * 6
+      this.hoveredStartBtn ? 'rgba(6, 78, 59, 0.98)' : 'rgba(6, 48, 42, 0.95)',
+      this.hoveredStartBtn ? '#ffffff' : '#10b981',
+      this.hoveredStartBtn ? 2.4 : 2.0,
+      '#10b981',
+      this.hoveredStartBtn ? 16 : 8 + Math.sin(now * 0.006) * 4
     );
 
-    // Recorte estricto dentro del botón de despliegue
     this.traceChamferRect(startBtn.x + 2, startBtn.y + 2, startBtn.width - 4, startBtn.height - 4, 10);
     this.ctx.clip();
 
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.hoveredStartBtn ? '#ffffff' : '#00ff66';
-    let startFont = 16;
-    const maxStartW = startBtn.width - 24;
-    const startText = `> ${i18n.t('PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR', 'PRESS [ENTER] OR CLICK HERE TO DEPLOY')} <`;
+    this.ctx.fillStyle = this.hoveredStartBtn ? '#ffffff' : '#a7f3d0';
+    let startFont = 15.5;
+    const maxStartW = startBtn.width - 28;
+    const startText = `▸ ${i18n.t('PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR', 'PRESS [ENTER] OR CLICK TO DEPLOY')}`;
     this.ctx.font = `bold ${startFont}px ${FONT_DISPLAY}`;
-    let stMetrics = this.ctx.measureText(startText).width;
+    const stMetrics = this.ctx.measureText(startText).width;
     if (stMetrics > maxStartW) {
-      startFont = Math.max(11, Math.floor(16 * (maxStartW / stMetrics)));
+      startFont = Math.max(11, Math.floor(15.5 * (maxStartW / stMetrics)));
       this.ctx.font = `bold ${startFont}px ${FONT_DISPLAY}`;
     }
-    this.ctx.fillText(startText, cx, startBtn.y + 29);
+    this.ctx.fillText(startText, leftCx, startBtn.y + 30);
     this.ctx.restore();
 
     if (this.showLeaderboardOverlay) {
@@ -3570,7 +3788,7 @@ export class Game {
     const cy = this.canvas.height / 2;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
+    this.ctx.fillStyle = 'rgba(5, 9, 18, 0.9)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const panelW = Math.min(720, this.canvas.width - 32);
@@ -3578,45 +3796,55 @@ export class Game {
     const px = cx - panelW / 2;
     const py = cy - 290;
 
-    this.ctx.fillStyle = 'rgba(4, 16, 22, 0.98)';
-    this.ctx.strokeStyle = '#fbbf24';
-    this.ctx.lineWidth = 2.5;
-    this.ctx.shadowColor = '#fbbf24';
-    this.ctx.shadowBlur = 22;
-    this.ctx.fillRect(px, py, panelW, panelH);
-    this.ctx.strokeRect(px, py, panelW, panelH);
+    this.drawCyberPanel(
+      px,
+      py,
+      panelW,
+      panelH,
+      14,
+      'rgba(11, 19, 34, 0.98)',
+      '#fbbf24',
+      2.2,
+      '#fbbf24',
+      18
+    );
 
     this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#fde047';
-    this.ctx.font = 'bold 24px "Courier New", monospace';
-    this.ctx.fillText('🏆 GLOBAL RANKINGS // TOP 10 SURVIVORS 🏆', cx, py + 38);
+    this.ctx.font = `bold 23px ${FONT_DISPLAY}`;
+    this.ctx.fillText('GLOBAL RANKINGS // TOP 10 SURVIVORS', cx, py + 38);
 
     // Tabs: Top Damage to Toro | Best Survival Time
     for (const tabBtn of this.getLeaderboardTabRects()) {
       const isSelected = this.activeLeaderboardCategory === tabBtn.category;
       const isHovered = this.hoveredLeaderboardTab === tabBtn.category;
 
-      this.ctx.fillStyle = isSelected
-        ? tabBtn.category === 'TORO_DAMAGE'
-          ? 'rgba(127, 29, 29, 0.95)'
-          : 'rgba(12, 74, 110, 0.95)'
-        : isHovered
-        ? 'rgba(20, 40, 56, 0.92)'
-        : 'rgba(8, 22, 32, 0.9)';
-      this.ctx.strokeStyle = isSelected
-        ? tabBtn.category === 'TORO_DAMAGE'
-          ? '#ef4444'
-          : '#38bdf8'
-        : isHovered
-        ? '#fde047'
-        : '#475569';
-      this.ctx.lineWidth = isSelected || isHovered ? 2.2 : 1.5;
-      this.ctx.fillRect(tabBtn.x, tabBtn.y, tabBtn.width, tabBtn.height);
-      this.ctx.strokeRect(tabBtn.x, tabBtn.y, tabBtn.width, tabBtn.height);
+      this.drawCyberPanel(
+        tabBtn.x,
+        tabBtn.y,
+        tabBtn.width,
+        tabBtn.height,
+        8,
+        isSelected
+          ? tabBtn.category === 'TORO_DAMAGE'
+            ? 'rgba(88, 18, 28, 0.95)'
+            : 'rgba(14, 52, 82, 0.95)'
+          : isHovered
+          ? 'rgba(20, 36, 58, 0.94)'
+          : 'rgba(15, 24, 42, 0.92)',
+        isSelected
+          ? tabBtn.category === 'TORO_DAMAGE'
+            ? '#f43f5e'
+            : '#38bdf8'
+          : isHovered
+          ? '#fde047'
+          : 'rgba(100, 116, 139, 0.5)',
+        isSelected || isHovered ? 2.0 : 1.4
+      );
 
       this.ctx.fillStyle = isSelected ? '#ffffff' : '#cbd5e1';
-      this.ctx.font = 'bold 14px "Courier New", monospace';
+      this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
       this.ctx.fillText(tabBtn.label, tabBtn.x + tabBtn.width / 2, tabBtn.y + 23);
     }
 
@@ -3624,13 +3852,13 @@ export class Game {
     const tableW = 636;
     const headerY = py + 112;
 
-    this.ctx.fillStyle = 'rgba(15, 35, 50, 0.95)';
-    this.ctx.strokeStyle = '#38bdf8';
-    this.ctx.lineWidth = 1.5;
+    this.ctx.fillStyle = 'rgba(15, 28, 48, 0.96)';
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+    this.ctx.lineWidth = 1.4;
     this.ctx.fillRect(tableX, headerY, tableW, 30);
     this.ctx.strokeRect(tableX, headerY, tableW, 30);
 
-    this.ctx.font = 'bold 13px "Courier New", monospace';
+    this.ctx.font = `bold 12px ${FONT_MONO}`;
     this.ctx.fillStyle = '#38bdf8';
     this.ctx.textAlign = 'left';
     this.ctx.fillText('RANK', tableX + 18, headerY + 20);
@@ -3652,12 +3880,12 @@ export class Game {
     if (this.leaderboardLoading) {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = '#fde047';
-      this.ctx.font = 'bold 16px "Courier New", monospace';
-      this.ctx.fillText('⏳ Sincronizando Clasificación Global desde Firestore...', cx, py + 290);
+      this.ctx.font = `bold 15px ${FONT_MONO}`;
+      this.ctx.fillText('Sincronizando Clasificación Global desde Firestore...', cx, py + 290);
     } else if (entries.length === 0) {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = '#94a3b8';
-      this.ctx.font = '15px "Courier New", monospace';
+      this.ctx.font = `15px ${FONT_DISPLAY}`;
       this.ctx.fillText('Aún no hay registros en esta categoría.', cx, py + 290);
     } else {
       const rowH = 34;
@@ -3670,33 +3898,30 @@ export class Game {
 
         this.ctx.save();
         this.ctx.fillStyle = isCurrentUser
-          ? 'rgba(0, 65, 40, 0.92)'
+          ? 'rgba(6, 62, 48, 0.92)'
           : i % 2 === 0
-          ? 'rgba(8, 22, 32, 0.85)'
-          : 'rgba(12, 30, 44, 0.85)';
-        this.ctx.strokeStyle = isCurrentUser ? '#00ff66' : 'rgba(56, 189, 248, 0.25)';
+          ? 'rgba(13, 22, 38, 0.9)'
+          : 'rgba(17, 29, 49, 0.9)';
+        this.ctx.strokeStyle = isCurrentUser ? '#10b981' : 'rgba(56, 189, 248, 0.22)';
         this.ctx.lineWidth = isCurrentUser ? 1.8 : 1;
         this.ctx.fillRect(tableX, rowY, tableW, rowH - 3);
         this.ctx.strokeRect(tableX, rowY, tableW, rowH - 3);
 
-        // Recorte estricto por fila para no invadir bordes de tabla
         this.ctx.beginPath();
         this.ctx.rect(tableX + 2, rowY, tableW - 4, rowH - 3);
         this.ctx.clip();
 
         const rankColor =
           i === 0 ? '#fbbf24' : i === 1 ? '#e2e8f0' : i === 2 ? '#f97316' : '#94a3b8';
-        const rankBadge = i === 0 ? '🥇 #1' : i === 1 ? '🥈 #2' : i === 2 ? '🥉 #3' : `#${i + 1}`;
+        const rankBadge = `#${i + 1}`;
 
         this.ctx.textAlign = 'left';
         this.ctx.fillStyle = rankColor;
-        this.ctx.font = 'bold 13px "Courier New", monospace';
+        this.ctx.font = `bold 13px ${FONT_MONO}`;
         this.ctx.fillText(rankBadge, tableX + 18, rowY + 21);
 
-        this.ctx.fillStyle = isCurrentUser ? '#00ff66' : '#ffffff';
-        this.ctx.font = isCurrentUser
-          ? 'bold 14px "Courier New", monospace'
-          : '14px "Courier New", monospace';
+        this.ctx.fillStyle = isCurrentUser ? '#10b981' : '#f8fafc';
+        this.ctx.font = isCurrentUser ? `bold 14px ${FONT_DISPLAY}` : `14px ${FONT_DISPLAY}`;
         const rawName = entry.displayName || 'Survivor';
         const shownName = rawName.length > 24 ? rawName.slice(0, 23) + '…' : rawName;
         this.ctx.fillText(
@@ -3707,8 +3932,8 @@ export class Game {
 
         this.ctx.textAlign = 'right';
         if (this.activeLeaderboardCategory === 'TORO_DAMAGE') {
-          this.ctx.fillStyle = '#f87171';
-          this.ctx.font = 'bold 14px "Courier New", monospace';
+          this.ctx.fillStyle = '#fb7185';
+          this.ctx.font = `bold 13.5px ${FONT_MONO}`;
           this.ctx.fillText(
             `${entry.maxDamageToToro.toLocaleString('en-US')} DMG`,
             tableX + tableW - 18,
@@ -3716,7 +3941,7 @@ export class Game {
           );
         } else {
           this.ctx.fillStyle = '#38bdf8';
-          this.ctx.font = 'bold 14px "Courier New", monospace';
+          this.ctx.font = `bold 13.5px ${FONT_MONO}`;
           this.ctx.fillText(
             `${this.formatTimeMMSS(entry.bestTimeSeconds)} (${entry.bestTimeSeconds}s)`,
             tableX + tableW - 18,
@@ -3727,16 +3952,15 @@ export class Game {
       }
     }
 
-    // Botón Volver con auto-fit y recorte
     const backBtn = this.getLeaderboardBackButtonRect();
     this.drawClippedButton(
       backBtn,
-      this.hoveredLeaderboardBackBtn ? 'rgba(0, 68, 40, 0.96)' : 'rgba(10, 32, 24, 0.94)',
-      this.hoveredLeaderboardBackBtn ? '#ffffff' : '#00ff66',
-      this.hoveredLeaderboardBackBtn ? 2.5 : 1.8,
-      this.hoveredLeaderboardBackBtn ? '#ffffff' : '#00ff66',
-      14,
-      `[ESC / CLICK] ${i18n.t('VOLVER AL KERNEL HUB', 'RETURN TO KERNEL HUB')}`
+      this.hoveredLeaderboardBackBtn ? 'rgba(6, 78, 59, 0.96)' : 'rgba(15, 25, 44, 0.95)',
+      this.hoveredLeaderboardBackBtn ? '#ffffff' : '#10b981',
+      this.hoveredLeaderboardBackBtn ? 2.4 : 1.8,
+      this.hoveredLeaderboardBackBtn ? '#ffffff' : '#a7f3d0',
+      13.5,
+      `[ESC / CLICK] ${i18n.t('VOLVER AL HANGAR', 'RETURN TO HANGAR')}`
     );
 
     this.ctx.restore();
@@ -3855,7 +4079,7 @@ export class Game {
     const cy = this.canvas.height / 2;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
+    this.ctx.fillStyle = 'rgba(5, 9, 18, 0.9)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const panelW = 920;
@@ -3863,36 +4087,40 @@ export class Game {
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
 
-    this.ctx.fillStyle = 'rgba(4, 16, 22, 0.98)';
-    this.ctx.strokeStyle = '#84cc16';
-    this.ctx.lineWidth = 2.5;
-    this.ctx.shadowColor = '#84cc16';
-    this.ctx.shadowBlur = 22;
-    this.ctx.fillRect(px, py, panelW, panelH);
-    this.ctx.strokeRect(px, py, panelW, panelH);
+    this.drawCyberPanel(
+      px,
+      py,
+      panelW,
+      panelH,
+      14,
+      'rgba(11, 19, 34, 0.98)',
+      '#10b981',
+      2.2,
+      '#10b981',
+      18
+    );
 
     this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#bef264';
-    this.ctx.font = 'bold 24px "Courier New", monospace';
+    this.ctx.fillStyle = '#f8fafc';
+    this.ctx.font = `bold 23px ${FONT_DISPLAY}`;
     this.ctx.fillText(
-      `🏆 ${i18n.t('PROTOCOLO DE HITOS // LOGROS', 'MILESTONE PROTOCOL // ACHIEVEMENTS')} (${this.achievementSystem.getUnlockedCount()}/${this.achievementSystem.achievements.length})`,
+      `${i18n.t('PROTOCOLO DE HITOS // LOGROS', 'MILESTONE PROTOCOL // ACHIEVEMENTS')} (${this.achievementSystem.getUnlockedCount()}/${this.achievementSystem.achievements.length})`,
       cx,
       py + 34
     );
 
-    this.ctx.fillStyle = '#94a3b8';
-    this.ctx.font = '12px "Courier New", monospace';
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.font = `12px ${FONT_MONO}`;
     this.ctx.fillText(
       i18n.t(
-        'Recompensas en Criptomonedas acreditadas automáticamente al desbloquear cada hito.',
-        'Cryptocurrency rewards automatically credited upon milestone completion.'
+        'Recompensas en Cripto acreditadas automáticamente al completar cada hito.',
+        'Crypto rewards automatically credited upon milestone completion.'
       ),
       cx,
       py + 54
     );
 
-    // Pestañas Página 1 & Página 2 con auto-fit y recorte
     for (const tab of this.getAchievementsTabRects(py)) {
       const isActive = this.achievementsPage === tab.page;
       const isHovered = this.hoveredAchievementsTab === tab.page;
@@ -3900,17 +4128,17 @@ export class Game {
       this.drawClippedButton(
         tab,
         isActive
-          ? 'rgba(30, 65, 20, 0.95)'
+          ? 'rgba(14, 58, 48, 0.96)'
           : isHovered
-          ? 'rgba(20, 45, 30, 0.85)'
-          : 'rgba(10, 24, 20, 0.75)',
-        isActive ? '#bef264' : isHovered ? '#84cc16' : 'rgba(71, 85, 105, 0.6)',
+          ? 'rgba(20, 36, 58, 0.94)'
+          : 'rgba(15, 24, 42, 0.9)',
+        isActive ? '#10b981' : isHovered ? '#38bdf8' : 'rgba(71, 85, 105, 0.6)',
         isActive ? 2.2 : 1.2,
-        isActive ? '#bef264' : isHovered ? '#ffffff' : '#94a3b8',
+        isActive ? '#a7f3d0' : isHovered ? '#ffffff' : '#94a3b8',
         12,
         tab.label,
-        isActive ? '#bef264' : undefined,
-        isActive ? 10 : undefined
+        isActive ? '#10b981' : undefined,
+        isActive ? 8 : undefined
       );
     }
 
@@ -3928,56 +4156,71 @@ export class Game {
       const cardY = startY + row * (cardH + 10);
 
       this.ctx.save();
-      this.ctx.fillStyle = ach.unlocked ? 'rgba(5, 46, 22, 0.92)' : 'rgba(8, 18, 28, 0.88)';
-      this.ctx.strokeStyle = ach.unlocked ? '#22c55e' : 'rgba(71, 85, 105, 0.4)';
-      this.ctx.lineWidth = ach.unlocked ? 1.8 : 1;
-      this.ctx.fillRect(col, cardY, cardW, cardH);
-      this.ctx.strokeRect(col, cardY, cardW, cardH);
+      this.drawCyberPanel(
+        col,
+        cardY,
+        cardW,
+        cardH,
+        8,
+        ach.unlocked ? 'rgba(6, 52, 42, 0.92)' : 'rgba(15, 24, 42, 0.92)',
+        ach.unlocked ? '#10b981' : 'rgba(71, 85, 105, 0.45)',
+        ach.unlocked ? 1.8 : 1
+      );
 
-      // Recorte estricto dentro de la tarjeta para garantizar CERO desbordamientos
-      this.ctx.beginPath();
-      this.ctx.rect(col + 2, cardY + 2, cardW - 4, cardH - 4);
+      this.traceChamferRect(col + 2, cardY + 2, cardW - 4, cardH - 4, 6);
       this.ctx.clip();
 
-      // Icono
-      this.ctx.font = '24px sans-serif';
-      this.ctx.textAlign = 'left';
-      this.ctx.textBaseline = 'middle';
-      this.ctx.fillText(ach.icon, col + 12, cardY + cardH / 2);
+      // Insignia geométrica de estado en lugar de emoji del sistema
+      const badgeCx = col + 24;
+      const badgeCy = cardY + cardH / 2;
+      this.ctx.fillStyle = ach.unlocked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.12)';
+      this.ctx.strokeStyle = ach.unlocked ? '#10b981' : '#38bdf8';
+      this.ctx.lineWidth = 1.4;
+      this.ctx.beginPath();
+      this.ctx.moveTo(badgeCx, badgeCy - 12);
+      this.ctx.lineTo(badgeCx + 12, badgeCy);
+      this.ctx.lineTo(badgeCx, badgeCy + 12);
+      this.ctx.lineTo(badgeCx - 12, badgeCy);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
 
-      // Recompensa a la derecha
+      this.ctx.fillStyle = ach.unlocked ? '#6ee7b7' : '#7dd3fc';
+      this.ctx.font = `bold 11px ${FONT_MONO}`;
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillText(ach.unlocked ? '✓' : '◈', badgeCx, badgeCy + 0.5);
+
       this.ctx.textBaseline = 'alphabetic';
       this.ctx.textAlign = 'right';
-      this.ctx.fillStyle = ach.unlocked ? '#86efac' : '#fbbf24';
-      this.ctx.font = 'bold 12px "Courier New", monospace';
-      const rewardText = `+${ach.rewardCoins} 🪙`;
+      this.ctx.fillStyle = ach.unlocked ? '#6ee7b7' : '#fbbf24';
+      this.ctx.font = `bold 11.5px ${FONT_MONO}`;
+      const rewardText = `+${ach.rewardCoins} CR`;
       this.ctx.fillText(rewardText, col + cardW - 12, cardY + 20);
       const rewardW = this.ctx.measureText(rewardText).width;
 
-      // Título con auto-fit
       this.ctx.textAlign = 'left';
-      this.ctx.fillStyle = ach.unlocked ? '#4ade80' : '#e2e8f0';
+      this.ctx.fillStyle = ach.unlocked ? '#ecfdf5' : '#f1f5f9';
       const title = i18n.currentLang === 'EN' ? ach.titleEn : ach.title;
       const maxTitleW = cardW - 48 - rewardW - 14;
       let titleFontSize = 13;
-      this.ctx.font = `bold ${titleFontSize}px "Courier New", monospace`;
-      let titleMetrics = this.ctx.measureText(title).width;
+      this.ctx.font = `bold ${titleFontSize}px ${FONT_DISPLAY}`;
+      const titleMetrics = this.ctx.measureText(title).width;
       if (titleMetrics > maxTitleW) {
         titleFontSize = Math.max(10, Math.floor(13 * (maxTitleW / titleMetrics)));
-        this.ctx.font = `bold ${titleFontSize}px "Courier New", monospace`;
+        this.ctx.font = `bold ${titleFontSize}px ${FONT_DISPLAY}`;
       }
       this.ctx.fillText(title, col + 46, cardY + 20);
 
-      // Descripción con auto-fit y truncado si fuera necesario
       this.ctx.fillStyle = '#94a3b8';
       const desc = i18n.currentLang === 'EN' ? ach.descriptionEn : ach.description;
       const maxDescW = cardW - 58;
-      let descFontSize = 11;
-      this.ctx.font = `${descFontSize}px "Courier New", monospace`;
+      let descFontSize = 11.5;
+      this.ctx.font = `${descFontSize}px ${FONT_DISPLAY}`;
       let descMetrics = this.ctx.measureText(desc).width;
       if (descMetrics > maxDescW) {
-        descFontSize = Math.max(9, Math.floor(11 * (maxDescW / descMetrics)));
-        this.ctx.font = `${descFontSize}px "Courier New", monospace`;
+        descFontSize = Math.max(9.5, Math.floor(11.5 * (maxDescW / descMetrics)));
+        this.ctx.font = `${descFontSize}px ${FONT_DISPLAY}`;
         descMetrics = this.ctx.measureText(desc).width;
       }
       if (descMetrics > maxDescW) {
@@ -3990,39 +4233,37 @@ export class Game {
         this.ctx.fillText(desc, col + 46, cardY + 38);
       }
 
-      // Barra de Progreso
       const progressRatio = Math.min(1, ach.current / ach.target);
       const barX = col + 46;
       const barY = cardY + 48;
       const barW = cardW - 146;
-      const barH = 8;
+      const barH = 7;
 
-      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+      this.ctx.fillStyle = 'rgba(8, 14, 26, 0.9)';
       this.ctx.fillRect(barX, barY, barW, barH);
-      this.ctx.fillStyle = ach.unlocked ? '#22c55e' : '#38bdf8';
+      this.ctx.fillStyle = ach.unlocked ? '#10b981' : '#38bdf8';
       this.ctx.fillRect(barX, barY, barW * progressRatio, barH);
 
       this.ctx.textAlign = 'right';
-      this.ctx.fillStyle = ach.unlocked ? '#4ade80' : '#38bdf8';
-      this.ctx.font = 'bold 10px "Courier New", monospace';
+      this.ctx.fillStyle = ach.unlocked ? '#6ee7b7' : '#38bdf8';
+      this.ctx.font = `bold 10px ${FONT_MONO}`;
       const progressText = ach.unlocked
         ? i18n.t('COMPLETO', 'COMPLETED')
         : `${Math.floor(ach.current)}/${ach.target}`;
-      this.ctx.fillText(progressText, col + cardW - 12, cardY + 56);
+      this.ctx.fillText(progressText, col + cardW - 12, cardY + 55);
 
       this.ctx.restore();
     }
 
-    // Botón Volver con auto-fit y recorte
     const backBtn = this.getOverlayBackButtonRect(py, panelH);
     this.drawClippedButton(
       backBtn,
-      this.hoveredOverlayBackBtn ? 'rgba(0, 68, 40, 0.96)' : 'rgba(10, 32, 24, 0.94)',
-      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
-      this.hoveredOverlayBackBtn ? 2.5 : 1.8,
-      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
-      14,
-      `[ESC / CLICK] ${i18n.t('VOLVER AL KERNEL HUB', 'RETURN TO KERNEL HUB')}`
+      this.hoveredOverlayBackBtn ? 'rgba(6, 78, 59, 0.96)' : 'rgba(15, 25, 44, 0.95)',
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#10b981',
+      this.hoveredOverlayBackBtn ? 2.4 : 1.8,
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#a7f3d0',
+      13.5,
+      `[ESC / CLICK] ${i18n.t('VOLVER AL HANGAR', 'RETURN TO HANGAR')}`
     );
 
     this.ctx.restore();
@@ -4033,7 +4274,7 @@ export class Game {
     const cy = this.canvas.height / 2;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
+    this.ctx.fillStyle = 'rgba(5, 9, 18, 0.9)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const panelW = 660;
@@ -4041,30 +4282,35 @@ export class Game {
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
 
-    this.ctx.fillStyle = 'rgba(4, 16, 26, 0.98)';
-    this.ctx.strokeStyle = '#38bdf8';
-    this.ctx.lineWidth = 2.5;
-    this.ctx.shadowColor = '#38bdf8';
-    this.ctx.shadowBlur = 22;
-    this.ctx.fillRect(px, py, panelW, panelH);
-    this.ctx.strokeRect(px, py, panelW, panelH);
+    this.drawCyberPanel(
+      px,
+      py,
+      panelW,
+      panelH,
+      14,
+      'rgba(11, 19, 34, 0.98)',
+      '#38bdf8',
+      2.2,
+      '#38bdf8',
+      18
+    );
 
     this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#7dd3fc';
-    this.ctx.font = 'bold 24px "Courier New", monospace';
+    this.ctx.fillStyle = '#f8fafc';
+    this.ctx.font = `bold 23px ${FONT_DISPLAY}`;
     this.ctx.fillText(
-      i18n.t('⚙️ CONFIGURACIÓN DEL SISTEMA // AJUSTES', '⚙️ SYSTEM CONFIGURATION // SETTINGS'),
+      i18n.t('CONFIGURACIÓN DEL SISTEMA // AJUSTES', 'SYSTEM CONFIGURATION // SETTINGS'),
       cx,
       py + 40
     );
 
-    this.ctx.fillStyle = '#94a3b8';
-    this.ctx.font = '12px "Courier New", monospace';
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.font = `12px ${FONT_MONO}`;
     this.ctx.fillText(
       i18n.t(
-        'Los cambios se guardan automáticamente en tu navegador.',
-        'Changes are automatically saved in your browser.'
+        'Guardado automático local en el navegador.',
+        'Automatically persisted in local storage.'
       ),
       cx,
       py + 66
@@ -4083,122 +4329,116 @@ export class Game {
       const y = rowStartY + r * rowGap;
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = '#e2e8f0';
-      this.ctx.font = 'bold 14px "Courier New", monospace';
+      this.ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
       this.ctx.fillText(rows[r].label, cx - 240, y + 21);
 
-      // Botón [-]
-      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      this.ctx.strokeStyle = '#38bdf8';
-      this.ctx.lineWidth = 1.5;
-      this.ctx.fillRect(cx + 70, y, 44, 32);
-      this.ctx.strokeRect(cx + 70, y, 44, 32);
-
+      this.drawCyberPanel(cx + 70, y, 44, 32, 6, 'rgba(15, 25, 44, 0.95)', '#38bdf8', 1.5);
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = '#38bdf8';
-      this.ctx.font = 'bold 18px monospace';
+      this.ctx.font = `bold 18px ${FONT_MONO}`;
       this.ctx.fillText('-', cx + 92, y + 22);
 
-      // Valor central
-      this.ctx.fillStyle = '#00ff66';
-      this.ctx.font = 'bold 15px "Courier New", monospace';
+      this.ctx.fillStyle = '#10b981';
+      this.ctx.font = `bold 15px ${FONT_MONO}`;
       this.ctx.fillText(`${rows[r].value}%`, cx + 158, y + 21);
 
-      // Botón [+]
-      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      this.ctx.strokeStyle = '#38bdf8';
-      this.ctx.fillRect(cx + 200, y, 44, 32);
-      this.ctx.strokeRect(cx + 200, y, 44, 32);
-
+      this.drawCyberPanel(cx + 200, y, 44, 32, 6, 'rgba(15, 25, 44, 0.95)', '#38bdf8', 1.5);
       this.ctx.fillStyle = '#38bdf8';
-      this.ctx.font = 'bold 18px monospace';
+      this.ctx.font = `bold 18px ${FONT_MONO}`;
       this.ctx.fillText('+', cx + 222, y + 22);
     }
 
-    // Toggle Mute
     const muteY = rowStartY + rowGap * 3 + 10;
     const muteActive = this.sound.muted;
-    this.ctx.fillStyle = muteActive ? 'rgba(127, 29, 29, 0.92)' : 'rgba(10, 45, 30, 0.92)';
-    this.ctx.strokeStyle = muteActive ? '#ef4444' : '#00ff66';
-    this.ctx.lineWidth = 1.8;
-    this.ctx.fillRect(cx - 240, muteY, 230, 38);
-    this.ctx.strokeRect(cx - 240, muteY, 230, 38);
+    this.drawCyberPanel(
+      cx - 240,
+      muteY,
+      230,
+      38,
+      8,
+      muteActive ? 'rgba(88, 18, 28, 0.94)' : 'rgba(6, 52, 42, 0.94)',
+      muteActive ? '#ef4444' : '#10b981',
+      1.8
+    );
 
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = muteActive ? '#fca5a5' : '#86efac';
-    this.ctx.font = 'bold 13px "Courier New", monospace';
+    this.ctx.fillStyle = muteActive ? '#fca5a5' : '#a7f3d0';
+    this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
     const muteLabel = muteActive
       ? i18n.t('MUTE: SILENCIADO', 'MUTE: MUTED')
       : i18n.t('MUTE: SONIDO ON', 'MUTE: AUDIO ON');
     this.ctx.fillText(muteLabel, cx - 125, muteY + 24);
 
-    // Toggle Screen Shake
     const shakeActive = this.sound.screenShakeEnabled;
-    this.ctx.fillStyle = shakeActive ? 'rgba(10, 45, 30, 0.92)' : 'rgba(30, 41, 59, 0.92)';
-    this.ctx.strokeStyle = shakeActive ? '#00ff66' : '#64748b';
-    this.ctx.lineWidth = 1.8;
-    this.ctx.fillRect(cx + 10, muteY, 230, 38);
-    this.ctx.strokeRect(cx + 10, muteY, 230, 38);
+    this.drawCyberPanel(
+      cx + 10,
+      muteY,
+      230,
+      38,
+      8,
+      shakeActive ? 'rgba(6, 52, 42, 0.94)' : 'rgba(20, 30, 48, 0.94)',
+      shakeActive ? '#10b981' : '#64748b',
+      1.8
+    );
 
-    this.ctx.fillStyle = shakeActive ? '#86efac' : '#94a3b8';
+    this.ctx.fillStyle = shakeActive ? '#a7f3d0' : '#94a3b8';
     const shakeLabel = shakeActive
       ? i18n.t('AGITADO PANTALLA: ON', 'SCREEN SHAKE: ON')
       : i18n.t('AGITADO PANTALLA: OFF', 'SCREEN SHAKE: OFF');
     this.ctx.fillText(shakeLabel, cx + 125, muteY + 24);
 
-    // ==========================================
-    // SECTOR IDIOMA / LANGUAGE (ES / EN)
-    // ==========================================
     const langY = py + 316;
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#e2e8f0';
-    this.ctx.font = 'bold 14px "Courier New", monospace';
+    this.ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
     this.ctx.fillText(i18n.t('IDIOMA / LANGUAGE:', 'LANGUAGE / IDIOMA:'), cx - 240, langY + 24);
 
-    // Botón Español
     const isEs = i18n.currentLang === 'ES';
-    this.ctx.fillStyle = isEs ? 'rgba(6, 78, 59, 0.95)' : 'rgba(15, 23, 42, 0.85)';
-    this.ctx.strokeStyle = isEs ? '#00ff66' : '#334155';
-    this.ctx.lineWidth = isEs ? 2.2 : 1.2;
-    if (isEs) {
-      this.ctx.shadowColor = '#00ff66';
-      this.ctx.shadowBlur = 10;
-    }
-    this.ctx.fillRect(cx - 20, langY, 120, 38);
-    this.ctx.strokeRect(cx - 20, langY, 120, 38);
-    this.ctx.shadowBlur = 0;
+    this.drawCyberPanel(
+      cx - 20,
+      langY,
+      120,
+      38,
+      8,
+      isEs ? 'rgba(6, 62, 48, 0.95)' : 'rgba(15, 24, 42, 0.9)',
+      isEs ? '#10b981' : '#334155',
+      isEs ? 2.0 : 1.2,
+      isEs ? '#10b981' : undefined,
+      isEs ? 8 : 0
+    );
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = isEs ? '#ffffff' : '#94a3b8';
-    this.ctx.font = 'bold 13px "Courier New", monospace';
+    this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
     this.ctx.fillText(isEs ? '✓ ESPAÑOL' : 'ESPAÑOL', cx + 40, langY + 24);
 
-    // Botón Inglés
     const isEn = i18n.currentLang === 'EN';
-    this.ctx.fillStyle = isEn ? 'rgba(14, 116, 144, 0.95)' : 'rgba(15, 23, 42, 0.85)';
-    this.ctx.strokeStyle = isEn ? '#38bdf8' : '#334155';
-    this.ctx.lineWidth = isEn ? 2.2 : 1.2;
-    if (isEn) {
-      this.ctx.shadowColor = '#38bdf8';
-      this.ctx.shadowBlur = 10;
-    }
-    this.ctx.fillRect(cx + 120, langY, 120, 38);
-    this.ctx.strokeRect(cx + 120, langY, 120, 38);
-    this.ctx.shadowBlur = 0;
+    this.drawCyberPanel(
+      cx + 120,
+      langY,
+      120,
+      38,
+      8,
+      isEn ? 'rgba(14, 74, 110, 0.95)' : 'rgba(15, 24, 42, 0.9)',
+      isEn ? '#38bdf8' : '#334155',
+      isEn ? 2.0 : 1.2,
+      isEn ? '#38bdf8' : undefined,
+      isEn ? 8 : 0
+    );
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = isEn ? '#ffffff' : '#94a3b8';
-    this.ctx.font = 'bold 13px "Courier New", monospace';
+    this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
     this.ctx.fillText(isEn ? '✓ ENGLISH' : 'ENGLISH', cx + 180, langY + 24);
 
-    // Botón Guardar y Volver con auto-fit y recorte
     const backBtn = this.getOverlayBackButtonRect(py, panelH);
     this.drawClippedButton(
       backBtn,
-      this.hoveredOverlayBackBtn ? 'rgba(0, 68, 40, 0.96)' : 'rgba(10, 32, 24, 0.94)',
-      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
-      this.hoveredOverlayBackBtn ? 2.5 : 1.8,
-      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
-      14,
+      this.hoveredOverlayBackBtn ? 'rgba(6, 78, 59, 0.96)' : 'rgba(15, 25, 44, 0.95)',
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#10b981',
+      this.hoveredOverlayBackBtn ? 2.4 : 1.8,
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#a7f3d0',
+      13.5,
       `[ESC / CLICK] ${i18n.t('GUARDAR Y VOLVER', 'SAVE & RETURN')}`
     );
 
@@ -4210,7 +4450,7 @@ export class Game {
     const cy = this.canvas.height / 2;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 4, 8, 0.92)';
+    this.ctx.fillStyle = 'rgba(5, 9, 18, 0.9)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const panelW = 900;
@@ -4218,27 +4458,32 @@ export class Game {
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
 
-    this.ctx.fillStyle = 'rgba(12, 6, 22, 0.98)';
-    this.ctx.strokeStyle = '#d946ef';
-    this.ctx.lineWidth = 2.5;
-    this.ctx.shadowColor = '#d946ef';
-    this.ctx.shadowBlur = 22;
-    this.ctx.fillRect(px, py, panelW, panelH);
-    this.ctx.strokeRect(px, py, panelW, panelH);
+    this.drawCyberPanel(
+      px,
+      py,
+      panelW,
+      panelH,
+      14,
+      'rgba(11, 19, 34, 0.98)',
+      '#c084fc',
+      2.2,
+      '#c084fc',
+      18
+    );
 
     this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#f0abfc';
-    this.ctx.font = 'bold 24px "Courier New", monospace';
+    this.ctx.fillStyle = '#f8fafc';
+    this.ctx.font = `bold 23px ${FONT_DISPLAY}`;
     this.ctx.fillText(
-      `📖 ${i18n.t('MANUAL DE OPERACIONES DEL KERNEL // CÓMO JUGAR', 'KERNEL OPERATIONS MANUAL // HOW TO PLAY')}`,
+      i18n.t('MANUAL DE OPERACIONES DEL KERNEL // CÓMO JUGAR', 'KERNEL OPERATIONS MANUAL // HOW TO PLAY'),
       cx,
       py + 38
     );
 
     const cards = [
       {
-        title: i18n.t('🎮 1. MOVIMIENTO Y CONTROLES', '🎮 1. MOVEMENT & CONTROLS'),
+        title: i18n.t('01 // MOVIMIENTO Y CONTROLES', '01 // MOVEMENT & CONTROLS'),
         lines:
           i18n.currentLang === 'EN'
             ? [
@@ -4253,53 +4498,53 @@ export class Game {
                 '• [H en combate]: Alternar círculo de alcance.',
                 '• Disparo automático: Ataca al malware prioritario.',
               ],
-        color: '#00ff66',
-        border: 'rgba(0, 255, 102, 0.35)',
+        color: '#10b981',
+        border: 'rgba(16, 185, 129, 0.45)',
       },
       {
-        title: i18n.t('⚡ 2. ARSENAL Y PROGRESIÓN', '⚡ 2. ARSENAL & PROGRESSION'),
+        title: i18n.t('02 // ARSENAL Y SOMBREROS', '02 // ARSENAL & GEAR'),
         lines:
           i18n.currentLang === 'EN'
             ? [
                 '• Collect XP orbs to install level-up patches.',
                 '• Strict limit of 4 active weapon slots.',
                 '• Combine weapons and passives for synergies.',
-                '• Unlock and equip hats in the Gacha [G]',
-                '  to gain permanent passive bonuses.',
+                '• Unlock hats in the Gacha [G] for permanent',
+                '  passive bonuses mounted right on your bot.',
               ]
             : [
                 '• Recoge orbes de XP para instalar parches de nivel.',
                 '• Límite estricto de 4 ranuras de armas activas.',
                 '• Combina armas y pasivas para crear sinergias.',
-                '• Desbloquea y equipa sombreros en el Gacha [G]',
-                '  para obtener bonificaciones pasivas permanentes.',
+                '• Desbloquea sombreros en el Gacha [G] para',
+                '  equipar bonificaciones pasivas en tu bot.',
               ],
         color: '#38bdf8',
-        border: 'rgba(56, 189, 248, 0.35)',
+        border: 'rgba(56, 189, 248, 0.45)',
       },
       {
-        title: i18n.t('⚔️ 3. JEFES DE OLEADA Y BOTÍN', '⚔️ 3. WAVE BOSSES & LOOT'),
+        title: i18n.t('03 // JEFES DE OLEADA Y BOTÍN', '03 // WAVE BOSSES & LOOT'),
         lines:
           i18n.currentLang === 'EN'
             ? [
                 '• Periodic colossal bosses spawn in the malware horde.',
-                '• Defeat them to collect massive XP, +5 CryptoCoins',
+                '• Defeat them to collect massive XP, +5 Crypto',
                 '• and a GUARANTEED Power-Up (Nuke, Freeze, Overclock)!',
                 '• Upgrade your arsenal to maximum power.',
                 '• Survive the evolving waves for 11-12 minutes!',
               ]
             : [
-                '• Jefes colosales periódicos aparecen en la horda.',
+                '• Jefes periódicos con vida escalada aparecen en oleadas.',
                 '• ¡Derrótalos para obtener gran botín de XP, +5 Cripto',
                 '• y un Power-Up GARANTIZADO (Bomba, Hielo, Overclock)!',
                 '• Mejora tu arsenal al máximo nivel.',
                 '• ¡Sobrevive a las amenazas durante 11-12 minutos!',
               ],
         color: '#fbbf24',
-        border: 'rgba(251, 191, 36, 0.35)',
+        border: 'rgba(251, 191, 36, 0.45)',
       },
       {
-        title: i18n.t('🐂 4. JEFE FINAL: "EL TORO" (INVENCIBLE)', '🐂 4. FINAL BOSS: "EL TORO" (INVINCIBLE)'),
+        title: i18n.t('04 // JEFE FINAL: "EL TORO"', '04 // FINAL BOSS: "EL TORO"'),
         lines:
           i18n.currentLang === 'EN'
             ? [
@@ -4316,8 +4561,8 @@ export class Game {
                 '• ¡Todas las armas activas: desata todo tu arsenal!',
                 '• ¡Haz todo el daño posible para liderar el Ranking!',
               ],
-        color: '#f87171',
-        border: 'rgba(248, 113, 113, 0.35)',
+        color: '#f43f5e',
+        border: 'rgba(244, 63, 94, 0.45)',
       },
     ];
 
@@ -4333,48 +4578,40 @@ export class Game {
       const rowY = startY + Math.floor(c / 2) * (cardH + 14);
 
       this.ctx.save();
-      this.ctx.fillStyle = 'rgba(6, 12, 20, 0.9)';
-      this.ctx.strokeStyle = card.border;
-      this.ctx.lineWidth = 1.5;
-      this.ctx.fillRect(colX, rowY, cardW, cardH);
-      this.ctx.strokeRect(colX, rowY, cardW, cardH);
-
-      // Recorte estricto dentro de la tarjeta
-      this.ctx.beginPath();
-      this.ctx.rect(colX + 2, rowY + 2, cardW - 4, cardH - 4);
+      this.drawCyberPanel(colX, rowY, cardW, cardH, 10, 'rgba(15, 24, 42, 0.94)', card.border, 1.5);
+      this.traceChamferRect(colX + 2, rowY + 2, cardW - 4, cardH - 4, 8);
       this.ctx.clip();
 
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = card.color;
-      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.font = `bold 13px ${FONT_MONO}`;
       this.ctx.fillText(card.title, colX + 16, rowY + 28);
 
       this.ctx.fillStyle = '#cbd5e1';
       const maxLineW = cardW - 32;
       for (let l = 0; l < card.lines.length; l++) {
         const lineText = card.lines[l];
-        let lineFont = 12;
-        this.ctx.font = `${lineFont}px "Courier New", monospace`;
+        let lineFont = 12.5;
+        this.ctx.font = `${lineFont}px ${FONT_DISPLAY}`;
         const lm = this.ctx.measureText(lineText).width;
         if (lm > maxLineW) {
-          lineFont = Math.max(9.5, Math.floor(12 * (maxLineW / lm)));
-          this.ctx.font = `${lineFont}px "Courier New", monospace`;
+          lineFont = Math.max(9.5, Math.floor(12.5 * (maxLineW / lm)));
+          this.ctx.font = `${lineFont}px ${FONT_DISPLAY}`;
         }
-        this.ctx.fillText(lineText, colX + 16, rowY + 58 + l * 26);
+        this.ctx.fillText(lineText, colX + 16, rowY + 58 + l * 27);
       }
       this.ctx.restore();
     }
 
-    // Botón Volver con auto-fit y recorte
     const backBtn = this.getOverlayBackButtonRect(py, panelH);
     this.drawClippedButton(
       backBtn,
-      this.hoveredOverlayBackBtn ? 'rgba(0, 68, 40, 0.96)' : 'rgba(10, 32, 24, 0.94)',
-      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
-      this.hoveredOverlayBackBtn ? 2.5 : 1.8,
-      this.hoveredOverlayBackBtn ? '#ffffff' : '#00ff66',
-      14,
-      `[ESC / CLICK] ${i18n.t('VOLVER AL KERNEL HUB', 'RETURN TO KERNEL HUB')}`
+      this.hoveredOverlayBackBtn ? 'rgba(6, 78, 59, 0.96)' : 'rgba(15, 25, 44, 0.95)',
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#10b981',
+      this.hoveredOverlayBackBtn ? 2.4 : 1.8,
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#a7f3d0',
+      13.5,
+      `[ESC / CLICK] ${i18n.t('VOLVER AL HANGAR', 'RETURN TO HANGAR')}`
     );
 
     this.ctx.restore();
@@ -4447,28 +4684,28 @@ export class Game {
   private drawCyberGrid(): void {
     const w = this.canvas.width;
     const h = this.canvas.height;
-    const gridSize = 48;
+    const gridSize = 64;
     const majorSize = gridSize * 4;
     const tSec = performance.now() * 0.001;
 
     this.ctx.save();
 
-    // Fondo radial profundo (con margen extra por si hay screen shake)
+    // Suelo de silicio / placa base industrial azul pizarra oscuro
     const bgGrad = this.ctx.createRadialGradient(
       w * 0.5,
       h * 0.5,
-      60,
+      80,
       w * 0.5,
       h * 0.5,
       Math.max(w, h) * 0.72
     );
-    bgGrad.addColorStop(0, '#041a14');
-    bgGrad.addColorStop(1, '#010305');
+    bgGrad.addColorStop(0, '#0d1729');
+    bgGrad.addColorStop(1, '#060a13');
     this.ctx.fillStyle = bgGrad;
     this.ctx.fillRect(-24, -24, w + 48, h + 48);
 
-    // Rejilla secundaria verde
-    this.ctx.strokeStyle = 'rgba(0, 255, 102, 0.045)';
+    // Rejilla secundaria de placa base
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.045)';
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
     for (let x = 0; x <= w; x += gridSize) {
@@ -4481,7 +4718,7 @@ export class Game {
     }
     this.ctx.stroke();
 
-    // Rejilla principal cian
+    // Líneas maestras de bus PCB
     this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.11)';
     this.ctx.beginPath();
     for (let x = majorSize; x < w; x += majorSize) {
@@ -4494,36 +4731,61 @@ export class Game {
     }
     this.ctx.stroke();
 
-    // Nodos (+) en intersecciones principales
-    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+    // Trazas de circuito impreso (PCB 45° traces + pads de soldadura) deterministas
+    this.ctx.strokeStyle = 'rgba(16, 185, 129, 0.10)';
+    this.ctx.lineWidth = 1.6;
     this.ctx.beginPath();
-    for (let x = majorSize; x < w; x += majorSize) {
-      for (let y = majorSize; y < h; y += majorSize) {
-        this.ctx.moveTo(x - 4, y);
-        this.ctx.lineTo(x + 4, y);
-        this.ctx.moveTo(x, y - 4);
-        this.ctx.lineTo(x, y + 4);
+    for (let gx = majorSize; gx < w; gx += majorSize) {
+      for (let gy = majorSize; gy < h; gy += majorSize) {
+        const dir = ((gx / majorSize + gy / majorSize) % 2 === 0) ? 1 : -1;
+        this.ctx.moveTo(gx - 42, gy);
+        this.ctx.lineTo(gx - 18, gy);
+        this.ctx.lineTo(gx, gy + 18 * dir);
+        this.ctx.lineTo(gx + 34, gy + 18 * dir);
       }
     }
     this.ctx.stroke();
 
-    // Barrido de escaneo cibernético sutil
-    const scanY = ((tSec * 90) % (h + 160)) - 80;
+    // Vías / nodos de soldadura y cruces de sector
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+    this.ctx.lineWidth = 1.2;
+    this.ctx.beginPath();
+    for (let x = majorSize; x < w; x += majorSize) {
+      for (let y = majorSize; y < h; y += majorSize) {
+        this.ctx.moveTo(x - 5, y);
+        this.ctx.lineTo(x + 5, y);
+        this.ctx.moveTo(x, y - 5);
+        this.ctx.lineTo(x, y + 5);
+      }
+    }
+    this.ctx.stroke();
+
+    this.ctx.fillStyle = 'rgba(251, 191, 36, 0.22)';
+    for (let gx = majorSize; gx < w; gx += majorSize) {
+      for (let gy = majorSize; gy < h; gy += majorSize) {
+        this.ctx.beginPath();
+        this.ctx.arc(gx - 42, gy, 2.2, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+    }
+
+    // Pulso horizontal suave de escaneo de bus
+    const scanY = ((tSec * 82) % (h + 160)) - 80;
     const scanGrad = this.ctx.createLinearGradient(0, scanY - 40, 0, scanY + 40);
-    scanGrad.addColorStop(0, 'rgba(0, 255, 102, 0)');
-    scanGrad.addColorStop(0.5, 'rgba(0, 255, 150, 0.055)');
-    scanGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    scanGrad.addColorStop(0, 'rgba(56, 189, 248, 0)');
+    scanGrad.addColorStop(0.5, 'rgba(56, 189, 248, 0.055)');
+    scanGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
     this.ctx.fillStyle = scanGrad;
     this.ctx.fillRect(-24, scanY - 40, w + 48, 80);
 
-    // Partículas ambientales flotantes del kernel
+    // Paquetes ambientales discretos circulando por el silicio
     for (let i = 0; i < this.ambientNodes.length; i++) {
       const node = this.ambientNodes[i];
       const nx = (((node.x + node.vx * tSec) % w) + w) % w;
       const ny = (((node.y + node.vy * tSec) % h) + h) % h;
-      const pulse = 0.7 + 0.3 * Math.sin(tSec * 2.2 + i);
-      this.ctx.fillStyle = i % 3 === 0 ? '#38bdf8' : '#00ff66';
-      this.ctx.globalAlpha = node.alpha * pulse;
+      const pulse = 0.65 + 0.35 * Math.sin(tSec * 2.1 + i);
+      this.ctx.fillStyle = i % 3 === 0 ? '#38bdf8' : '#10b981';
+      this.ctx.globalAlpha = node.alpha * 0.75 * pulse;
       this.ctx.fillRect(nx - node.size * 0.5, ny - node.size * 0.5, node.size, node.size);
     }
 
@@ -4540,28 +4802,26 @@ export class Game {
     const fillW = w * ratio;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(4, 16, 26, 0.94)';
+    this.ctx.fillStyle = 'rgba(8, 14, 26, 0.96)';
     this.ctx.fillRect(0, 0, w, barHeight);
 
     if (fillW > 0) {
       const xpGrad = this.ctx.createLinearGradient(0, 0, Math.max(40, fillW), 0);
       xpGrad.addColorStop(0, '#0284c7');
-      xpGrad.addColorStop(0.6, '#00f0ff');
-      xpGrad.addColorStop(1, '#00ff88');
+      xpGrad.addColorStop(0.65, '#38bdf8');
+      xpGrad.addColorStop(1, '#10b981');
       this.ctx.fillStyle = xpGrad;
-      this.ctx.shadowColor = '#00f0ff';
-      this.ctx.shadowBlur = 10;
+      this.ctx.shadowColor = '#38bdf8';
+      this.ctx.shadowBlur = 8;
       this.ctx.fillRect(0, 0, fillW, barHeight);
 
-      // Destello brillante en el borde de avance
       this.ctx.shadowBlur = 0;
       this.ctx.fillStyle = '#ffffff';
       this.ctx.fillRect(Math.max(0, fillW - 3), 0, Math.min(3, fillW), barHeight);
     }
 
-    // Marcas sutiles de cuartos (25%, 50%, 75%)
     this.ctx.shadowBlur = 0;
-    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
     this.ctx.fillRect(w * 0.25, 0, 1, barHeight);
     this.ctx.fillRect(w * 0.5, 0, 1, barHeight);
     this.ctx.fillRect(w * 0.75, 0, 1, barHeight);
@@ -4586,32 +4846,31 @@ export class Game {
     // ==========================================
     const lx = 16;
     const ly = 18;
-    const lw = 348;
-    const lh = 74;
-    this.drawCyberPanel(lx, ly, lw, lh, 10, 'rgba(3, 14, 18, 0.84)', 'rgba(0, 255, 136, 0.55)', 1.6);
+    const lw = 356;
+    const lh = 76;
+    this.drawCyberPanel(lx, ly, lw, lh, 10, 'rgba(11, 19, 34, 0.9)', 'rgba(56, 189, 248, 0.55)', 1.5);
 
     this.ctx.save();
     this.traceChamferRect(lx + 2, ly + 2, lw - 4, lh - 4, 8);
     this.ctx.clip();
 
-    // Indicador del agente + Nivel + Multiplicador XP
     this.ctx.fillStyle = this.player.color;
     this.ctx.beginPath();
     this.ctx.arc(lx + 18, ly + 17, 4.5, 0, Math.PI * 2);
     this.ctx.fill();
 
     this.ctx.textAlign = 'left';
-    this.ctx.fillStyle = '#ffffff';
+    this.ctx.fillStyle = '#f8fafc';
     this.ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
     this.ctx.fillText(this.player.profileName, lx + 29, ly + 22);
 
     const nameW = this.ctx.measureText(this.player.profileName).width;
-    this.ctx.fillStyle = '#00f0ff';
+    this.ctx.fillStyle = '#38bdf8';
     this.ctx.font = `bold 11.5px ${FONT_MONO}`;
     this.ctx.fillText(`LVL ${this.upgradeSystem.level}.0`, lx + 38 + nameW, ly + 22);
 
     this.ctx.textAlign = 'right';
-    this.ctx.fillStyle = '#a3e635';
+    this.ctx.fillStyle = '#10b981';
     this.ctx.font = `bold 11.5px ${FONT_MONO}`;
     this.ctx.fillText(`XP x${this.player.xpMultiplier.toFixed(2)}`, lx + lw - 14, ly + 22);
 
@@ -4619,32 +4878,31 @@ export class Game {
     const hpBarX = lx + 14;
     const hpBarY = ly + 31;
     const hpBarW = lw - 28;
-    const hpBarH = 16;
+    const hpBarH = 17;
 
-    this.ctx.fillStyle = 'rgba(12, 8, 16, 0.94)';
+    this.ctx.fillStyle = 'rgba(7, 11, 20, 0.95)';
     this.ctx.fillRect(hpBarX, hpBarY, hpBarW, hpBarH);
 
     if (hpRatio > 0) {
       const hpGrad = this.ctx.createLinearGradient(hpBarX, 0, hpBarX + hpBarW * hpRatio, 0);
       if (hpRatio > 0.5) {
         hpGrad.addColorStop(0, '#059669');
-        hpGrad.addColorStop(1, '#00ff88');
+        hpGrad.addColorStop(1, '#10b981');
       } else if (hpRatio > 0.25) {
         hpGrad.addColorStop(0, '#d97706');
         hpGrad.addColorStop(1, '#fbbf24');
       } else {
         hpGrad.addColorStop(0, '#b91c1c');
-        hpGrad.addColorStop(1, '#ff1e42');
+        hpGrad.addColorStop(1, '#f43f5e');
       }
       this.ctx.fillStyle = hpGrad;
       this.ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, hpBarH);
 
-      // Brillo superior sutil
       this.ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
       this.ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, 4);
     }
 
-    this.ctx.strokeStyle = hpRatio <= 0.25 ? '#ff4d6d' : 'rgba(255, 255, 255, 0.25)';
+    this.ctx.strokeStyle = hpRatio <= 0.25 ? '#fb7185' : 'rgba(148, 163, 184, 0.35)';
     this.ctx.lineWidth = 1;
     this.ctx.strokeRect(hpBarX, hpBarY, hpBarW, hpBarH);
 
@@ -4656,7 +4914,7 @@ export class Game {
     this.ctx.fillText(
       `HP ${Math.max(0, Math.ceil(this.player.hp))} / ${this.player.maxHp}`,
       hpBarX + hpBarW / 2,
-      hpBarY + 12
+      hpBarY + 12.5
     );
     this.ctx.shadowBlur = 0;
 
@@ -4673,56 +4931,69 @@ export class Game {
       wFont = Math.max(9.5, Math.floor(11.5 * (maxWeaponW / wMetrics)));
       this.ctx.font = `bold ${wFont}px ${FONT_DISPLAY}`;
     }
-    this.ctx.fillText(weaponsLabel, lx + 14, ly + 64);
+    this.ctx.fillText(weaponsLabel, lx + 14, ly + 65);
     this.ctx.restore();
 
     // ==========================================
-    // 2. POD SUPERIOR DERECHO: CRONÓMETRO, BAJAS, CRIPTO Y PROTOCOLO TORO
+    // 2. POD SUPERIOR DERECHO: CRONÓMETRO, BAJAS, CRIPTO Y OBJETIVO
     // ==========================================
-    const rw = 312;
+    const rw = 326;
     const rx = w - rw - 16;
     const ry = 18;
-    const rh = 74;
+    const rh = 76;
     const timeUntilToro = Math.max(0, FINAL_BOSS_ARRIVAL_TIME - this.elapsedTime);
     const toroStroke = this.spawner.finalBossMode
-      ? 'rgba(255, 30, 66, 0.85)'
+      ? 'rgba(244, 63, 94, 0.85)'
       : 'rgba(56, 189, 248, 0.55)';
-    this.drawCyberPanel(rx, ry, rw, rh, 10, 'rgba(3, 14, 18, 0.84)', toroStroke, 1.6);
+    this.drawCyberPanel(rx, ry, rw, rh, 10, 'rgba(11, 19, 34, 0.9)', toroStroke, 1.5);
 
     this.ctx.save();
     this.traceChamferRect(rx + 2, ry + 2, rw - 4, rh - 4, 8);
     this.ctx.clip();
 
     this.ctx.textAlign = 'left';
-    this.ctx.fillStyle = '#ffffff';
+    this.ctx.fillStyle = '#f8fafc';
     this.ctx.font = `bold 18px ${FONT_MONO}`;
     this.ctx.fillText(this.formatTimeMMSS(this.elapsedTime), rx + 14, ry + 26);
 
+    // Vector badge de Bajas
+    this.ctx.fillStyle = '#f43f5e';
+    this.ctx.beginPath();
+    this.ctx.moveTo(rx + 94, ry + 16);
+    this.ctx.lineTo(rx + 99, ry + 21);
+    this.ctx.lineTo(rx + 94, ry + 26);
+    this.ctx.lineTo(rx + 89, ry + 21);
+    this.ctx.closePath();
+    this.ctx.fill();
     this.ctx.fillStyle = '#fda4af';
     this.ctx.font = `bold 12px ${FONT_MONO}`;
-    this.ctx.fillText(`☠ ${this.killCount}`, rx + 92, ry + 25);
+    this.ctx.fillText(`${this.killCount}`, rx + 104, ry + 25);
 
+    // Vector token de Cripto
     this.ctx.fillStyle = '#fbbf24';
-    this.ctx.fillText(`🪙 ${this.runCoinsCollected}`, rx + 162, ry + 25);
+    this.ctx.beginPath();
+    this.ctx.arc(rx + 170, ry + 21, 5, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.fillStyle = '#fde68a';
+    this.ctx.fillText(`${this.runCoinsCollected} CR`, rx + 179, ry + 25);
 
     this.ctx.textAlign = 'right';
     this.ctx.fillStyle = '#94a3b8';
     this.ctx.font = `bold 11px ${FONT_MONO}`;
     this.ctx.fillText(`[P] ${i18n.t('PAUSA', 'PAUSE')}`, rx + rw - 14, ry + 24);
 
-    // Separador fino
-    this.ctx.fillStyle = 'rgba(56, 189, 248, 0.24)';
-    this.ctx.fillRect(rx + 14, ry + 36, rw - 28, 1);
+    this.ctx.fillStyle = 'rgba(56, 189, 248, 0.22)';
+    this.ctx.fillRect(rx + 14, ry + 37, rw - 28, 1);
 
     const bossProgressLabel = this.spawner.finalBossMode
-      ? i18n.t('⚔ FASE: JEFE FINAL [EL TORO]', '⚔ PHASE: FINAL BOSS [EL TORO]')
+      ? i18n.t('FASE CRITICA // JEFE FINAL [EL TORO]', 'CRITICAL PHASE // FINAL BOSS [EL TORO]')
       : i18n.t(
-          `OBJETIVO: TORO EN ${this.formatTimeMMSS(timeUntilToro)} • JEFES: ${this.runBossesKilled}`,
-          `TARGET: TORO IN ${this.formatTimeMMSS(timeUntilToro)} • BOSSES: ${this.runBossesKilled}`
+          `PROTOCOLO TORO: ${this.formatTimeMMSS(timeUntilToro)}  •  JEFES: ${this.runBossesKilled}`,
+          `TORO INCOMING: ${this.formatTimeMMSS(timeUntilToro)}  •  BOSSES: ${this.runBossesKilled}`
         );
 
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.spawner.finalBossMode ? '#ff4d6d' : '#38bdf8';
+    this.ctx.fillStyle = this.spawner.finalBossMode ? '#fb7185' : '#38bdf8';
     let objFont = 11.5;
     const maxObjW = rw - 26;
     this.ctx.font = `bold ${objFont}px ${FONT_DISPLAY}`;
@@ -4731,7 +5002,7 @@ export class Game {
       objFont = Math.max(9.5, Math.floor(11.5 * (maxObjW / objMetrics)));
       this.ctx.font = `bold ${objFont}px ${FONT_DISPLAY}`;
     }
-    this.ctx.fillText(bossProgressLabel, rx + rw / 2, ry + 58);
+    this.ctx.fillText(bossProgressLabel, rx + rw / 2, ry + 59);
     this.ctx.restore();
 
     this.ctx.restore();
@@ -4754,30 +5025,30 @@ export class Game {
         panelW,
         panelH,
         12,
-        'rgba(28, 4, 8, 0.92)',
-        this.finalBoss.state === 'TELEGRAPH' ? '#facc15' : '#ef4444',
-        2.4,
+        'rgba(22, 10, 18, 0.94)',
+        this.finalBoss.state === 'TELEGRAPH' ? '#fbbf24' : '#f43f5e',
+        2.2,
         '#dc2626',
-        18
+        16
       );
 
-      this.ctx.fillStyle = '#fca5a5';
+      this.ctx.fillStyle = '#fda4af';
       this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
       this.ctx.fillText(
         i18n.t(
-          `🐂 JEFE FINAL: EL TORO [INVENCIBLE // CONTACTO: 50% HP MÁX] | ${this.finalBoss.getDashStatusText()}`,
-          `🐂 FINAL BOSS: EL TORO [INVINCIBLE // CONTACT: 50% MAX HP] | ${this.finalBoss.getDashStatusText()}`
+          `JEFE FINAL: EL TORO [INVENCIBLE // CONTACTO: 50% HP MÁX] | ${this.finalBoss.getDashStatusText()}`,
+          `FINAL BOSS: EL TORO [INVINCIBLE // CONTACT: 50% MAX HP] | ${this.finalBoss.getDashStatusText()}`
         ),
         this.canvas.width / 2,
         py + 24
       );
 
-      this.ctx.fillStyle = '#facc15';
+      this.ctx.fillStyle = '#fbbf24';
       this.ctx.shadowColor = '#f59e0b';
-      this.ctx.shadowBlur = 12;
-      this.ctx.font = `bold 20px ${FONT_MONO}`;
+      this.ctx.shadowBlur = 10;
+      this.ctx.font = `bold 19px ${FONT_MONO}`;
       this.ctx.fillText(
-        `${i18n.t('DAÑO TOTAL ACUMULADO', 'TOTAL DAMAGE DEALT')}: ${Math.round(this.finalBoss.totalDamageTaken)}`,
+        `${i18n.t('DAÑO TOTAL ACUMULADO', 'TOTAL DAMAGE DEALT')}: ${Math.round(this.finalBoss.totalDamageTaken).toLocaleString('en-US')}`,
         this.canvas.width / 2,
         py + 52
       );
@@ -4793,13 +5064,13 @@ export class Game {
     if (this.spawner.activeBossAlertTimer > 0) {
       const pulse = Math.floor(this.spawner.activeBossAlertTimer * 8) % 2 === 0;
       if (pulse) {
-        const alertColor = this.spawner.lastBossSpawnedColor || '#ff0055';
+        const alertColor = this.spawner.lastBossSpawnedColor || '#f43f5e';
         this.ctx.fillStyle = alertColor;
         this.ctx.shadowColor = alertColor;
-        this.ctx.shadowBlur = 18;
+        this.ctx.shadowBlur = 16;
         this.ctx.font = `bold 20px ${FONT_DISPLAY}`;
         this.ctx.fillText(
-          `!! WARNING: ${this.spawner.lastBossSpawnedName} DETECTED !!`,
+          `ALERTA // ${this.spawner.lastBossSpawnedName} DETECTED`,
           this.canvas.width / 2,
           104
         );
@@ -4807,23 +5078,23 @@ export class Game {
     }
 
     if (activeBoss) {
-      const barWidth = Math.min(520, this.canvas.width * 0.55);
+      const barWidth = Math.min(540, this.canvas.width * 0.56);
       const barHeight = 14;
       const x = (this.canvas.width - barWidth) / 2;
       const y = this.canvas.height - 46;
-      const ratio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
-      const bossColor = activeBoss.bossColor || '#ff0055';
+      const ratio = Math.max(0, activeBoss.hp / Math.max(1, activeBoss.maxHp));
+      const bossColor = activeBoss.bossColor || '#f43f5e';
 
       this.ctx.shadowBlur = 0;
-      this.ctx.fillStyle = bossColor;
-      this.ctx.font = `bold 13.5px ${FONT_MONO}`;
+      this.ctx.fillStyle = '#f8fafc';
+      this.ctx.font = `bold 13px ${FONT_MONO}`;
       this.ctx.fillText(
-        `${activeBoss.bossName} // INTEGRITY: ${activeBoss.hp}/${activeBoss.maxHp}`,
+        `${activeBoss.bossName} // INTEGRITY: ${Math.max(0, Math.ceil(activeBoss.hp)).toLocaleString('en-US')} / ${activeBoss.maxHp.toLocaleString('en-US')}`,
         this.canvas.width / 2,
         y - 8
       );
 
-      this.drawCyberPanel(x, y, barWidth, barHeight, 4, 'rgba(20, 0, 10, 0.9)', '#ffffff', 1.5);
+      this.drawCyberPanel(x, y, barWidth, barHeight, 4, 'rgba(11, 19, 34, 0.94)', 'rgba(226, 232, 240, 0.75)', 1.4);
 
       if (ratio > 0) {
         this.ctx.save();
@@ -4831,7 +5102,7 @@ export class Game {
         this.ctx.clip();
         this.ctx.fillStyle = bossColor;
         this.ctx.shadowColor = bossColor;
-        this.ctx.shadowBlur = 12;
+        this.ctx.shadowBlur = 10;
         this.ctx.fillRect(x, y, barWidth * ratio, barHeight);
         this.ctx.restore();
       }
@@ -4897,22 +5168,22 @@ export class Game {
     const now = performance.now();
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(0, 8, 5, 0.88)';
+    this.ctx.fillStyle = 'rgba(5, 9, 18, 0.88)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#00ff66';
-    this.ctx.shadowColor = '#00ff66';
-    this.ctx.shadowBlur = 16;
-    this.ctx.font = `bold 28px ${FONT_DISPLAY}`;
+    this.ctx.fillStyle = '#f8fafc';
+    this.ctx.shadowColor = '#38bdf8';
+    this.ctx.shadowBlur = 14;
+    this.ctx.font = `bold 27px ${FONT_DISPLAY}`;
     this.ctx.fillText(
-      `// ${i18n.t('TARJETAS DE MEJORA', 'UPGRADE CARDS')} :: ${i18n.t('NIVEL', 'LEVEL')} ${this.upgradeSystem.level}.0 //`,
+      `// ${i18n.t('MÓDULOS DE MEJORA', 'SYSTEM UPGRADE MODULES')} :: ${i18n.t('NIVEL', 'LEVEL')} ${this.upgradeSystem.level}.0 //`,
       this.canvas.width / 2,
       this.canvas.height / 2 - 186
     );
 
     this.ctx.shadowBlur = 0;
-    this.ctx.fillStyle = '#00f0ff';
+    this.ctx.fillStyle = '#38bdf8';
     this.ctx.font = `15px ${FONT_DISPLAY}`;
     this.ctx.fillText(
       i18n.t(
@@ -4935,11 +5206,11 @@ export class Game {
         rect.width,
         rect.height,
         14,
-        isHovered ? 'rgba(6, 36, 28, 0.98)' : 'rgba(4, 16, 15, 0.95)',
+        isHovered ? 'rgba(18, 30, 52, 0.98)' : 'rgba(11, 19, 34, 0.96)',
         isHovered ? '#ffffff' : opt.color,
-        isHovered ? 2.6 : 1.8,
+        isHovered ? 2.5 : 1.8,
         opt.color,
-        isHovered ? 20 : 10
+        isHovered ? 18 : 8
       );
 
       // Recorte estricto dentro de la tarjeta de mejora biselada
@@ -5253,7 +5524,7 @@ export class Game {
     const cy = this.canvas.height / 2;
 
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(8, 0, 2, 0.88)';
+    this.ctx.fillStyle = 'rgba(7, 10, 18, 0.9)';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const boxW = 880;
@@ -5264,24 +5535,23 @@ export class Game {
       boxW,
       boxH,
       16,
-      'rgba(18, 2, 6, 0.96)',
-      '#ff1e42',
-      2.5,
-      '#ff1e42',
-      24
+      'rgba(14, 16, 28, 0.98)',
+      '#f43f5e',
+      2.4,
+      '#f43f5e',
+      20
     );
 
     this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#ff1e42';
-    this.ctx.font = `bold 30px ${FONT_DISPLAY}`;
+    this.ctx.fillStyle = '#fb7185';
+    this.ctx.font = `bold 29px ${FONT_DISPLAY}`;
     this.ctx.fillText('KERNEL PANIC // SYSTEM COMPROMISED', cx, cy - 235);
 
-    // Resumen General
-    this.ctx.fillStyle = '#00ff66';
-    this.ctx.font = `bold 14px ${FONT_MONO}`;
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.font = `bold 13.5px ${FONT_MONO}`;
     this.ctx.fillText(
-      `${i18n.t('Agente', 'Agent')}: ${this.player.profileName} (v${this.upgradeSystem.level}.0)  |  ${i18n.t('Tiempo', 'Time')}: ${this.formatTimeMMSS(this.elapsedTime)}  |  ${i18n.t('Bajas', 'Kills')}: ${this.killCount}  |  ${i18n.t('Cripto', 'Crypto')}: +${this.runCoinsCollected} 🪙`,
+      `${i18n.t('Agente', 'Agent')}: ${this.player.profileName} (v${this.upgradeSystem.level}.0)  •  ${i18n.t('Tiempo', 'Time')}: ${this.formatTimeMMSS(this.elapsedTime)}  •  ${i18n.t('Bajas', 'Kills')}: ${this.killCount}  •  ${i18n.t('Cripto', 'Crypto')}: +${this.runCoinsCollected} CR`,
       cx,
       cy - 200
     );
@@ -5290,31 +5560,27 @@ export class Game {
       this.ctx.fillStyle = '#fbbf24';
       this.ctx.font = `bold 14px ${FONT_MONO}`;
       this.ctx.fillText(
-        `🐂 ${i18n.t('DAÑO AL JEFE FINAL (EL TORO)', 'DAMAGE TO FINAL BOSS (EL TORO)')}: ${this.runDamageToToro.toLocaleString('en-US')} DMG`,
+        `${i18n.t('DAÑO AL JEFE FINAL (EL TORO)', 'DAMAGE TO FINAL BOSS (EL TORO)')}: ${this.runDamageToToro.toLocaleString('en-US')} DMG`,
         cx,
         cy - 176
       );
     }
 
-    // Dos Paneles: Izquierda (Daño por Arma) | Derecha (Bajas por Tipo)
     const panelY = cy - 150;
     const subW = 405;
     const subH = 320;
     const leftX = cx - subW - 12;
     const rightX = cx + 12;
 
-    // Panel Izquierdo: Rendimiento de Arsenal
     this.ctx.save();
-    this.drawCyberPanel(leftX, panelY, subW, subH, 10, 'rgba(10, 2, 6, 0.9)', '#f43f5e', 1.5);
-
-    // Recorte estricto para el panel izquierdo
+    this.drawCyberPanel(leftX, panelY, subW, subH, 10, 'rgba(11, 18, 32, 0.95)', '#f43f5e', 1.5);
     this.traceChamferRect(leftX + 2, panelY + 2, subW - 4, subH - 4, 8);
     this.ctx.clip();
 
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#fb7185';
-    this.ctx.font = `bold 14px ${FONT_DISPLAY}`;
-    this.ctx.fillText(`⚔️ ${i18n.t('RENDIMIENTO DE ARSENAL (DAÑO)', 'ARSENAL PERFORMANCE (DAMAGE)')}`, leftX + 16, panelY + 28);
+    this.ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
+    this.ctx.fillText(i18n.t('RENDIMIENTO DE ARSENAL (DAÑO)', 'ARSENAL PERFORMANCE (DAMAGE)'), leftX + 16, panelY + 28);
 
     const weaponDamages = Object.entries(this.combatSystem.weaponDamageStats)
       .filter(([_, dmg]) => dmg > 0)
@@ -5322,11 +5588,11 @@ export class Game {
       .sort((a, b) => b.damage - a.damage);
     const totalDmg = weaponDamages.reduce((sum, w) => sum + w.damage, 0) || 1;
 
-    const rowColors = ['#00ff66', '#38bdf8', '#fbbf24', '#ff8800', '#d946ef', '#ec4899', '#a3e635'];
+    const rowColors = ['#10b981', '#38bdf8', '#fbbf24', '#f97316', '#c084fc', '#ec4899', '#a3e635'];
 
     if (weaponDamages.length === 0) {
       this.ctx.fillStyle = '#94a3b8';
-      this.ctx.font = '12px "Courier New", monospace';
+      this.ctx.font = `12.5px ${FONT_DISPLAY}`;
       this.ctx.fillText(i18n.t('Sin registros de daño con armas.', 'No weapon damage recorded.'), leftX + 16, panelY + 60);
     } else {
       for (let w = 0; w < Math.min(6, weaponDamages.length); w++) {
@@ -5335,18 +5601,18 @@ export class Game {
         const pct = Math.round((item.damage / totalDmg) * 100);
         const col = rowColors[w % rowColors.length];
 
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = 'bold 12px "Courier New", monospace';
+        this.ctx.fillStyle = '#f8fafc';
+        this.ctx.font = `bold 12px ${FONT_DISPLAY}`;
         this.ctx.fillText(item.name, leftX + 16, rowY + 12);
 
         this.ctx.textAlign = 'right';
         this.ctx.fillStyle = col;
+        this.ctx.font = `bold 12px ${FONT_MONO}`;
         this.ctx.fillText(`${item.damage.toLocaleString('en-US')} (${pct}%)`, leftX + subW - 16, rowY + 12);
 
         this.ctx.textAlign = 'left';
-        // Barra
         const barW = subW - 32;
-        this.ctx.fillStyle = 'rgba(30, 41, 59, 0.8)';
+        this.ctx.fillStyle = 'rgba(20, 30, 48, 0.95)';
         this.ctx.fillRect(leftX + 16, rowY + 18, barW, 8);
         this.ctx.fillStyle = col;
         this.ctx.fillRect(leftX + 16, rowY + 18, (item.damage / totalDmg) * barW, 8);
@@ -5354,18 +5620,15 @@ export class Game {
     }
     this.ctx.restore();
 
-    // Panel Derecho: Amenazas Purgadas
     this.ctx.save();
-    this.drawCyberPanel(rightX, panelY, subW, subH, 10, 'rgba(10, 2, 6, 0.9)', '#38bdf8', 1.5);
-
-    // Recorte estricto para el panel derecho
+    this.drawCyberPanel(rightX, panelY, subW, subH, 10, 'rgba(11, 18, 32, 0.95)', '#38bdf8', 1.5);
     this.traceChamferRect(rightX + 2, panelY + 2, subW - 4, subH - 4, 8);
     this.ctx.clip();
 
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#7dd3fc';
-    this.ctx.font = `bold 14px ${FONT_DISPLAY}`;
-    this.ctx.fillText(`👾 ${i18n.t('REGISTRO DE AMENAZAS PURGADAS', 'PURGED THREATS LOG')}`, rightX + 16, panelY + 28);
+    this.ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
+    this.ctx.fillText(i18n.t('REGISTRO DE AMENAZAS PURGADAS', 'PURGED THREATS LOG'), rightX + 16, panelY + 28);
 
     const enemyRows = [
       { name: i18n.t('Adware Básico (Rojos)', 'Basic Adware (Red)'), count: this.combatSystem.killsByTypeStats['Adware'], color: '#ef4444' },
@@ -5373,7 +5636,7 @@ export class Game {
       { name: i18n.t('Gusanos Divisibles (Morados)', 'Splitting Worms (Purple)'), count: this.combatSystem.killsByTypeStats['Worm'], color: '#a855f7' },
       { name: i18n.t('Evasores (Ghost Scripts)', 'Evasors (Ghost Scripts)'), count: this.combatSystem.killsByTypeStats['Evasor'], color: '#06b6d4' },
       { name: i18n.t('Cajas de Hardware Destruidas', 'Hardware Crates Destroyed'), count: this.combatSystem.killsByTypeStats['Hardware Box'], color: '#f97316' },
-      { name: i18n.t('Jefes de Oleada Purgados', 'Wave Bosses Purged'), count: this.runBossesKilled, color: '#22c55e' },
+      { name: i18n.t('Jefes de Oleada Purgados', 'Wave Bosses Purged'), count: this.runBossesKilled, color: '#10b981' },
     ];
 
     for (let e = 0; e < enemyRows.length; e++) {
@@ -5384,24 +5647,23 @@ export class Game {
       this.ctx.fillRect(rightX + 16, rY + 3, 8, 8);
 
       this.ctx.fillStyle = '#cbd5e1';
-      this.ctx.font = '12px "Courier New", monospace';
+      this.ctx.font = `12.5px ${FONT_DISPLAY}`;
       this.ctx.fillText(er.name, rightX + 32, rY + 12);
 
       this.ctx.textAlign = 'right';
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.font = 'bold 13px "Courier New", monospace';
+      this.ctx.fillStyle = '#f8fafc';
+      this.ctx.font = `bold 13px ${FONT_MONO}`;
       this.ctx.fillText(`${er.count}`, rightX + subW - 16, rY + 12);
       this.ctx.textAlign = 'left';
     }
     this.ctx.restore();
 
-    // Pie de Acción
     const blink = Math.floor(performance.now() / 450) % 2 === 0;
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = blink ? '#00f0ff' : '#ffffff';
-    this.ctx.font = 'bold 16px "Courier New", monospace';
+    this.ctx.fillStyle = blink ? '#38bdf8' : '#f8fafc';
+    this.ctx.font = `bold 15px ${FONT_MONO}`;
     this.ctx.fillText(
-      `[R / ENTER]: ${i18n.t('Reintentar Partida', 'Retry Run')}  |  [T / ESC / CLIC]: ${i18n.t('Ir a Tienda Principal', 'Main Menu')}`,
+      `[R / ENTER]: ${i18n.t('Reintentar Partida', 'Retry Run')}  •  [T / ESC / CLIC]: ${i18n.t('Ir al Hangar Principal', 'Main Hangar')}`,
       cx,
       cy + 242
     );

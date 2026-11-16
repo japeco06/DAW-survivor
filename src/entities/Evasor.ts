@@ -127,21 +127,29 @@ export class Evasor extends Adware {
   public override draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
 
-    // Dibujar estelas fantasma del dash lateral
+    const half = this.size / 2;
+
+    // Dibujar estelas fantasma con silueta stealth en rombo
     for (const img of this.afterimages) {
-      ctx.fillStyle = `rgba(34, 211, 238, ${img.alpha * 0.55})`;
-      ctx.strokeStyle = `rgba(255, 255, 255, ${img.alpha * 0.7})`;
+      ctx.fillStyle = `rgba(34, 211, 238, ${img.alpha * 0.45})`;
+      ctx.strokeStyle = `rgba(224, 242, 254, ${img.alpha * 0.7})`;
       ctx.lineWidth = 1;
-      ctx.fillRect(img.x - this.size / 2, img.y - this.size / 2, this.size, this.size);
-      ctx.strokeRect(img.x - this.size / 2, img.y - this.size / 2, this.size, this.size);
+      ctx.beginPath();
+      ctx.moveTo(img.x, img.y - half);
+      ctx.lineTo(img.x + half, img.y);
+      ctx.lineTo(img.x, img.y + half);
+      ctx.lineTo(img.x - half, img.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
     }
 
     const canDodge = this.dodgeCooldown <= 0;
 
     // Anillo sensor de proximidad cuando la esquiva está lista
     if (canDodge) {
-      ctx.strokeStyle = 'rgba(34, 211, 238, 0.18)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(34, 211, 238, 0.22)';
+      ctx.lineWidth = 1.2;
       ctx.setLineDash([4, 6]);
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.proximityRadius, 0, Math.PI * 2);
@@ -152,20 +160,43 @@ export class Evasor extends Adware {
     const isFlashing = this.hitFlashTimer > 0;
     const bodyColor = isFlashing ? '#ffffff' : canDodge ? '#22d3ee' : '#64748b';
 
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.facingAngle);
+
     ctx.fillStyle = bodyColor;
+    ctx.strokeStyle = isFlashing ? '#ffffff' : canDodge ? '#cffafe' : '#94a3b8';
     ctx.shadowColor = canDodge ? '#00f0ff' : '#475569';
-    ctx.shadowBlur = isFlashing ? 18 : 0;
+    ctx.shadowBlur = isFlashing ? 18 : 8;
+    ctx.lineWidth = 1.6;
 
-    const half = this.size / 2;
-    ctx.fillRect(this.x - half, this.y - half, this.size, this.size);
+    // Nave furtiva Ghost Script (silueta sigilo en punta)
+    ctx.beginPath();
+    ctx.moveTo(half + 5, 0);
+    ctx.lineTo(0, -half - 2);
+    ctx.lineTo(-half - 3, -half * 0.45);
+    ctx.lineTo(-half * 0.5, 0);
+    ctx.lineTo(-half - 3, half * 0.45);
+    ctx.lineTo(0, half + 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
 
-    ctx.strokeStyle = canDodge ? '#e0f2fe' : '#94a3b8';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(this.x - half, this.y - half, this.size, this.size);
+    if (!isFlashing) {
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#082f49';
+      ctx.beginPath();
+      ctx.moveTo(half * 0.55, 0);
+      ctx.lineTo(-half * 0.2, -half * 0.42);
+      ctx.lineTo(-half * 0.2, half * 0.42);
+      ctx.closePath();
+      ctx.fill();
 
-    // Núcleo interior de Ghost Script
-    ctx.fillStyle = '#083344';
-    ctx.fillRect(this.x - half * 0.45, this.y - half * 0.45, this.size * 0.45, this.size * 0.45);
+      ctx.fillStyle = canDodge ? '#67e8f9' : '#cbd5e1';
+      ctx.fillRect(1, -1.8, 4.5, 3.6);
+    }
+
+    ctx.restore();
 
     ctx.restore();
   }

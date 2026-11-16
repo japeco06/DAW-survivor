@@ -231,7 +231,14 @@ export class Spawner {
       this.bossCount++;
       this.nextBossTime = elapsedTime + this.bossSpawnInterval;
       const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
-      const boss = createWaveBoss(pos.x, pos.y, this.bossCount);
+      const boss = createWaveBoss(
+        pos.x,
+        pos.y,
+        this.bossCount,
+        hpMultiplier,
+        elapsedTime,
+        playerLevel
+      );
       enemies.push(boss);
 
       this.lastBossSpawnedName = boss.bossName;

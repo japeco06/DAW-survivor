@@ -102,33 +102,55 @@ export class CryptoMiner extends Adware {
 
     ctx.translate(this.x, this.y);
 
+    // Pines de hardware dorado ASIC saliendo del chip
+    ctx.strokeStyle = isFlashing ? '#ffffff' : '#fcd34d';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = -1; i <= 1; i++) {
+      const offset = i * 5;
+      ctx.moveTo(offset, -half);
+      ctx.lineTo(offset, -half - 4);
+      ctx.moveTo(offset, half);
+      ctx.lineTo(offset, half + 4);
+      ctx.moveTo(-half, offset);
+      ctx.lineTo(-half - 4, offset);
+      ctx.moveTo(half, offset);
+      ctx.lineTo(half + 4, offset);
+    }
+    ctx.stroke();
+
     ctx.fillStyle = isFlashing ? '#ffffff' : '#f59e0b';
     ctx.strokeStyle = '#fef08a';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2;
     ctx.shadowColor = '#fbbf24';
-    ctx.shadowBlur = isFlashing ? 22 : 16;
+    ctx.shadowBlur = isFlashing ? 22 : 14;
 
-    // Rombo / Cristal Dorado del Minero de Criptos
+    // Octágono ASIC dorado estilizado
+    const cut = 5;
     ctx.beginPath();
-    ctx.moveTo(0, -half - 4);
-    ctx.lineTo(half + 4, 0);
-    ctx.lineTo(0, half + 4);
-    ctx.lineTo(-half - 4, 0);
+    ctx.moveTo(-half + cut, -half);
+    ctx.lineTo(half - cut, -half);
+    ctx.lineTo(half, -half + cut);
+    ctx.lineTo(half, half - cut);
+    ctx.lineTo(half - cut, half);
+    ctx.lineTo(-half + cut, half);
+    ctx.lineTo(-half, half - cut);
+    ctx.lineTo(-half, -half + cut);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 12px "Courier New", monospace';
+    ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('₿', 0, 1);
 
     // Indicador de tiempo antes de que escape
     ctx.fillStyle = '#fde047';
-    ctx.font = 'bold 11px "Courier New", monospace';
-    ctx.fillText(`MINER [${this.escapeTimer.toFixed(1)}s]`, 0, -half - 12);
+    ctx.font = 'bold 11px "JetBrains Mono", Consolas, monospace';
+    ctx.fillText(`MINER [${this.escapeTimer.toFixed(1)}s]`, 0, -half - 13);
 
     const hpRatio = Math.max(0, this.hp / this.maxHp);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';

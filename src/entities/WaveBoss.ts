@@ -8,6 +8,31 @@ import { Trojan } from './Trojan';
  * Hereda de Adware con malwareType = 'RANSOMWARE' para plena compatibilidad
  * con música, logros, sistema de combate y el HUD inferior.
  */
+export interface WaveBossScalingContext {
+  bossLevel?: number;
+  hpMultiplier?: number;
+  elapsedTime?: number;
+  playerLevel?: number;
+}
+
+/**
+ * Escalado unificado para todos los Jefes de Oleada:
+ * garantiza que cada jefe (v1, v2, v3...) aumente progresivamente su vida
+ * acorde al minuto de partida, nivel del agente y multiplicador global.
+ */
+function computeScaledBossHp(baseHp: number, ctx: WaveBossScalingContext): number {
+  const bossIdx = Math.max(1, ctx.bossLevel ?? 1);
+  const hpMult = Math.max(1, ctx.hpMultiplier ?? 1);
+  const timeMin = Math.max(0, (ctx.elapsedTime ?? 0) / 60);
+  const pLvl = Math.max(1, ctx.playerLevel ?? 1);
+
+  const waveFactor = 1 + (bossIdx - 1) * 0.72 + Math.pow(Math.max(0, bossIdx - 1), 1.42) * 0.35;
+  const globalFactor = hpMult * 0.65 + 0.35;
+  const levelTimeFactor = (1 + Math.max(0, pLvl - 1) * 0.065 + timeMin * 0.14) * 0.6 + 0.4;
+
+  return Math.round(baseHp * waveFactor * globalFactor * levelTimeFactor);
+}
+
 export abstract class WaveBoss extends Adware {
   public abstract bossName: string;
   public abstract bossTitle: string;
@@ -27,24 +52,24 @@ export abstract class WaveBoss extends Adware {
   ) {
     super(x, y, size, speed, color, hp, damage, xpValue);
     this.malwareType = 'RANSOMWARE';
-    this.knockbackResistance = 0.94;
+    this.knockbackResistance = 0.96;
   }
 
-  protected drawLocalHealthBar(ctx: CanvasRenderingContext2D, barWidth: number = 72, offsetY: number = 24): void {
+  protected drawLocalHealthBar(ctx: CanvasRenderingContext2D, barWidth: number = 82, offsetY: number = 24): void {
     const barH = 6;
     const bx = this.x - barWidth / 2;
     const by = this.y - this.size / 2 - offsetY;
-    const ratio = Math.max(0, this.hp / this.maxHp);
+    const ratio = Math.max(0, Math.min(1, this.hp / Math.max(1, this.maxHp)));
 
     ctx.save();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.fillRect(bx, by, barWidth, barH);
+    ctx.fillStyle = 'rgba(8, 13, 24, 0.92)';
+    ctx.fillRect(bx - 1, by - 1, barWidth + 2, barH + 2);
     ctx.fillStyle = this.bossColor;
     ctx.fillRect(bx, by, barWidth * ratio, barH);
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = 'rgba(226, 232, 240, 0.75)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(bx, by, barWidth, barH);
+    ctx.strokeRect(bx - 1, by - 1, barWidth + 2, barH + 2);
     ctx.restore();
   }
 }
@@ -60,13 +85,15 @@ export class RansomwareBoss extends WaveBoss {
   private surgeTimer: number = 0;
   private baseSpeed: number;
 
-  constructor(x: number, y: number, bossLevel: number = 1) {
-    const scaledHp = 450 + (bossLevel - 1) * 440;
-    const scaledSpeed = Math.min(108, 78 + (bossLevel - 1) * 3.5);
+  constructor(x: number, y: number, scaling: number | WaveBossScalingContext = 1) {
+    const ctx = typeof scaling === 'number' ? { bossLevel: scaling } : scaling;
+    const bossLevel = Math.max(1, ctx.bossLevel ?? 1);
+    const scaledHp = computeScaledBossHp(1180, ctx);
+    const scaledSpeed = Math.min(112, 78 + (bossLevel - 1) * 3.5);
     const scaledDmg = Math.round(28 + (bossLevel - 1) * 3);
     super(x, y, 54, scaledSpeed, '#ff0055', scaledHp, scaledDmg, 240 * bossLevel);
     this.baseSpeed = scaledSpeed;
-    this.knockbackResistance = Math.min(0.98, 0.92 + (bossLevel - 1) * 0.01);
+    this.knockbackResistance = Math.min(0.985, 0.94 + (bossLevel - 1) * 0.008);
     this.bossName = `RANSOMWARE_v${bossLevel}.0 [ENCRYPTOR]`;
   }
 
@@ -139,9 +166,11 @@ export class RootkitTitanBoss extends WaveBoss {
   private baseSpeed: number;
   private runeAngle: number = 0;
 
-  constructor(x: number, y: number, bossLevel: number = 1) {
-    const scaledHp = 420 + (bossLevel - 1) * 420;
-    const scaledSpeed = Math.min(115, 82 + (bossLevel - 1) * 4.0);
+  constructor(x: number, y: number, scaling: number | WaveBossScalingContext = 1) {
+    const ctx = typeof scaling === 'number' ? { bossLevel: scaling } : scaling;
+    const bossLevel = Math.max(1, ctx.bossLevel ?? 1);
+    const scaledHp = computeScaledBossHp(1080, ctx);
+    const scaledSpeed = Math.min(118, 82 + (bossLevel - 1) * 4.0);
     const scaledDmg = Math.round(26 + (bossLevel - 1) * 3);
     super(x, y, 50, scaledSpeed, '#a855f7', scaledHp, scaledDmg, 250 * bossLevel);
     this.baseSpeed = scaledSpeed;
@@ -223,12 +252,16 @@ export class TrojanOverlordBoss extends WaveBoss {
   private shootTimer: number = 0;
   private deployTimer: number = 0;
   private activeEscorts: Adware[] = [];
+  private minionHpMult: number = 1;
 
-  constructor(x: number, y: number, bossLevel: number = 1) {
-    const scaledHp = 500 + (bossLevel - 1) * 480;
-    const scaledSpeed = Math.min(95, 68 + (bossLevel - 1) * 3.0);
+  constructor(x: number, y: number, scaling: number | WaveBossScalingContext = 1) {
+    const ctx = typeof scaling === 'number' ? { bossLevel: scaling } : scaling;
+    const bossLevel = Math.max(1, ctx.bossLevel ?? 1);
+    const scaledHp = computeScaledBossHp(1320, ctx);
+    const scaledSpeed = Math.min(98, 68 + (bossLevel - 1) * 3.0);
     const scaledDmg = Math.round(30 + (bossLevel - 1) * 3);
     super(x, y, 62, scaledSpeed, '#f97316', scaledHp, scaledDmg, 260 * bossLevel);
+    this.minionHpMult = Math.max(1, ctx.hpMultiplier ?? 1);
     this.bossName = `TROJAN_OVERLORD_v${bossLevel}.0 [CARRIER]`;
   }
 
@@ -262,8 +295,8 @@ export class TrojanOverlordBoss extends WaveBoss {
     if (this.deployTimer >= 7.0) {
       this.deployTimer = 0;
       if (this.activeEscorts.length < 3) {
-        const escort1 = new Trojan(this.x - 24, this.y + 24);
-        const escort2 = new TrojanShooter(this.x + 24, this.y - 24);
+        const escort1 = new Trojan(this.x - 24, this.y + 24, this.minionHpMult);
+        const escort2 = new TrojanShooter(this.x + 24, this.y - 24, this.minionHpMult);
         this.activeEscorts.push(escort1, escort2);
         this.pendingMinions.push(escort1, escort2);
       }
@@ -333,9 +366,11 @@ export class WormPrimeBoss extends WaveBoss {
   private enrageTimer: number = 0;
   private puddleDamageCooldown: number = 0;
 
-  constructor(x: number, y: number, bossLevel: number = 1) {
-    const scaledHp = 480 + (bossLevel - 1) * 450;
-    const scaledSpeed = Math.min(110, 76 + (bossLevel - 1) * 4.0);
+  constructor(x: number, y: number, scaling: number | WaveBossScalingContext = 1) {
+    const ctx = typeof scaling === 'number' ? { bossLevel: scaling } : scaling;
+    const bossLevel = Math.max(1, ctx.bossLevel ?? 1);
+    const scaledHp = computeScaledBossHp(1240, ctx);
+    const scaledSpeed = Math.min(114, 76 + (bossLevel - 1) * 4.0);
     const scaledDmg = Math.round(26 + (bossLevel - 1) * 3);
     super(x, y, 54, scaledSpeed, '#10b981', scaledHp, scaledDmg, 250 * bossLevel);
     this.baseSpeed = scaledSpeed;
@@ -471,9 +506,11 @@ export class SpywareSpecterBoss extends WaveBoss {
   private hitCounter: number = 0;
   private glitchPhase: number = 0;
 
-  constructor(x: number, y: number, bossLevel: number = 1) {
-    const scaledHp = 380 + (bossLevel - 1) * 390;
-    const scaledSpeed = Math.min(125, 92 + (bossLevel - 1) * 4.0);
+  constructor(x: number, y: number, scaling: number | WaveBossScalingContext = 1) {
+    const ctx = typeof scaling === 'number' ? { bossLevel: scaling } : scaling;
+    const bossLevel = Math.max(1, ctx.bossLevel ?? 1);
+    const scaledHp = computeScaledBossHp(1020, ctx);
+    const scaledSpeed = Math.min(126, 92 + (bossLevel - 1) * 4.0);
     const scaledDmg = Math.round(22 + (bossLevel - 1) * 3);
     super(x, y, 48, scaledSpeed, '#06b6d4', scaledHp, scaledDmg, 250 * bossLevel);
     this.bossName = `SPYWARE_SPECTER_v${bossLevel}.0 [ZERO-DAY]`;
@@ -556,22 +593,34 @@ export class SpywareSpecterBoss extends WaveBoss {
 // ============================================================================
 // FACTORY: Crear Jefe de Oleada en función del índice de oleada
 // ============================================================================
-export function createWaveBoss(x: number, y: number, bossIndex: number): WaveBoss {
+export function createWaveBoss(
+  x: number,
+  y: number,
+  bossIndex: number,
+  hpMultiplier: number = 1,
+  elapsedTime: number = 0,
+  playerLevel: number = 1
+): WaveBoss {
   const bossTypeIndex = (bossIndex - 1) % 5;
-  const bossLevel = 1 + Math.floor((bossIndex - 1) / 5);
+  const ctx: WaveBossScalingContext = {
+    bossLevel: Math.max(1, bossIndex),
+    hpMultiplier,
+    elapsedTime,
+    playerLevel,
+  };
 
   switch (bossTypeIndex) {
     case 0:
-      return new RansomwareBoss(x, y, bossLevel);
+      return new RansomwareBoss(x, y, ctx);
     case 1:
-      return new RootkitTitanBoss(x, y, bossLevel);
+      return new RootkitTitanBoss(x, y, ctx);
     case 2:
-      return new TrojanOverlordBoss(x, y, bossLevel);
+      return new TrojanOverlordBoss(x, y, ctx);
     case 3:
-      return new WormPrimeBoss(x, y, bossLevel);
+      return new WormPrimeBoss(x, y, ctx);
     case 4:
-      return new SpywareSpecterBoss(x, y, bossLevel);
+      return new SpywareSpecterBoss(x, y, ctx);
     default:
-      return new RansomwareBoss(x, y, bossLevel);
+      return new RansomwareBoss(x, y, ctx);
   }
 }
