@@ -1,5 +1,6 @@
 import { Player } from '../entities/Player';
 import { CombatSystem } from './CombatSystem';
+import type { SerializedUpgradeCard } from '../network/MultiplayerTypes';
 
 export interface UpgradeOption {
   id: string;
@@ -755,5 +756,38 @@ export class UpgradeSystem {
 
   public isChoosingUpgrade(): boolean {
     return this.currentChoices.length > 0;
+  }
+
+  public serializeCurrentChoices(): SerializedUpgradeCard[] {
+    return this.currentChoices.map((u) => ({
+      id: u.id,
+      name: u.name,
+      nameEn: u.nameEn || u.name,
+      category: u.category,
+      categoryEn: u.categoryEn || u.category,
+      description: u.description,
+      descriptionEn: u.descriptionEn || u.description,
+      statBadge: u.statBadge,
+      statBadgeEn: u.statBadgeEn || u.statBadge,
+      color: u.color,
+      level: u.level,
+      maxLevel: u.maxLevel,
+      isWeapon: u.isWeapon,
+      isEvolution: u.isEvolution,
+      isCompanionBranchCard: u.isCompanionBranchCard,
+    }));
+  }
+
+  public setExternalChoices(cards: SerializedUpgradeCard[], rerollsLeft: number): void {
+    this.rerollsRemaining = rerollsLeft;
+    this.currentChoices = cards.map((c) => ({
+      ...c,
+      apply: () => {},
+    }));
+  }
+
+  public clearExternalChoices(): void {
+    this.currentChoices = [];
+    this.pendingLevelUps = 0;
   }
 }

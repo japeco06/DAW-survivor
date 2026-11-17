@@ -22,6 +22,19 @@ import { ParticleSystem } from '../systems/ParticleSystem';
 import { AchievementSystem } from '../systems/AchievementSystem';
 import { DailyMissionSystem } from '../systems/DailyMissionSystem';
 import { TerrainEventSystem } from '../systems/TerrainEventSystem';
+import { MultiplayerClient } from '../network/MultiplayerClient';
+import { CoopLobbyUI, CoopButtonAction } from '../network/CoopLobbyUI';
+import { CoopRenderer, encodeEnemyType } from '../network/CoopRenderer';
+import type {
+  CoopWorldSnapshot,
+  RoomStateDTO,
+  SerializedUpgradeCard,
+  SnapshotEnemyTuple,
+  SnapshotPickupTuple,
+  SnapshotPlayer,
+  SnapshotProjTuple,
+  SnapshotZoneTuple,
+} from '../network/MultiplayerTypes';
 import {
   MetaSystem,
   CharacterId,
@@ -73,10 +86,28 @@ interface PauseButtonRect {
   height: number;
 }
 
+interface CoopPeerRuntime {
+  id: string;
+  slot: number;
+  name: string;
+  characterId: CharacterId;
+  hatId: string | null;
+  slotColor: string;
+  slotBorder: string;
+  player: Player;
+  combatSystem: CombatSystem;
+  upgradeSystem: UpgradeSystem;
+  inputX: number;
+  inputY: number;
+  isMoving: boolean;
+  downed: boolean;
+  reviveProgress: number;
+}
+
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.3.1';
+const GAME_VERSION = 'v1.4.0';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'cyber_survivor_light_gfx_v1';
@@ -164,6 +195,25 @@ export class Game {
   private lastStandardHealTier: number = 0;
   private runBossesKilled: number = 0;
   private runTotalDamageDealt: number = 0;
+  private mpClient: MultiplayerClient;
+  private showCoopModal: boolean = false;
+  private hoveredCoopBtn: boolean = false;
+  private hoveredCoopAction: CoopButtonAction | null = null;
+  private coopFeedbackMsg: string = '';
+  private isCoopMode: boolean = false;
+  private isCoopHost: boolean = false;
+  private coopSelfDowned: boolean = false;
+  private coopSelfReviveProgress: number = 0;
+  private coopPeers: Map<string, CoopPeerRuntime> = new Map();
+  private coopWaitingUpgrade: boolean = false;
+  private coopUpgradePickedIds: Set<string> = new Set();
+  private coopUpgradeTimer: number = 0;
+  private coopUpgradeStatusText: string = '';
+  private coopSnapshot: CoopWorldSnapshot | null = null;
+  private coopSnapshotTimer: number = 0;
+  private coopSnapshotSeq: number = 0;
+  private coopInputTimer: number = 0;
+  private coopInputSeq: number = 0;
   public readonly firestoreDb = db;
   private menuFeedbackMessage: string = i18n.t(
     'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.',
@@ -229,6 +279,8 @@ export class Game {
       this.addTerminalLog(`MISIÓN DIARIA: ${mission.title} (+${mission.rewardCoins} CR)`);
     };
     this.terrainEvents = new TerrainEventSystem();
+    this.mpClient = new MultiplayerClient();
+    this.setupMultiplayerHandlers();
 
     this.achievementSystem = new AchievementSystem();
     this.achievementSystem.onUnlockCallback = (ach) => {
@@ -335,6 +387,878 @@ export class Game {
     };
   }
 
+  private getSlotSpawnOffset(slot: number): { dx: number; dy: number } {
+    const offsets = [
+      { dx: -68, dy: -42 },
+      { dx: 68, dy: -42 },
+      { dx: -68, dy: 52 },
+      { dx: 68, dy: 52 },
+    ];
+    return offsets[slot % offsets.length] || { dx: 0, dy: 0 };
+  }
+
+  private syncCoopLoadout(): void {
+    if (!this.mpClient.isInRoom) return;
+    const hat = this.metaSystem.getEquippedHat();
+    this.mpClient.updateLoadout({
+      name: this.metaSystem.displayName,
+      characterId: this.metaSystem.selectedCharacter,
+      hatId: hat?.id ?? null,
+    });
+  }
+
+  private openCoopModal(): void {
+    this.showCoopModal = true;
+    this.coopFeedbackMsg = '';
+    if (this.mpClient.serverUrl && !this.mpClient.isConnected) {
+      void this.mpClient.connect().then((ok) => {
+        if (!ok && this.mpClient.statusMessage) {
+          this.coopFeedbackMsg = this.mpClient.statusMessage;
+        }
+      });
+    } else if (this.mpClient.isConnected && !this.mpClient.isInRoom) {
+      void this.mpClient.refreshPublicRooms();
+    }
+  }
+
+  private handleCoopButtonAction(action: CoopButtonAction): void {
+    if (action === 'CLOSE') {
+      this.showCoopModal = false;
+      this.sound.playShoot(false);
+      return;
+    }
+
+    if (action === 'SET_URL') {
+      const nextUrl = window.prompt(
+        i18n.t(
+          'Pega la URL de tu servidor Render (ej: https://cyber-survivor-coop.onrender.com):',
+          'Paste your Render server URL (e.g. https://cyber-survivor-coop.onrender.com):'
+        ),
+        this.mpClient.serverUrl || 'https://'
+      );
+      if (nextUrl !== null) {
+        const clean = this.mpClient.setServerUrl(nextUrl);
+        this.coopFeedbackMsg = clean
+          ? i18n.t(`Conectando a ${clean}...`, `Connecting to ${clean}...`)
+          : i18n.t('URL limpiada.', 'URL cleared.');
+        if (clean) {
+          void this.mpClient.connect().then((ok) => {
+            if (!ok) this.coopFeedbackMsg = this.mpClient.statusMessage;
+            else this.coopFeedbackMsg = i18n.t('¡Servidor Render conectado!', 'Render server connected!');
+          });
+        }
+      }
+      return;
+    }
+
+    const hat = this.metaSystem.getEquippedHat();
+    const myLoadout = {
+      name: this.metaSystem.displayName,
+      characterId: this.metaSystem.selectedCharacter,
+      hatId: hat?.id ?? null,
+    };
+
+    if (action === 'CREATE_PUBLIC' || action === 'CREATE_PRIVATE') {
+      this.coopFeedbackMsg = i18n.t('Creando sala...', 'Creating room...');
+      void this.mpClient
+        .createRoom({
+          ...myLoadout,
+          mode: this.selectedGameMode,
+          isPublic: action === 'CREATE_PUBLIC',
+        })
+        .then((res) => {
+          if (res.ok && res.room) {
+            this.sound.playCoinPickup();
+            this.coopFeedbackMsg = i18n.t(
+              `Sala ${res.room.code} creada. Comparte el código con hasta 3 amigos.`,
+              `Room ${res.room.code} created. Share code with up to 3 friends.`
+            );
+          } else {
+            this.sound.playExplosion(false);
+            this.coopFeedbackMsg = res.error || this.mpClient.statusMessage;
+          }
+        });
+      return;
+    }
+
+    if (action === 'JOIN_CODE') {
+      const rawCode = window.prompt(
+        i18n.t('Introduce el código de sala (4 caracteres):', 'Enter 4-char Room Code:'),
+        ''
+      );
+      if (rawCode && rawCode.trim().length > 0) {
+        this.coopFeedbackMsg = i18n.t('Uniéndose a la sala...', 'Joining room...');
+        void this.mpClient.joinRoom({ code: rawCode.trim().toUpperCase(), ...myLoadout }).then((res) => {
+          if (res.ok) {
+            this.sound.playCoinPickup();
+            this.coopFeedbackMsg = '';
+          } else {
+            this.sound.playExplosion(false);
+            this.coopFeedbackMsg =
+              res.error === 'ROOM_NOT_FOUND'
+                ? i18n.t('Sala no encontrada.', 'Room not found.')
+                : res.error === 'ROOM_FULL'
+                ? i18n.t('Sala llena (4/4 jugadores).', 'Room full (4/4).')
+                : res.error === 'MATCH_ALREADY_STARTED'
+                ? i18n.t('La partida ya ha empezado.', 'Match already started.')
+                : res.error || this.mpClient.statusMessage;
+          }
+        });
+      }
+      return;
+    }
+
+    if (action.startsWith('JOIN_PUBLIC:')) {
+      const code = action.slice('JOIN_PUBLIC:'.length);
+      this.coopFeedbackMsg = i18n.t(`Uniéndose a #${code}...`, `Joining #${code}...`);
+      void this.mpClient.joinRoom({ code, ...myLoadout }).then((res) => {
+        if (res.ok) {
+          this.sound.playCoinPickup();
+          this.coopFeedbackMsg = '';
+        } else {
+          this.sound.playExplosion(false);
+          this.coopFeedbackMsg = res.error || this.mpClient.statusMessage;
+          void this.mpClient.refreshPublicRooms();
+        }
+      });
+      return;
+    }
+
+    if (action === 'REFRESH_ROOMS') {
+      this.coopFeedbackMsg = i18n.t('Actualizando salas públicas...', 'Refreshing public rooms...');
+      void this.mpClient.refreshPublicRooms().then(() => {
+        this.coopFeedbackMsg = '';
+      });
+      return;
+    }
+
+    if (action === 'COPY_CODE' && this.mpClient.room) {
+      const code = this.mpClient.room.code;
+      navigator.clipboard?.writeText(code).catch(() => {});
+      this.sound.playCoinPickup();
+      this.coopFeedbackMsg = i18n.t(
+        `Código ${code} copiado al portapapeles.`,
+        `Code ${code} copied to clipboard.`
+      );
+      return;
+    }
+
+    if (action === 'TOGGLE_MODE' && this.mpClient.room && this.mpClient.isHost) {
+      const nextMode = this.mpClient.room.mode === 'CLASSIC' ? 'NIGHTMARE' : 'CLASSIC';
+      this.mpClient.setMode(nextMode);
+      this.sound.playShoot(false);
+      return;
+    }
+
+    if (action === 'TOGGLE_READY') {
+      this.mpClient.toggleReady();
+      this.sound.playShoot(false);
+      return;
+    }
+
+    if (action === 'START_MATCH' && this.mpClient.isHost) {
+      this.coopFeedbackMsg = i18n.t('Lanzando partida Co-op...', 'Launching Co-op match...');
+      void this.mpClient.startMatch().then((res) => {
+        if (!res.ok) {
+          this.sound.playExplosion(false);
+          this.coopFeedbackMsg = res.error || 'Error';
+        }
+      });
+      return;
+    }
+
+    if (action === 'LEAVE_ROOM') {
+      this.mpClient.leaveRoom();
+      this.coopFeedbackMsg = '';
+      this.sound.playShoot(false);
+    }
+  }
+
+  private setupMultiplayerHandlers(): void {
+    this.mpClient.onRoomUpdate = (room) => {
+      if (this.gameState === 'MENU' && !room && this.showCoopModal) {
+        this.coopFeedbackMsg = this.mpClient.statusMessage;
+      }
+    };
+
+    this.mpClient.onMatchStart = (room) => {
+      this.startCoopMatch(room);
+    };
+
+    this.mpClient.onPeerInput = (inp) => {
+      const peer = this.coopPeers.get(inp.playerId);
+      if (!peer) return;
+      peer.inputX = inp.moveX;
+      peer.inputY = inp.moveY;
+      peer.isMoving = inp.isMoving;
+      if (Math.hypot(inp.moveX, inp.moveY) > 0.05) {
+        peer.player.facingAngle = inp.facingAngle;
+      }
+    };
+
+    this.mpClient.onSnapshot = (snap) => {
+      if (!this.isCoopMode || this.isCoopHost) return;
+      const prevCoins = this.coopSnapshot?.coins ?? 0;
+      this.coopSnapshot = snap;
+      this.elapsedTime = snap.t;
+      this.killCount = snap.kc;
+      this.runBossesKilled = snap.bk;
+      if (snap.coins > prevCoins) {
+        const delta = snap.coins - prevCoins;
+        this.metaSystem.addCoins(delta);
+        this.dailyMissions.reportProgress('COINS', delta);
+      }
+      this.runCoinsCollected = snap.coins;
+      this.upgradeSystem.level = snap.lv;
+      this.upgradeSystem.currentXp = snap.xp;
+      this.upgradeSystem.xpToNextLevel = snap.xpNext;
+      this.isNightmareRun = snap.nm;
+      this.systemFreezeTimer = snap.fz;
+      this.thermalOverclockTimer = snap.oc;
+      this.spawner.swarmActiveTimer = snap.sw;
+      this.spawner.finalBossMode = snap.toro;
+
+      const me = snap.players.find((p) => p.id === this.mpClient.myId);
+      if (me) {
+        this.coopSelfDowned = me.downed;
+        this.coopSelfReviveProgress = me.reviveProgress;
+        this.player.hp = me.hp;
+        this.player.maxHp = me.maxHp;
+        this.player.active = !me.downed;
+        const dist = Math.hypot(me.x - this.player.x, me.y - this.player.y);
+        if (dist > 95 || me.downed) {
+          this.player.x = me.x;
+          this.player.y = me.y;
+        } else {
+          this.player.x += (me.x - this.player.x) * 0.32;
+          this.player.y += (me.y - this.player.y) * 0.32;
+        }
+      }
+    };
+
+    this.mpClient.onLevelUp = (payload) => {
+      if (!this.isCoopMode || this.isCoopHost) return;
+      this.upgradeSystem.level = payload.level;
+      const myChoices = payload.choicesByPlayer[this.mpClient.myId] || [];
+      const myRerolls = payload.rerollsByPlayer[this.mpClient.myId] ?? 0;
+      this.coopWaitingUpgrade = true;
+      this.coopUpgradeStatusText = '';
+      this.sound.playAchievement();
+      if (myChoices.length > 0 && !this.coopSelfDowned) {
+        this.upgradeSystem.setExternalChoices(myChoices, myRerolls);
+      } else {
+        this.upgradeSystem.clearExternalChoices();
+        this.mpClient.sendPickUpgrade(0);
+      }
+    };
+
+    this.mpClient.onPeerPickUpgrade = ({ playerId, index }) => {
+      if (!this.isCoopMode || !this.isCoopHost || !this.coopWaitingUpgrade) return;
+      const peer = this.coopPeers.get(playerId);
+      if (peer) {
+        peer.upgradeSystem.selectUpgrade(index, peer.player, peer.combatSystem);
+      }
+      this.coopUpgradePickedIds.add(playerId);
+      this.tryResumeCoopUpgrade();
+    };
+
+    this.mpClient.onPeerRerollRequest = ({ playerId }) => {
+      if (!this.isCoopMode || !this.isCoopHost || !this.coopWaitingUpgrade) return;
+      const peer = this.coopPeers.get(playerId);
+      if (!peer) return;
+      if (peer.upgradeSystem.rerollChoices(peer.player)) {
+        this.mpClient.sendRerollResult(
+          playerId,
+          peer.upgradeSystem.serializeCurrentChoices(),
+          peer.upgradeSystem.rerollsRemaining
+        );
+      }
+    };
+
+    this.mpClient.onRerollResult = ({ choices, rerollsRemaining }) => {
+      if (!this.isCoopMode || this.isCoopHost) return;
+      this.upgradeSystem.setExternalChoices(choices, rerollsRemaining);
+      this.sound.playShoot(true);
+    };
+
+    this.mpClient.onUpgradeStatus = ({ readyCount, totalCount }) => {
+      this.coopUpgradeStatusText = `${readyCount}/${totalCount}`;
+    };
+
+    this.mpClient.onResumeFromUpgrade = () => {
+      if (!this.isCoopMode || this.isCoopHost) return;
+      this.upgradeSystem.clearExternalChoices();
+      this.coopWaitingUpgrade = false;
+      this.coopUpgradeStatusText = '';
+      this.sound.playCoinPickup();
+    };
+
+    this.mpClient.onGameEvent = (evt) => {
+      if (!this.isCoopMode || this.isCoopHost) return;
+      if (evt.type === 'LOG' && evt.text) {
+        this.addTerminalLog(evt.text);
+      } else if (evt.type === 'SFX' && evt.sfx) {
+        if (evt.sfx === 'explosion') this.sound.playExplosion(true);
+        else if (evt.sfx === 'coin') this.sound.playCoinPickup();
+        else if (evt.sfx === 'levelup') this.sound.playAchievement();
+        else if (evt.sfx === 'shoot') this.sound.playShoot(false);
+      } else if (evt.type === 'REVIVE' && evt.text) {
+        this.sound.playAchievement();
+        this.addTerminalLog(evt.text);
+        if (evt.x !== undefined && evt.y !== undefined) {
+          this.particleSystem.spawnExplosion(evt.x, evt.y, '#10b981', 28, true);
+        }
+      } else if (evt.type === 'DOWNED' && evt.text) {
+        this.sound.playExplosion(false);
+        this.addTerminalLog(evt.text);
+      } else if (evt.type === 'GAME_OVER') {
+        this.gameState = 'GAMEOVER';
+        this.coopWaitingUpgrade = false;
+        this.upgradeSystem.clearExternalChoices();
+        this.sound.setTrack('NONE');
+        this.sound.playExplosion(true);
+        this.achievementSystem.flushPendingSave(true);
+        this.metaSystem.flushPendingSave();
+        this.dailyMissions.flushPendingSave(true);
+      }
+    };
+
+    this.mpClient.onReturnedToLobby = (_room) => {
+      this.exitToMainMenu(true);
+      this.showCoopModal = true;
+      this.coopFeedbackMsg = i18n.t('De vuelta en el Lobby Co-op.', 'Returned to Co-op Lobby.');
+    };
+
+    this.mpClient.onPlayerLeft = (data) => {
+      if (!this.isCoopMode) return;
+      this.addTerminalLog(`CO-OP: ${data.name} disconnected.`);
+      if (this.isCoopHost) {
+        this.coopPeers.delete(data.playerId);
+        if (this.coopWaitingUpgrade) {
+          this.tryResumeCoopUpgrade();
+        }
+      } else if (data.newHostId) {
+        this.exitToMainMenu(true);
+        this.showCoopModal = true;
+        this.coopFeedbackMsg = i18n.t(
+          'El Host abandonó la partida. Regresado al Lobby.',
+          'Host left the match. Returned to Lobby.'
+        );
+      }
+    };
+  }
+
+  private startCoopMatch(room: RoomStateDTO): void {
+    const myId = this.mpClient.myId;
+    const myMember = room.players.find((p) => p.id === myId) || room.players[0];
+    const myProfile =
+      this.metaSystem.characters[myMember.characterId] || this.metaSystem.getSelectedProfile();
+    const myHat = myMember.hatId
+      ? HATS_DATABASE.find((h) => h.id === myMember.hatId) || null
+      : null;
+    const myOff = this.getSlotSpawnOffset(myMember.slot);
+
+    this.isCoopMode = true;
+    this.isCoopHost = room.hostId === myId;
+    this.isNightmareRun = room.mode === 'NIGHTMARE';
+    this.showCoopModal = false;
+    this.showDailyMissionsOverlay = false;
+    this.showLeaderboardOverlay = false;
+    this.showAchievementsOverlay = false;
+    this.showSettingsOverlay = false;
+    this.showHelpOverlay = false;
+    this.coopSelfDowned = false;
+    this.coopSelfReviveProgress = 0;
+    this.coopWaitingUpgrade = false;
+    this.coopUpgradePickedIds.clear();
+    this.coopUpgradeStatusText = '';
+    this.coopSnapshot = null;
+    this.coopSnapshotTimer = 0;
+    this.coopInputTimer = 0;
+    this.coopPeers.clear();
+    this.input.clearTouch();
+
+    this.player = new Player(
+      LOGICAL_WIDTH / 2 + myOff.dx,
+      LOGICAL_HEIGHT / 2 + myOff.dy,
+      myProfile,
+      myHat
+    );
+    this.player.profileName = myMember.name;
+    this.player.color = myMember.slotColor;
+    this.player.borderColor = myMember.slotBorder;
+
+    this.enemies = [];
+    this.projectiles = [];
+    this.pingProjectiles = [];
+    this.quarantineZones = [];
+    this.codeFragments = [];
+    this.cryptoCoins = [];
+    this.powerUps = [];
+    this.systemFreezeTimer = 0;
+    this.thermalOverclockTimer = 0;
+    this.finalBoss = null;
+    this.isPaused = false;
+    this.hoveredPauseAction = null;
+    this.combatSystem = new CombatSystem();
+    if (myProfile.id === 'KERNEL_X') {
+      this.combatSystem.multiShotCount += 1;
+    }
+    this.upgradeSystem = new UpgradeSystem();
+    this.spawner = new Spawner();
+    this.spawner.isNightmareMode = this.isNightmareRun;
+    this.particleSystem.clear();
+    this.elapsedTime = 0;
+    this.killCount = 0;
+    this.lastOverclockTier = 0;
+    this.runCoinsCollected = 0;
+    this.runDamageToToro = 0;
+    this.runBossesKilled = 0;
+    this.runTotalDamageDealt = 0;
+    this.hoveredCardIndex = -1;
+    this.hoveredRerollBtn = false;
+    this.damageVignetteAlpha = 0;
+
+    if (this.isCoopHost) {
+      for (const m of room.players) {
+        if (m.id === myId) continue;
+        const pProfile = this.metaSystem.characters[m.characterId] || this.metaSystem.characters.STANDARD;
+        const pHat = m.hatId ? HATS_DATABASE.find((h) => h.id === m.hatId) || null : null;
+        const pOff = this.getSlotSpawnOffset(m.slot);
+        const peerPlayer = new Player(
+          LOGICAL_WIDTH / 2 + pOff.dx,
+          LOGICAL_HEIGHT / 2 + pOff.dy,
+          pProfile,
+          pHat
+        );
+        peerPlayer.profileName = m.name;
+        peerPlayer.color = m.slotColor;
+        peerPlayer.borderColor = m.slotBorder;
+
+        const peerCombat = new CombatSystem();
+        if (pProfile.id === 'KERNEL_X') {
+          peerCombat.multiShotCount += 1;
+        }
+        this.coopPeers.set(m.id, {
+          id: m.id,
+          slot: m.slot,
+          name: m.name,
+          characterId: m.characterId,
+          hatId: m.hatId,
+          slotColor: m.slotColor,
+          slotBorder: m.slotBorder,
+          player: peerPlayer,
+          combatSystem: peerCombat,
+          upgradeSystem: new UpgradeSystem(),
+          inputX: 0,
+          inputY: 0,
+          isMoving: false,
+          downed: false,
+          reviveProgress: 0,
+        });
+      }
+
+      const cam = this.getCameraOrigin();
+      this.spawner.spawnOpeningWave(this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, cam.x, cam.y);
+      if (this.isNightmareRun) {
+        this.terrainEvents.reset(this.player.x, this.player.y);
+      }
+      this.broadcastCoopSnapshot();
+    }
+
+    this.gameState = 'PLAYING';
+    this.sound.setTrack('INGAME');
+    this.lastTime = performance.now();
+    this.sound.playCoinPickup();
+    this.terminalLogs = [
+      `[000.0s] > CO-OP ROOM #${room.code} (${room.players.length}/4) [${this.isNightmareRun ? 'PESADILLA' : 'CLÁSICO'}]`,
+      `[000.0s] > Role: ${this.isCoopHost ? 'HOST SERVER' : 'SQUAD CLIENT'}`,
+    ];
+  }
+
+  private getNearestAliveCoopPlayer(x: number, y: number): Player {
+    let best: Player | null = !this.coopSelfDowned && this.player.active ? this.player : null;
+    let bestDist = best ? Math.hypot(best.x - x, best.y - y) : Infinity;
+
+    for (const peer of this.coopPeers.values()) {
+      if (peer.downed || !peer.player.active) continue;
+      const d = Math.hypot(peer.player.x - x, peer.player.y - y);
+      if (d < bestDist) {
+        bestDist = d;
+        best = peer.player;
+      }
+    }
+
+    return best || this.player;
+  }
+
+  private getCoopAliveCount(): number {
+    let alive = this.coopSelfDowned ? 0 : 1;
+    for (const peer of this.coopPeers.values()) {
+      if (!peer.downed) alive++;
+    }
+    return alive;
+  }
+
+  private triggerCoopTeamLevelUp(): void {
+    const myId = this.mpClient.myId;
+    const rerollsByPlayer: Record<string, number> = {
+      [myId]: this.upgradeSystem.rerollsRemaining,
+    };
+    const choicesByPlayer: Record<string, SerializedUpgradeCard[]> = {};
+    this.coopUpgradePickedIds.clear();
+    this.coopWaitingUpgrade = true;
+    this.coopUpgradeTimer = 18.0;
+
+    if (this.coopSelfDowned || !this.upgradeSystem.isChoosingUpgrade()) {
+      this.upgradeSystem.clearExternalChoices();
+      this.coopUpgradePickedIds.add(myId);
+    }
+
+    for (const peer of this.coopPeers.values()) {
+      peer.upgradeSystem.level = this.upgradeSystem.level;
+      if (peer.downed) {
+        choicesByPlayer[peer.id] = [];
+        rerollsByPlayer[peer.id] = peer.upgradeSystem.rerollsRemaining;
+        this.coopUpgradePickedIds.add(peer.id);
+        continue;
+      }
+      peer.upgradeSystem.rollChoices(peer.player);
+      choicesByPlayer[peer.id] = peer.upgradeSystem.serializeCurrentChoices();
+      rerollsByPlayer[peer.id] = peer.upgradeSystem.rerollsRemaining;
+    }
+
+    this.mpClient.sendLevelUp({
+      level: this.upgradeSystem.level,
+      rerollsByPlayer,
+      choicesByPlayer,
+    });
+    this.tryResumeCoopUpgrade();
+  }
+
+  private tryResumeCoopUpgrade(): void {
+    if (!this.isCoopHost || !this.coopWaitingUpgrade) return;
+    const totalCount = 1 + this.coopPeers.size;
+    const readyCount = this.coopUpgradePickedIds.size;
+    this.coopUpgradeStatusText = `${readyCount}/${totalCount}`;
+    this.mpClient.sendUpgradeStatus(readyCount, totalCount);
+
+    if (readyCount >= totalCount) {
+      this.coopWaitingUpgrade = false;
+      this.coopUpgradePickedIds.clear();
+      this.coopUpgradeStatusText = '';
+      this.upgradeSystem.clearExternalChoices();
+      this.mpClient.sendResumeFromUpgrade();
+      this.sound.playCoinPickup();
+    }
+  }
+
+  private forceCoopUpgradeTimeout(): void {
+    if (!this.coopUpgradePickedIds.has(this.mpClient.myId)) {
+      if (this.upgradeSystem.isChoosingUpgrade()) {
+        this.upgradeSystem.selectUpgrade(0, this.player, this.combatSystem);
+      }
+      this.coopUpgradePickedIds.add(this.mpClient.myId);
+    }
+    for (const peer of this.coopPeers.values()) {
+      if (!this.coopUpgradePickedIds.has(peer.id)) {
+        if (peer.upgradeSystem.isChoosingUpgrade()) {
+          peer.upgradeSystem.selectUpgrade(0, peer.player, peer.combatSystem);
+        }
+        this.coopUpgradePickedIds.add(peer.id);
+      }
+    }
+    this.tryResumeCoopUpgrade();
+  }
+
+  private broadcastCoopSnapshot(): void {
+    if (!this.isCoopMode || !this.isCoopHost) return;
+    const room = this.mpClient.room;
+    const myMember = room?.players.find((p) => p.id === this.mpClient.myId);
+    const players: SnapshotPlayer[] = [
+      {
+        id: this.mpClient.myId,
+        slot: myMember?.slot ?? 0,
+        name: this.player.profileName,
+        characterId: this.player.characterId,
+        hatId: this.player.equippedHat?.id ?? null,
+        color: this.player.color,
+        borderColor: this.player.borderColor,
+        x: Math.round(this.player.x),
+        y: Math.round(this.player.y),
+        hp: Math.ceil(this.player.hp),
+        maxHp: this.player.maxHp,
+        facingAngle: Number(this.player.facingAngle.toFixed(2)),
+        isMoving: this.player.isMoving,
+        downed: this.coopSelfDowned,
+        reviveProgress: Number(this.coopSelfReviveProgress.toFixed(2)),
+        shieldReady: this.player.shieldReady,
+        adrenaline: this.player.adrenalineTimer > 0,
+        activeWeapons: this.combatSystem.getActiveWeaponsList(this.player).slice(0, 4),
+      },
+    ];
+
+    for (const peer of this.coopPeers.values()) {
+      players.push({
+        id: peer.id,
+        slot: peer.slot,
+        name: peer.name,
+        characterId: peer.characterId,
+        hatId: peer.hatId,
+        color: peer.slotColor,
+        borderColor: peer.slotBorder,
+        x: Math.round(peer.player.x),
+        y: Math.round(peer.player.y),
+        hp: Math.ceil(peer.player.hp),
+        maxHp: peer.player.maxHp,
+        facingAngle: Number(peer.player.facingAngle.toFixed(2)),
+        isMoving: peer.isMoving,
+        downed: peer.downed,
+        reviveProgress: Number(peer.reviveProgress.toFixed(2)),
+        shieldReady: peer.player.shieldReady,
+        adrenaline: peer.player.adrenalineTimer > 0,
+        activeWeapons: peer.combatSystem.getActiveWeaponsList(peer.player).slice(0, 4),
+      });
+    }
+
+    const enemies: SnapshotEnemyTuple[] = [];
+    for (let i = 0; i < Math.min(130, this.enemies.length); i++) {
+      const e = this.enemies[i];
+      if (!e.active) continue;
+      let flags = 0;
+      if (e.malwareType === 'ARMORED_WORM' || e.malwareType === 'EVASOR') flags |= 1;
+      if (e.networkFreezeTimer > 0 || e.cryoSlowTimer > 0) flags |= 2;
+      if (e.hitFlashTimer > 0) flags |= 4;
+      enemies.push([
+        encodeEnemyType(e),
+        Math.round(e.x),
+        Math.round(e.y),
+        Math.round(e.size),
+        Math.ceil(e.hp),
+        Math.ceil(e.maxHp),
+        Number(e.facingAngle.toFixed(2)),
+        flags,
+      ]);
+    }
+
+    const projectiles: SnapshotProjTuple[] = [];
+    const pushProj = (kind: number, x: number, y: number, vx: number, vy: number, evolved: boolean, size: number) => {
+      if (projectiles.length >= 96) return;
+      projectiles.push([
+        kind,
+        Math.round(x),
+        Math.round(y),
+        Math.round(vx),
+        Math.round(vy),
+        evolved ? 1 : 0,
+        Math.round(size),
+      ]);
+    };
+
+    for (const p of this.projectiles) if (p.active) pushProj(0, p.x, p.y, p.vx, p.vy, p.isEvolved, p.size);
+    for (const p of this.pingProjectiles) if (p.active) pushProj(1, p.x, p.y, p.vx, p.vy, p.isEvolved, p.size);
+
+    const collectCombatShots = (cs: CombatSystem) => {
+      for (const s of cs.cryoShards) if (s.active) pushProj(2, s.x, s.y, s.vx, s.vy, s.isEvolved, s.size);
+      for (const b of cs.sqlBeams) if (b.active) pushProj(3, b.x, b.y, b.vx, b.vy, b.isEvolved, b.thickness);
+      for (const d of cs.sawDiscs) if (d.active) pushProj(4, d.x, d.y, 0, 0, d.isEvolved, d.size);
+      for (const ep of cs.enemyProjectiles) if (ep.active) pushProj(5, ep.x, ep.y, ep.vx, ep.vy, false, ep.size);
+    };
+    collectCombatShots(this.combatSystem);
+    for (const peer of this.coopPeers.values()) collectCombatShots(peer.combatSystem);
+
+    const pickups: SnapshotPickupTuple[] = [];
+    for (let i = 0; i < Math.min(80, this.codeFragments.length); i++) {
+      const f = this.codeFragments[i];
+      if (f.active) pickups.push([0, Math.round(f.x), Math.round(f.y), f.xpValue]);
+    }
+    for (const c of this.cryptoCoins) {
+      if (c.active) pickups.push([1, Math.round(c.x), Math.round(c.y), c.value]);
+    }
+    for (const p of this.powerUps) {
+      if (!p.active) continue;
+      const pk = p.type === 'NUKE' ? 2 : p.type === 'FREEZE' ? 3 : 4;
+      pickups.push([pk, Math.round(p.x), Math.round(p.y), 1]);
+    }
+
+    const zones: SnapshotZoneTuple[] = [];
+    for (const q of this.quarantineZones) {
+      if (q.active) zones.push([0, Math.round(q.x), Math.round(q.y), Math.round(q.radius), 0, 1, q.isEvolved ? 1 : 0]);
+    }
+    if (this.isNightmareRun) {
+      for (const tn of this.terrainEvents.nodes) {
+        if (!tn.active) continue;
+        const zk =
+          tn.type === 'COOLING_SERVER'
+            ? 1
+            : tn.type === 'EMP_PYLON'
+            ? 2
+            : tn.type === 'CORRUPTED_VAULT'
+            ? 3
+            : 4;
+        zones.push([
+          zk,
+          Math.round(tn.x),
+          Math.round(tn.y),
+          Math.round(tn.radius),
+          Number(tn.progress.toFixed(2)),
+          Number(tn.duration.toFixed(2)),
+          0,
+        ]);
+      }
+    }
+
+    const arcs: [number, number][][] = [];
+    for (const arc of this.combatSystem.teslaArcs) {
+      arcs.push(arc.points.map((pt) => [Math.round(pt.x), Math.round(pt.y)]));
+    }
+    for (const peer of this.coopPeers.values()) {
+      for (const arc of peer.combatSystem.teslaArcs) {
+        arcs.push(arc.points.map((pt) => [Math.round(pt.x), Math.round(pt.y)]));
+      }
+    }
+
+    const pulses: [number, number, number, number][] = [];
+    for (const pl of this.combatSystem.firewallPulses) {
+      if (pl.active) pulses.push([Math.round(pl.x), Math.round(pl.y), Math.round(pl.radius), pl.isEvolved ? 1 : 0]);
+    }
+
+    this.mpClient.sendSnapshot({
+      seq: ++this.coopSnapshotSeq,
+      t: Number(this.elapsedTime.toFixed(2)),
+      kc: this.killCount,
+      bk: this.runBossesKilled,
+      coins: this.runCoinsCollected,
+      lv: this.upgradeSystem.level,
+      xp: Math.round(this.upgradeSystem.currentXp),
+      xpNext: Math.round(this.upgradeSystem.xpToNextLevel),
+      nm: this.isNightmareRun,
+      fz: Number(this.systemFreezeTimer.toFixed(1)),
+      oc: Number(this.thermalOverclockTimer.toFixed(1)),
+      sw: Number(this.spawner.swarmActiveTimer.toFixed(1)),
+      toro: this.spawner.finalBossMode,
+      players,
+      enemies,
+      projectiles,
+      pickups,
+      zones,
+      arcs: arcs.slice(0, 12),
+      pulses: pulses.slice(0, 8),
+    });
+  }
+
+  private drawCoopSquadHud(): void {
+    if (!this.isCoopMode) return;
+    const room = this.mpClient.room;
+    const startX = 16;
+    const startY = 104;
+    const panelW = 248;
+
+    const list = this.isCoopHost
+      ? [
+          {
+            slot: room?.players.find((p) => p.id === this.mpClient.myId)?.slot ?? 0,
+            name: this.player.profileName,
+            hp: Math.ceil(this.player.hp),
+            maxHp: this.player.maxHp,
+            downed: this.coopSelfDowned,
+            color: this.player.color,
+          },
+          ...Array.from(this.coopPeers.values()).map((pr) => ({
+            slot: pr.slot,
+            name: pr.name,
+            hp: Math.ceil(pr.player.hp),
+            maxHp: pr.player.maxHp,
+            downed: pr.downed,
+            color: pr.slotColor,
+          })),
+        ].sort((a, b) => a.slot - b.slot)
+      : (this.coopSnapshot?.players || []).map((sp) => ({
+          slot: sp.slot,
+          name: sp.name,
+          hp: sp.hp,
+          maxHp: sp.maxHp,
+          downed: sp.downed,
+          color: sp.color,
+        }));
+
+    const panelH = 34 + Math.max(1, list.length) * 30;
+    this.ctx.save();
+    this.drawCyberPanel(startX, startY, panelW, panelH, 8, 'rgba(11, 19, 34, 0.88)', 'rgba(56, 189, 248, 0.5)', 1.3);
+
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = '#7dd3fc';
+    this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+    this.ctx.fillText(
+      `CO-OP #${room?.code || '----'}  •  ${this.mpClient.latencyMs || '—'}ms`,
+      startX + 12,
+      startY + 20
+    );
+
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      const ry = startY + 32 + i * 30;
+      this.ctx.fillStyle = m.color;
+      this.ctx.fillRect(startX + 12, ry + 3, 5, 16);
+
+      this.ctx.fillStyle = m.downed ? '#fda4af' : '#f8fafc';
+      this.ctx.font = `bold 11px ${FONT_DISPLAY}`;
+      this.ctx.fillText(`J${m.slot + 1} ${m.name}`, startX + 22, ry + 13, 128);
+
+      const bw = 78;
+      const bx = startX + panelW - bw - 12;
+      this.ctx.fillStyle = 'rgba(2, 6, 23, 0.9)';
+      this.ctx.fillRect(bx, ry + 5, bw, 10);
+      if (m.downed) {
+        this.ctx.fillStyle = '#f43f5e';
+        this.ctx.font = `bold 9.5px ${FONT_MONO}`;
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(i18n.t('CAÍDO', 'DOWN'), bx + bw / 2, ry + 13.5);
+        this.ctx.textAlign = 'left';
+      } else {
+        const ratio = Math.max(0, Math.min(1, m.hp / Math.max(1, m.maxHp)));
+        this.ctx.fillStyle = ratio > 0.5 ? '#10b981' : ratio > 0.25 ? '#f59e0b' : '#ef4444';
+        this.ctx.fillRect(bx, ry + 5, bw * ratio, 10);
+      }
+    }
+    this.ctx.restore();
+  }
+
+  private drawCoopWaitingOverlay(): void {
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(5, 9, 18, 0.72)';
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
+    const w = 520;
+    const h = 132;
+    this.drawCyberPanel(cx - w / 2, cy - h / 2, w, h, 14, 'rgba(11, 19, 34, 0.96)', '#10b981', 2, '#10b981', 12);
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#6ee7b7';
+    this.ctx.font = `bold 20px ${FONT_DISPLAY}`;
+    this.ctx.fillText(
+      this.coopSelfDowned
+        ? i18n.t('ESPERANDO REANIMACIÓN / EQUIPO...', 'WAITING FOR TEAM UPGRADE...')
+        : i18n.t('✓ MEJORA INSTALADA — ESPERANDO EQUIPO', '✓ MODULE READY — WAITING FOR SQUAD'),
+      cx,
+      cy - 8
+    );
+
+    this.ctx.fillStyle = '#94a3b8';
+    this.ctx.font = `bold 13px ${FONT_MONO}`;
+    this.ctx.fillText(
+      i18n.t(
+        `Jugadores listos: ${this.coopUpgradeStatusText || '...'}`,
+        `Players ready: ${this.coopUpgradeStatusText || '...'}`
+      ),
+      cx,
+      cy + 26
+    );
+    this.ctx.restore();
+  }
+
   private toggleLightGraphics(): void {
     this.lightGraphicsEnabled = !this.lightGraphicsEnabled;
     this.particleSystem.lightMode = this.lightGraphicsEnabled;
@@ -429,6 +1353,14 @@ export class Game {
           return;
         }
 
+        if (this.showCoopModal) {
+          if (key === 'escape' || key === 'k') {
+            this.showCoopModal = false;
+            this.sound.playShoot(false);
+          }
+          return;
+        }
+
         if (this.showHelpOverlay) {
           if (key === 'escape' || key === 'b' || key === 'h') {
             this.showHelpOverlay = false;
@@ -454,6 +1386,9 @@ export class Game {
         } else if (key === 'i') {
           this.activeMenuTab = 'INVENTORY';
           this.inventoryPage = 0;
+        } else if (key === 'k') {
+          this.openCoopModal();
+          this.sound.playCoinPickup();
         } else if (key === 'l') {
           this.handleAuthButtonClick();
         } else if (key === 'r') {
@@ -477,7 +1412,10 @@ export class Game {
         } else if (this.activeMenuTab === 'SHOP' && keyMap[key]) {
           const res = this.metaSystem.selectOrBuyCharacter(keyMap[key]);
           this.menuFeedbackMessage = res.message;
-          if (res.success) this.sound.playCoinPickup();
+          if (res.success) {
+            this.sound.playCoinPickup();
+            this.syncCoopLoadout();
+          }
         } else if (key === 'enter' || key === ' ') {
           this.startNewRun();
         }
@@ -486,7 +1424,11 @@ export class Game {
 
       if (this.gameState === 'GAMEOVER') {
         if (key === 'r' || key === 'enter' || key === ' ') {
-          this.startNewRun();
+          if (this.isCoopMode) {
+            if (this.isCoopHost) this.mpClient.sendReturnToLobby();
+          } else {
+            this.startNewRun();
+          }
         } else if (key === 'escape' || key === 't') {
           this.exitToMainMenu();
         }
@@ -590,6 +1532,17 @@ export class Game {
           return;
         }
 
+        if (this.showCoopModal) {
+          this.hoveredCoopAction = null;
+          for (const btn of CoopLobbyUI.getButtons(LOGICAL_WIDTH, LOGICAL_HEIGHT, this.mpClient)) {
+            if (this.isPointInRect(mx, my, btn)) {
+              this.hoveredCoopAction = btn.action;
+              break;
+            }
+          }
+          return;
+        }
+
         if (this.showHelpOverlay) {
           const panelH = 590;
           const py = LOGICAL_HEIGHT / 2 - panelH / 2;
@@ -616,6 +1569,7 @@ export class Game {
           this.currentUser || this.isExternalLoginAllowed()
             ? this.isPointInRect(mx, my, this.getAuthActionButtonRect())
             : false;
+        this.hoveredCoopBtn = this.isPointInRect(mx, my, this.getCoopOnlineButtonRect());
         this.hoveredRankingsBtn = this.isPointInRect(mx, my, this.getGlobalRankingsButtonRect());
         this.hoveredDailyMissionsBtn = this.isPointInRect(
           mx,
@@ -769,7 +1723,18 @@ export class Game {
 
   private applySelectedUpgrade(index: number): void {
     const chosen = this.upgradeSystem.currentChoices[index];
-    if (chosen && this.upgradeSystem.selectUpgrade(index, this.player, this.combatSystem)) {
+    if (!chosen) return;
+
+    if (this.isCoopMode && !this.isCoopHost) {
+      this.upgradeSystem.clearExternalChoices();
+      this.mpClient.sendPickUpgrade(index);
+      this.hoveredCardIndex = -1;
+      this.hoveredRerollBtn = false;
+      this.sound.playCoinPickup();
+      return;
+    }
+
+    if (this.upgradeSystem.selectUpgrade(index, this.player, this.combatSystem)) {
       if (chosen.isEvolution) {
         this.sound.playAchievement();
         this.dailyMissions.reportProgress('EVOLUTION', 1);
@@ -787,10 +1752,24 @@ export class Game {
       this.particleSystem.spawnExplosion(this.player.x, this.player.y, chosen.color, 26, true);
       this.hoveredCardIndex = -1;
       this.hoveredRerollBtn = false;
+
+      if (this.isCoopMode && this.isCoopHost && this.coopWaitingUpgrade) {
+        this.coopUpgradePickedIds.add(this.mpClient.myId);
+        this.tryResumeCoopUpgrade();
+      }
     }
   }
 
   private handleUpgradeReroll(): void {
+    if (this.isCoopMode && !this.isCoopHost) {
+      if (this.upgradeSystem.rerollsRemaining > 0 && !this.upgradeSystem.currentChoices[0]?.isCompanionBranchCard) {
+        this.mpClient.sendRerollRequest();
+      } else {
+        this.sound.playExplosion(false);
+      }
+      return;
+    }
+
     if (this.upgradeSystem.rerollChoices(this.player)) {
       this.sound.playShoot(true);
       this.addTerminalLog(
@@ -855,12 +1834,28 @@ export class Game {
         return;
       }
 
+      if (this.showCoopModal) {
+        for (const btn of CoopLobbyUI.getButtons(LOGICAL_WIDTH, LOGICAL_HEIGHT, this.mpClient)) {
+          if (this.isPointInRect(mx, my, btn)) {
+            this.handleCoopButtonAction(btn.action);
+            return;
+          }
+        }
+        return;
+      }
+
       if (this.showHelpOverlay) {
         const backBtn = this.getOverlayBackButtonRect(LOGICAL_HEIGHT / 2 - 295, 590);
         if (this.isPointInRect(mx, my, backBtn)) {
           this.showHelpOverlay = false;
           this.sound.playShoot(false);
         }
+        return;
+      }
+
+      if (this.isPointInRect(mx, my, this.getCoopOnlineButtonRect())) {
+        this.openCoopModal();
+        this.sound.playCoinPickup();
         return;
       }
 
@@ -931,6 +1926,7 @@ export class Game {
             this.menuFeedbackMessage = res.message;
             if (res.success) {
               this.sound.playCoinPickup();
+              this.syncCoopLoadout();
             }
             return;
           }
@@ -978,6 +1974,7 @@ export class Game {
             this.menuFeedbackMessage = res.message;
             if (res.success) {
               this.sound.playCoinPickup();
+              this.syncCoopLoadout();
             }
             return;
           }
@@ -1090,7 +2087,7 @@ export class Game {
     }
   }
 
-  private exitToMainMenu(): void {
+  private exitToMainMenu(keepRoom: boolean = false): void {
     if (this.finalBoss) {
       this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
     }
@@ -1100,6 +2097,18 @@ export class Game {
     this.dailyMissions.flushPendingSave(true);
     this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
     void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
+    if (!keepRoom && this.mpClient.isInRoom) {
+      this.mpClient.leaveRoom();
+    }
+    this.isCoopMode = false;
+    this.isCoopHost = false;
+    this.coopSelfDowned = false;
+    this.coopSelfReviveProgress = 0;
+    this.coopPeers.clear();
+    this.coopWaitingUpgrade = false;
+    this.coopUpgradePickedIds.clear();
+    this.coopUpgradeStatusText = '';
+    this.coopSnapshot = null;
     this.input.clearTouch();
     this.isPaused = false;
     this.isNightmareRun = false;
@@ -1260,7 +2269,7 @@ export class Game {
   }
 
   private loop(timestamp: number): void {
-    if (this.isPaused) {
+    if (this.isPaused && !this.isCoopMode) {
       this.lastTime = timestamp;
       this.render();
       requestAnimationFrame((nextTimestamp) => this.loop(nextTimestamp));
@@ -1288,7 +2297,49 @@ export class Game {
       this.damageVignetteAlpha = Math.max(0, this.damageVignetteAlpha - dt * 1.8);
     }
 
-    if (this.gameState !== 'PLAYING' || this.upgradeSystem.isChoosingUpgrade()) {
+    if (this.gameState !== 'PLAYING') {
+      return;
+    }
+
+    // Invitado Co-op: predice movimiento local suave y envía inputs al Host (30 Hz)
+    if (this.isCoopMode && !this.isCoopHost) {
+      if (!this.isPaused && !this.coopSelfDowned && !this.coopWaitingUpgrade && !this.upgradeSystem.isChoosingUpgrade()) {
+        this.player.update(
+          dt,
+          this.input,
+          LOGICAL_WIDTH,
+          LOGICAL_HEIGHT,
+          this.isNightmareRun,
+          this.lightGraphicsEnabled
+        );
+      }
+      this.coopInputTimer += dt;
+      if (this.coopInputTimer >= 0.033) {
+        this.coopInputTimer = 0;
+        const dir = this.isPaused || this.coopSelfDowned || this.coopWaitingUpgrade
+          ? { x: 0, y: 0 }
+          : this.input.getDirection();
+        this.mpClient.sendInput(
+          dir.x,
+          dir.y,
+          this.player.facingAngle,
+          dir.x !== 0 || dir.y !== 0,
+          ++this.coopInputSeq
+        );
+      }
+      return;
+    }
+
+    // Host Co-op esperando a que todo el escuadrón elija mejora de nivel
+    if (this.isCoopMode && this.isCoopHost && this.coopWaitingUpgrade) {
+      this.coopUpgradeTimer -= dt;
+      if (this.coopUpgradeTimer <= 0) {
+        this.forceCoopUpgradeTimeout();
+      }
+      return;
+    }
+
+    if (this.upgradeSystem.isChoosingUpgrade()) {
       return;
     }
 
@@ -1318,14 +2369,97 @@ export class Game {
     this.dailyMissions.reportProgress('SURVIVAL_SEC', Math.floor(this.elapsedTime));
     this.dailyMissions.reportProgress('LEVEL', this.upgradeSystem.level);
 
-    this.player.update(
-      dt,
-      this.input,
-      LOGICAL_WIDTH,
-      LOGICAL_HEIGHT,
-      this.isNightmareRun,
-      this.lightGraphicsEnabled
-    );
+    if (!this.isCoopMode || (!this.coopSelfDowned && !this.isPaused)) {
+      this.player.update(
+        dt,
+        this.input,
+        LOGICAL_WIDTH,
+        LOGICAL_HEIGHT,
+        this.isNightmareRun,
+        this.lightGraphicsEnabled
+      );
+    }
+
+    // Actualizar aliados Co-op en Host + reanimación en cápsula
+    if (this.isCoopMode && this.isCoopHost) {
+      for (const peer of this.coopPeers.values()) {
+        if (!peer.downed) {
+          peer.player.updateWithVector(
+            dt,
+            peer.inputX,
+            peer.inputY,
+            LOGICAL_WIDTH,
+            LOGICAL_HEIGHT,
+            this.isNightmareRun,
+            this.lightGraphicsEnabled
+          );
+        }
+      }
+
+      // Comprobar rescate de jugadores caídos (radio 75px durante 3s)
+      if (this.coopSelfDowned) {
+        let rescuing = false;
+        for (const peer of this.coopPeers.values()) {
+          if (!peer.downed && Math.hypot(peer.player.x - this.player.x, peer.player.y - this.player.y) <= 75) {
+            rescuing = true;
+            break;
+          }
+        }
+        if (rescuing) {
+          this.coopSelfReviveProgress += dt / 3.0;
+          if (this.coopSelfReviveProgress >= 1) {
+            this.coopSelfDowned = false;
+            this.coopSelfReviveProgress = 0;
+            this.player.active = true;
+            this.player.hp = Math.ceil(this.player.maxHp * 0.5);
+            this.player.invulnerabilityTimer = 2.0;
+            this.sound.playAchievement();
+            this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#10b981', 30, true);
+            this.mpClient.sendGameEvent({
+              type: 'REVIVE',
+              x: this.player.x,
+              y: this.player.y,
+              text: `REVIVED: ${this.player.profileName} back online!`,
+            });
+          }
+        } else if (this.coopSelfReviveProgress > 0) {
+          this.coopSelfReviveProgress = Math.max(0, this.coopSelfReviveProgress - dt * 0.35);
+        }
+      }
+
+      for (const peer of this.coopPeers.values()) {
+        if (!peer.downed) continue;
+        let rescuing = !this.coopSelfDowned && Math.hypot(this.player.x - peer.player.x, this.player.y - peer.player.y) <= 75;
+        if (!rescuing) {
+          for (const other of this.coopPeers.values()) {
+            if (other.id !== peer.id && !other.downed && Math.hypot(other.player.x - peer.player.x, other.player.y - peer.player.y) <= 75) {
+              rescuing = true;
+              break;
+            }
+          }
+        }
+        if (rescuing) {
+          peer.reviveProgress += dt / 3.0;
+          if (peer.reviveProgress >= 1) {
+            peer.downed = false;
+            peer.reviveProgress = 0;
+            peer.player.active = true;
+            peer.player.hp = Math.ceil(peer.player.maxHp * 0.5);
+            peer.player.invulnerabilityTimer = 2.0;
+            this.sound.playAchievement();
+            this.particleSystem.spawnExplosion(peer.player.x, peer.player.y, '#10b981', 30, true);
+            this.mpClient.sendGameEvent({
+              type: 'REVIVE',
+              x: peer.player.x,
+              y: peer.player.y,
+              text: `REVIVED: ${peer.name} back online!`,
+            });
+          }
+        } else if (peer.reviveProgress > 0) {
+          peer.reviveProgress = Math.max(0, peer.reviveProgress - dt * 0.35);
+        }
+      }
+    }
 
     // Actualizar origen tras mover jugador para spawns y proyectiles centrados en Pesadilla
     const activeCam = this.getCameraOrigin();
@@ -1474,7 +2608,10 @@ export class Game {
       if (isFrozen && !(enemy instanceof ElToroBoss)) {
         enemy.networkFreezeTimer = 0.2;
       } else {
-        enemy.update(dt, this.player);
+        const targetPlayer = this.isCoopMode
+          ? this.getNearestAliveCoopPlayer(enemy.x, enemy.y)
+          : this.player;
+        enemy.update(dt, targetPlayer);
       }
       if (enemy instanceof CryptoMiner && enemy.escaped) {
         this.particleSystem.spawnFloatingText(enemy.x, enemy.y, '¡MINERO ESCAPÓ!', '#94a3b8', 1.0);
@@ -1567,6 +2704,73 @@ export class Game {
     if (isFrenzy) {
       this.player.fireRateMultiplier = baseFireRate;
       this.player.critChance = baseCrit;
+    }
+
+    // Simular combate y compañeros de los aliados Co-op en el Host
+    if (this.isCoopMode && this.isCoopHost) {
+      for (const peer of this.coopPeers.values()) {
+        if (peer.downed || !peer.player.active) continue;
+        const pBaseRof = peer.player.fireRateMultiplier;
+        const pBaseCrit = peer.player.critChance;
+        if (isFrenzy) {
+          peer.player.fireRateMultiplier = pBaseRof * 2.0;
+          peer.player.critChance = 1.0;
+        }
+        const pCombat = peer.combatSystem.update(
+          dt,
+          peer.player,
+          this.enemies,
+          this.projectiles,
+          this.pingProjectiles,
+          this.quarantineZones,
+          LOGICAL_WIDTH,
+          LOGICAL_HEIGHT,
+          peer.player.x - LOGICAL_WIDTH / 2,
+          peer.player.y - LOGICAL_HEIGHT / 2
+        );
+        if (isFrenzy) {
+          peer.player.fireRateMultiplier = pBaseRof;
+          peer.player.critChance = pBaseCrit;
+        }
+        combatEvents.enemiesKilled += pCombat.enemiesKilled;
+        combatEvents.destroyedEnemies.push(...pCombat.destroyedEnemies);
+        combatEvents.damagedEnemies.push(...pCombat.damagedEnemies);
+
+        if (peer.player.companion && peer.player.active) {
+          const pComp = peer.player.companion.update(
+            dt,
+            peer.player,
+            this.upgradeSystem.level,
+            this.enemies,
+            LOGICAL_WIDTH,
+            LOGICAL_HEIGHT,
+            cam.x,
+            cam.y
+          );
+          combatEvents.enemiesKilled += pComp.killedEnemies.length;
+          combatEvents.damagedEnemies.push(...pComp.damagedEnemies);
+          for (const k of pComp.killedEnemies) {
+            combatEvents.destroyedEnemies.push({
+              x: k.x,
+              y: k.y,
+              xpValue: k.xpValue,
+              color: k.color,
+              malwareType: k.malwareType,
+              enemyRef: k,
+            });
+          }
+        }
+
+        if (!peer.player.active) {
+          peer.downed = true;
+          peer.reviveProgress = 0;
+          peer.player.hp = 0;
+          this.mpClient.sendGameEvent({
+            type: 'DOWNED',
+            text: `ALERT: ${peer.name} cayó — ¡acércate para reanimarlo!`,
+          });
+        }
+      }
     }
 
     if (combatEvents.droneExploded) {
@@ -1872,39 +3076,37 @@ export class Game {
       this.addTerminalLog(`ALERT: Kernel integrity damaged! HP: ${this.player.hp}/${this.player.maxHp}`);
 
       if (!this.player.active) {
-        this.gameState = 'GAMEOVER';
-        this.sound.setTrack('NONE');
-        if (this.finalBoss) {
-          this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
+        if (this.isCoopMode && this.isCoopHost && this.getCoopAliveCount() > 1) {
+          this.coopSelfDowned = true;
+          this.coopSelfReviveProgress = 0;
+          this.player.hp = 0;
+          this.sound.playExplosion(false);
+          this.mpClient.sendGameEvent({
+            type: 'DOWNED',
+            text: `ALERT: ${this.player.profileName} cayó — ¡acércate para reanimarlo!`,
+          });
+        } else {
+          this.triggerGameOverSequence();
+          return;
         }
-        logAnalyticsEvent('level_end', {
-          success: false,
-          reason: 'killed_by_enemies',
-          elapsed_seconds: Math.round(this.elapsedTime),
-          kills: this.killCount,
-          damage_to_toro: this.runDamageToToro,
-          character: this.metaSystem.getSelectedProfile().name,
-        });
-        this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
-        this.achievementSystem.flushPendingSave(true);
-        this.metaSystem.flushPendingSave();
-        this.dailyMissions.flushPendingSave(true);
-        this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
-        void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
-        this.sound.playExplosion(true);
-        this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#00ff66', 45, true);
-        this.addTerminalLog('FATAL_ERROR: Antivirus Agent terminated.');
-        return;
       }
+    }
+
+    if (this.isCoopMode && this.isCoopHost && this.getCoopAliveCount() === 0) {
+      this.triggerGameOverSequence();
+      return;
     }
 
     for (const fragment of this.codeFragments) {
       if (!fragment.active) continue;
-      fragment.update(dt, this.player);
+      const collector = this.isCoopMode
+        ? this.getNearestAliveCoopPlayer(fragment.x, fragment.y)
+        : this.player;
+      fragment.update(dt, collector);
 
-      let collected = CombatSystem.checkAABBCollision(this.player, fragment);
-      if (!collected && this.player.companion) {
-        for (const unit of this.player.companion.getUnits()) {
+      let collected = CombatSystem.checkAABBCollision(collector, fragment);
+      if (!collected && collector.companion) {
+        for (const unit of collector.companion.getUnits()) {
           if (Math.hypot(unit.x - fragment.x, unit.y - fragment.y) <= unit.size + 16) {
             collected = true;
             break;
@@ -1914,30 +3116,36 @@ export class Game {
 
       if (collected) {
         fragment.active = false;
-        const gainedXp = Math.round(fragment.xpValue * this.player.xpMultiplier);
+        const gainedXp = Math.round(fragment.xpValue * collector.xpMultiplier);
 
         this.particleSystem.spawnFloatingText(
-          this.player.x,
-          this.player.y - 18,
-          `+${gainedXp} XP${this.player.xpMultiplier > 1 ? ` (x${this.player.xpMultiplier.toFixed(2)})` : ''}`,
-          this.player.xpMultiplier > 1 ? '#a3e635' : '#00f0ff',
+          collector.x,
+          collector.y - 18,
+          `+${gainedXp} XP${collector.xpMultiplier > 1 ? ` (x${collector.xpMultiplier.toFixed(2)})` : ''}`,
+          collector.xpMultiplier > 1 ? '#a3e635' : '#00f0ff',
           0.9
         );
 
         const leveledUp = this.upgradeSystem.addXp(gainedXp, this.player);
         if (leveledUp) {
           this.addTerminalLog(`SYSTEM UPGRADE READY: Agent reached v${this.upgradeSystem.level}.0`);
+          if (this.isCoopMode && this.isCoopHost) {
+            this.triggerCoopTeamLevelUp();
+          }
         }
       }
     }
 
     for (const coin of this.cryptoCoins) {
       if (!coin.active) continue;
-      coin.update(dt, this.player);
+      const collector = this.isCoopMode
+        ? this.getNearestAliveCoopPlayer(coin.x, coin.y)
+        : this.player;
+      coin.update(dt, collector);
 
-      let collected = CombatSystem.checkAABBCollision(this.player, coin);
-      if (!collected && this.player.companion) {
-        for (const unit of this.player.companion.getUnits()) {
+      let collected = CombatSystem.checkAABBCollision(collector, coin);
+      if (!collected && collector.companion) {
+        for (const unit of collector.companion.getUnits()) {
           if (Math.hypot(unit.x - coin.x, unit.y - coin.y) <= unit.size + 16) {
             collected = true;
             break;
@@ -1953,8 +3161,8 @@ export class Game {
         this.dailyMissions.reportProgress('COINS', awarded);
         this.sound.playCoinPickup();
         this.particleSystem.spawnFloatingText(
-          this.player.x,
-          this.player.y - 28,
+          collector.x,
+          collector.y - 28,
           `+${awarded} CRYPTO${this.isNightmareRun ? ' (x2)' : ''}`,
           '#fbbf24',
           1.0
@@ -1965,9 +3173,12 @@ export class Game {
     for (let i = this.powerUps.length - 1; i >= 0; i--) {
       const p = this.powerUps[i];
       if (!p.active) continue;
-      p.update(dt, this.player);
+      const collector = this.isCoopMode
+        ? this.getNearestAliveCoopPlayer(p.x, p.y)
+        : this.player;
+      p.update(dt, collector);
 
-      if (CombatSystem.checkAABBCollision(this.player, p)) {
+      if (CombatSystem.checkAABBCollision(collector, p)) {
         p.active = false;
         this.activatePowerUp(p.type, p.x, p.y);
       }
@@ -1983,6 +3194,45 @@ export class Game {
     this.powerUps = this.powerUps.filter((p) => p.active);
     this.achievementSystem.flushPendingSave(false);
     this.dailyMissions.flushPendingSave(false);
+
+    if (this.isCoopMode && this.isCoopHost) {
+      this.coopSnapshotTimer += dt;
+      if (this.coopSnapshotTimer >= 0.05) {
+        this.coopSnapshotTimer = 0;
+        this.broadcastCoopSnapshot();
+      }
+    }
+  }
+
+  private triggerGameOverSequence(): void {
+    this.gameState = 'GAMEOVER';
+    this.coopWaitingUpgrade = false;
+    this.sound.setTrack('NONE');
+    if (this.finalBoss) {
+      this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
+    }
+    logAnalyticsEvent('level_end', {
+      success: false,
+      reason: 'killed_by_enemies',
+      elapsed_seconds: Math.round(this.elapsedTime),
+      kills: this.killCount,
+      damage_to_toro: this.runDamageToToro,
+      character: this.metaSystem.getSelectedProfile().name,
+      coop: this.isCoopMode,
+    });
+    this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
+    this.achievementSystem.flushPendingSave(true);
+    this.metaSystem.flushPendingSave();
+    this.dailyMissions.flushPendingSave(true);
+    this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
+    void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
+    this.sound.playExplosion(true);
+    this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#00ff66', 45, true);
+    this.addTerminalLog('FATAL_ERROR: Antivirus Agent terminated.');
+    if (this.isCoopMode && this.isCoopHost) {
+      this.broadcastCoopSnapshot();
+      this.mpClient.sendGameEvent({ type: 'GAME_OVER' });
+    }
   }
 
   private spawnCodeFragment(x: number, y: number, xpValue: number): void {
@@ -2173,51 +3423,131 @@ export class Game {
       this.ctx.save();
       this.ctx.translate(-cam.x, -cam.y);
 
-      if (this.isNightmareRun) {
-        this.terrainEvents.draw(this.ctx);
-      }
+      if (this.isCoopMode && !this.isCoopHost && this.coopSnapshot) {
+        CoopRenderer.drawWorld(this.ctx, this.coopSnapshot, this.mpClient.myId, {
+          x: this.player.x,
+          y: this.player.y,
+        });
+      } else {
+        if (this.isNightmareRun) {
+          this.terrainEvents.draw(this.ctx);
+        }
 
-      for (const zone of this.quarantineZones) {
-        zone.draw(this.ctx);
-      }
+        for (const zone of this.quarantineZones) {
+          zone.draw(this.ctx);
+        }
 
-      if (this.player.active && this.showAttackRange) {
-        this.drawScannerRange();
-      }
+        if (this.player.active && this.showAttackRange) {
+          this.drawScannerRange();
+        }
 
-      for (const fragment of this.codeFragments) {
-        fragment.draw(this.ctx);
-      }
+        for (const fragment of this.codeFragments) {
+          fragment.draw(this.ctx);
+        }
 
-      for (const coin of this.cryptoCoins) {
-        coin.draw(this.ctx);
-      }
+        for (const coin of this.cryptoCoins) {
+          coin.draw(this.ctx);
+        }
 
-      for (const p of this.powerUps) {
-        p.draw(this.ctx);
-      }
+        for (const p of this.powerUps) {
+          p.draw(this.ctx);
+        }
 
-      for (const proj of this.projectiles) {
-        proj.draw(this.ctx);
-      }
+        for (const proj of this.projectiles) {
+          proj.draw(this.ctx);
+        }
 
-      for (const ping of this.pingProjectiles) {
-        ping.draw(this.ctx);
-      }
+        for (const ping of this.pingProjectiles) {
+          ping.draw(this.ctx);
+        }
 
-      this.combatSystem.drawFirewall(this.ctx, this.player);
-      if (this.player.companion && this.player.active) {
-        this.player.companion.draw(this.ctx, this.player, this.upgradeSystem.level);
-      }
+        this.combatSystem.drawFirewall(this.ctx, this.player);
+        if (this.player.companion && this.player.active) {
+          this.player.companion.draw(this.ctx, this.player, this.upgradeSystem.level);
+        }
 
-      for (const enemy of this.enemies) {
-        enemy.draw(this.ctx);
-      }
+        for (const peer of this.coopPeers.values()) {
+          if (!peer.downed) {
+            peer.combatSystem.drawFirewall(this.ctx, peer.player);
+            if (peer.player.companion && peer.player.active) {
+              peer.player.companion.draw(this.ctx, peer.player, this.upgradeSystem.level);
+            }
+          }
+        }
 
-      this.drawEliteHpBars();
+        for (const enemy of this.enemies) {
+          enemy.draw(this.ctx);
+        }
 
-      if (this.player.active) {
-        this.player.draw(this.ctx);
+        this.drawEliteHpBars();
+
+        const nowMs = performance.now();
+        if (this.isCoopMode && this.isCoopHost) {
+          for (const peer of this.coopPeers.values()) {
+            CoopRenderer.drawTeammate(
+              this.ctx,
+              {
+                id: peer.id,
+                slot: peer.slot,
+                name: peer.name,
+                characterId: peer.characterId,
+                hatId: peer.hatId,
+                color: peer.slotColor,
+                borderColor: peer.slotBorder,
+                x: peer.player.x,
+                y: peer.player.y,
+                hp: peer.player.hp,
+                maxHp: peer.player.maxHp,
+                facingAngle: peer.player.facingAngle,
+                isMoving: peer.isMoving,
+                downed: peer.downed,
+                reviveProgress: peer.reviveProgress,
+                shieldReady: peer.player.shieldReady,
+                adrenaline: peer.player.adrenalineTimer > 0,
+                activeWeapons: [],
+              },
+              peer.player.x,
+              peer.player.y,
+              false,
+              nowMs
+            );
+          }
+          if (this.coopSelfDowned) {
+            const mySlot =
+              this.mpClient.room?.players.find((p) => p.id === this.mpClient.myId)?.slot ?? 0;
+            CoopRenderer.drawTeammate(
+              this.ctx,
+              {
+                id: this.mpClient.myId,
+                slot: mySlot,
+                name: this.player.profileName,
+                characterId: this.player.characterId,
+                hatId: this.player.equippedHat?.id ?? null,
+                color: this.player.color,
+                borderColor: this.player.borderColor,
+                x: this.player.x,
+                y: this.player.y,
+                hp: 0,
+                maxHp: this.player.maxHp,
+                facingAngle: this.player.facingAngle,
+                isMoving: false,
+                downed: true,
+                reviveProgress: this.coopSelfReviveProgress,
+                shieldReady: false,
+                adrenaline: false,
+                activeWeapons: [],
+              },
+              this.player.x,
+              this.player.y,
+              true,
+              nowMs
+            );
+          }
+        }
+
+        if (this.player.active) {
+          this.player.draw(this.ctx);
+        }
       }
 
       this.particleSystem.draw(this.ctx);
@@ -2255,6 +3585,9 @@ export class Game {
       this.drawXpBar();
       this.drawHUD();
       this.drawInGameQuickButtons();
+      if (this.isCoopMode) {
+        this.drawCoopSquadHud();
+      }
       if (this.isNightmareRun) {
         this.drawNightmareMinimap();
       }
@@ -2262,8 +3595,10 @@ export class Game {
       this.drawBossHUD();
       this.drawTouchJoystick();
 
-      if (this.upgradeSystem.isChoosingUpgrade() && this.player.active) {
+      if (this.upgradeSystem.isChoosingUpgrade() && (this.player.active || this.isCoopMode)) {
         this.drawUpgradeModal();
+      } else if (this.isCoopMode && this.coopWaitingUpgrade && this.gameState === 'PLAYING') {
+        this.drawCoopWaitingOverlay();
       }
 
       if (this.isPaused && this.gameState === 'PLAYING') {
@@ -3155,6 +4490,15 @@ export class Game {
     }
   }
 
+  private getCoopOnlineButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 484,
+      y: 26,
+      width: 256,
+      height: 44,
+    };
+  }
+
   private toggleFullscreen(): void {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
@@ -3645,6 +4989,27 @@ export class Game {
     // ==========================================
     // 2. ESQUINA SUPERIOR DERECHA: CONTROLES DEL WORKSTATION
     // ==========================================
+    const coopBtn = this.getCoopOnlineButtonRect();
+    const inRoom = this.mpClient.isInRoom;
+    const coopLabel = inRoom
+      ? `🌐 [K] ${i18n.t('SALA', 'ROOM')} #${this.mpClient.room!.code} (${this.mpClient.room!.players.length}/4)`
+      : `🌐 [K] ${i18n.t('CO-OP ONLINE (4P)', 'ONLINE CO-OP (4P)')}`;
+    this.drawClippedButton(
+      coopBtn,
+      inRoom
+        ? 'rgba(6, 78, 59, 0.96)'
+        : this.hoveredCoopBtn
+        ? 'rgba(14, 62, 86, 0.96)'
+        : 'rgba(10, 26, 46, 0.94)',
+      this.hoveredCoopBtn ? '#ffffff' : inRoom ? '#10b981' : '#00f0ff',
+      this.hoveredCoopBtn ? 2.2 : 1.7,
+      this.hoveredCoopBtn ? '#ffffff' : inRoom ? '#6ee7b7' : '#a5f3fc',
+      11.5,
+      coopLabel,
+      inRoom ? '#10b981' : '#00f0ff',
+      this.hoveredCoopBtn ? 12 : 5
+    );
+
     const fsBtn = this.getFullscreenButtonRect();
     this.drawClippedButton(
       fsBtn,
@@ -4326,7 +5691,17 @@ export class Game {
     this.ctx.fillText(startText, leftCx, startBtn.y + 30);
     this.ctx.restore();
 
-    if (this.showLeaderboardOverlay) {
+    if (this.showCoopModal) {
+      CoopLobbyUI.draw(
+        this.ctx,
+        LOGICAL_WIDTH,
+        LOGICAL_HEIGHT,
+        this.mpClient,
+        this.metaSystem,
+        this.hoveredCoopAction,
+        this.coopFeedbackMsg
+      );
+    } else if (this.showLeaderboardOverlay) {
       this.drawLeaderboardOverlay();
     } else if (this.showDailyMissionsOverlay) {
       this.drawDailyMissionsOverlay();
@@ -5047,13 +6422,13 @@ export class Game {
             ? [
                 '• [WASD / Arrows] or Touch Joystick: Move.',
                 '• [P]: Pause  |  [V]: Light Graphics  |  [R]: Reroll.',
-                '• [M]: Daily Missions  |  [B]: Nightmare Infinite Mode.',
+                '• [M]: Daily Missions  |  [B]: Nightmare  |  [K]: Co-op 4P.',
                 '• [H]: Range Circle  |  Auto-fire targets threat.',
               ]
             : [
                 '• [WASD / Flechas] o Joystick Táctil: Mover.',
                 '• [P]: Pausa  |  [V]: Gráficos Ligeros  |  [R]: Reroll.',
-                '• [M]: Misiones Diarias  |  [B]: Modo Pesadilla.',
+                '• [M]: Misiones Diarias  |  [B]: Pesadilla  |  [K]: Co-op 4P.',
                 '• [H]: Círculo alcance  |  Disparo automático.',
               ],
         color: '#10b981',
@@ -6300,7 +7675,31 @@ export class Game {
       }
     }
 
-    // Jugador en el centro
+    // Jugador en el centro + aliados Co-op en Radar Pesadilla
+    if (this.isCoopMode) {
+      const peersPos = this.isCoopHost
+        ? Array.from(this.coopPeers.values()).map((p) => ({
+            x: p.player.x,
+            y: p.player.y,
+            color: p.downed ? '#f43f5e' : p.slotColor,
+          }))
+        : (this.coopSnapshot?.players || [])
+            .filter((p) => p.id !== this.mpClient.myId)
+            .map((p) => ({ x: p.x, y: p.y, color: p.downed ? '#f43f5e' : p.color }));
+      const maxR = size * 0.44;
+      for (const ally of peersPos) {
+        const dx = (ally.x - this.player.x) * scale;
+        const dy = (ally.y - this.player.y) * scale;
+        const d = Math.hypot(dx, dy);
+        const ax = d > maxR ? cx + (dx / d) * maxR : cx + dx;
+        const ay = d > maxR ? cy + (dy / d) * maxR : cy + dy;
+        this.ctx.fillStyle = ally.color;
+        this.ctx.beginPath();
+        this.ctx.arc(ax, ay, 3.6, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+    }
+
     this.ctx.fillStyle = '#10b981';
     this.ctx.beginPath();
     this.ctx.arc(cx, cy, 4, 0, Math.PI * 2);
@@ -6545,7 +7944,11 @@ export class Game {
     this.ctx.fillStyle = blink ? '#38bdf8' : '#f8fafc';
     this.ctx.font = `bold 15px ${FONT_MONO}`;
     this.ctx.fillText(
-      `[R / ENTER]: ${i18n.t('Reintentar Partida', 'Retry Run')}  •  [T / ESC / CLIC]: ${i18n.t('Ir al Hangar Principal', 'Main Hangar')}`,
+      this.isCoopMode
+        ? this.isCoopHost
+          ? `[R / ENTER]: ${i18n.t('Volver al Lobby Co-op', 'Return to Co-op Lobby')}  •  [T / ESC / CLIC]: ${i18n.t('Salir al Hangar', 'Main Hangar')}`
+          : `[T / ESC / CLIC]: ${i18n.t('Salir al Hangar (o espera al Host)', 'Main Hangar (or wait for Host)')}`
+        : `[R / ENTER]: ${i18n.t('Reintentar Partida', 'Retry Run')}  •  [T / ESC / CLIC]: ${i18n.t('Ir al Hangar Principal', 'Main Hangar')}`,
       cx,
       cy + 242
     );

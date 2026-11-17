@@ -45,10 +45,10 @@ export class Player extends Entity {
   public isSummoner: boolean = false;
   public companion: CompanionPet | null = null;
 
-  private invulnerabilityTimer: number = 0;
+  public invulnerabilityTimer: number = 0;
   private readonly invulnerabilityDuration: number = 0.45;
-  private facingAngle: number = 0;
-  private isMoving: boolean = false;
+  public facingAngle: number = 0;
+  public isMoving: boolean = false;
   private trailTimer: number = 0;
   private motionTrail: { x: number; y: number; alpha: number }[] = [];
 
@@ -114,6 +114,19 @@ export class Player extends Entity {
     unbounded: boolean = false,
     lightGraphics: boolean = false
   ): void {
+    const dir = input.getDirection();
+    this.updateWithVector(dt, dir.x, dir.y, canvasWidth, canvasHeight, unbounded, lightGraphics);
+  }
+
+  public updateWithVector(
+    dt: number,
+    dirX: number,
+    dirY: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    unbounded: boolean = false,
+    lightGraphics: boolean = false
+  ): void {
     if (this.invulnerabilityTimer > 0) {
       this.invulnerabilityTimer = Math.max(0, this.invulnerabilityTimer - dt);
     }
@@ -146,13 +159,15 @@ export class Player extends Entity {
       }
     }
 
-    const dir = input.getDirection();
+    const len = Math.hypot(dirX, dirY);
+    const nx = len > 1 ? dirX / len : dirX;
+    const ny = len > 1 ? dirY / len : dirY;
     const adrenalineSpeedMult = this.adrenalineTimer > 0 ? 1.25 : 1.0;
     const effectiveSpeed = Math.min(540, this.speed * adrenalineSpeedMult);
-    this.isMoving = dir.x !== 0 || dir.y !== 0;
+    this.isMoving = nx !== 0 || ny !== 0;
 
     if (this.isMoving) {
-      this.facingAngle = Math.atan2(dir.y, dir.x);
+      this.facingAngle = Math.atan2(ny, nx);
       if (!lightGraphics) {
         this.trailTimer += dt;
         if (this.trailTimer >= 0.032) {
@@ -191,8 +206,8 @@ export class Player extends Entity {
       }
     }
 
-    this.x += dir.x * effectiveSpeed * dt;
-    this.y += dir.y * effectiveSpeed * dt;
+    this.x += nx * effectiveSpeed * dt;
+    this.y += ny * effectiveSpeed * dt;
 
     if (!unbounded) {
       const halfSize = this.size / 2;

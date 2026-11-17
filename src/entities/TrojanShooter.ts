@@ -3,8 +3,8 @@ import { Entity } from './Entity';
 import { Player } from './Player';
 
 export class EnemyProjectile extends Entity {
-  private vx: number;
-  private vy: number;
+  public vx: number;
+  public vy: number;
   public damage: number;
   private lifeTime: number = 4.2;
 

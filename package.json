@@ -1,7 +1,7 @@
 {
   "name": "cyber-survivor",
   "private": true,
-  "version": "1.3.1",
+  "version": "1.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,8 @@
     "package:itch": "npm run build && powershell -Command \"if (Test-Path cyber-survivor-itch.zip) { Remove-Item cyber-survivor-itch.zip }; Set-Location dist; tar.exe -a -c -f ../cyber-survivor-itch.zip *; Set-Location ..\""
   },
   "dependencies": {
-    "firebase": "^13.2.0"
+    "firebase": "^13.2.0",
+    "socket.io-client": "^4.8.4"
   },
   "devDependencies": {
     "typescript": "^5.4.5",

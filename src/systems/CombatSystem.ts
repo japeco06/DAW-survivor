@@ -671,7 +671,7 @@ export class CombatSystem {
   public teslaCooldown: number = 1.85;
   public teslaDamage: number = 28;
   public evolvedTesla: boolean = false;
-  private teslaArcs: TeslaArcVisual[] = [];
+  public teslaArcs: TeslaArcVisual[] = [];
 
   // 8. Nueva Arma: Fragmento Criogénico (-> Cero Absoluto)
   public cryoLevel: number = 0;

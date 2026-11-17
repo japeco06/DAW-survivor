@@ -1,0 +1,20 @@
+{
+  "name": "cyber-survivor-coop-server",
+  "version": "1.4.0",
+  "private": true,
+  "type": "module",
+  "description": "4-Player Online Co-op Socket.io Relay & Room Server for Cyber Survivor",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "socket.io": "^4.8.1"
+  }
+}

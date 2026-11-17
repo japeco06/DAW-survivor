@@ -28,8 +28,8 @@ export class Adware extends Entity {
   public networkFreezeTimer: number = 0; // Congelación de Red (Fibra Óptica Lvl 10 / EMP: -80% velocidad)
   public cryoSlowTimer: number = 0; // Ralentización criogénica (-45% a -65% velocidad)
   public cryoSlowFactor: number = 0.58;
-  protected hitFlashTimer: number = 0;
-  protected facingAngle: number = 0;
+  public hitFlashTimer: number = 0;
+  public facingAngle: number = 0;
   protected readonly animSeed: number = Math.random() * 100;
 
   constructor(
