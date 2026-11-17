@@ -297,30 +297,60 @@ export class Player extends Entity {
     ctx.lineWidth = Math.max(1.1, size * 0.04);
     ctx.stroke();
 
-    // Pantalla / Visor táctico recesado
-    const visorW = size * 0.62;
-    const visorH = size * 0.34;
+    // Pantalla / Visor táctico recesado (esquinas suaves, sin boca inferior)
+    const visorW = size * 0.66;
+    const visorH = size * 0.44;
+    const visorX = -visorW / 2;
+    const visorY = -half * 0.44;
+    const visorR = Math.max(3, size * 0.14);
+
     ctx.fillStyle = '#060d18';
-    ctx.fillRect(-visorW / 2, -half * 0.44, visorW, visorH);
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(-visorW / 2, -half * 0.44, visorW, visorH);
+    ctx.beginPath();
+    ctx.moveTo(visorX + visorR, visorY);
+    ctx.lineTo(visorX + visorW - visorR, visorY);
+    ctx.quadraticCurveTo(visorX + visorW, visorY, visorX + visorW, visorY + visorR);
+    ctx.lineTo(visorX + visorW, visorY + visorH - visorR);
+    ctx.quadraticCurveTo(visorX + visorW, visorY + visorH, visorX + visorW - visorR, visorY + visorH);
+    ctx.lineTo(visorX + visorR, visorY + visorH);
+    ctx.quadraticCurveTo(visorX, visorY + visorH, visorX, visorY + visorH - visorR);
+    ctx.lineTo(visorX, visorY + visorR);
+    ctx.quadraticCurveTo(visorX, visorY, visorX + visorR, visorY);
+    ctx.closePath();
+    ctx.fill();
 
-    // Ojos LED cibernéticos orientados al movimiento
-    const eyeW = Math.max(2.6, size * 0.13);
-    const eyeH = Math.max(3.2, size * 0.16);
-    ctx.fillStyle = '#e0f2fe';
-    ctx.fillRect(-half * 0.34 + lookX, -half * 0.32 + lookY, eyeW, eyeH);
-    ctx.fillRect(half * 0.13 + lookX, -half * 0.32 + lookY, eyeW, eyeH);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+    ctx.lineWidth = Math.max(1, size * 0.035);
+    ctx.stroke();
 
-    // Micro-procesador / barra de núcleo en pecho
-    const coreAlpha = 0.65 + Math.sin(timeMs * 0.008) * 0.35;
-    ctx.fillStyle = '#0b1322';
-    ctx.fillRect(-half * 0.36, half * 0.16, size * 0.36, Math.max(3, size * 0.16));
-    ctx.fillStyle = borderColor;
-    ctx.globalAlpha = coreAlpha;
-    ctx.fillRect(-half * 0.28, half * 0.2, size * 0.28, Math.max(2, size * 0.09));
-    ctx.globalAlpha = 1;
+    // Ojos simples redondeados (óvalo vertical limpio, sin boca)
+    const blinkCycle = timeMs % 4200;
+    const isBlinking = blinkCycle > 4060 && blinkCycle < 4160;
+    const eyeRx = Math.max(1.8, size * 0.082);
+    const eyeRy = isBlinking ? Math.max(0.8, size * 0.025) : Math.max(2.6, size * 0.125);
+    const eyeOffsetX = half * 0.27;
+    const eyeCenterY = visorY + visorH * 0.5 + lookY * 0.85;
+
+    ctx.fillStyle = '#f0f9ff';
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = Math.max(3, size * 0.14);
+    for (const side of [-1, 1]) {
+      const ex = side * eyeOffsetX + lookX * 0.9;
+      ctx.beginPath();
+      ctx.ellipse(ex, eyeCenterY, eyeRx, eyeRy, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // Micro-destello superior en cada ojo cuando no parpadea
+    if (!isBlinking && size >= 24) {
+      ctx.fillStyle = '#ffffff';
+      for (const side of [-1, 1]) {
+        const ex = side * eyeOffsetX + lookX * 0.9 - eyeRx * 0.22;
+        ctx.beginPath();
+        ctx.arc(ex, eyeCenterY - eyeRy * 0.35, Math.max(0.8, size * 0.025), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
 
     ctx.restore();
 

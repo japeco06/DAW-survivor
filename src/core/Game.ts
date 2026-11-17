@@ -72,7 +72,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.2.0';
+const GAME_VERSION = 'v1.2.1';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
@@ -1076,6 +1076,7 @@ export class Game {
     this.isPaused = false;
     this.hoveredPauseAction = null;
     this.spawner = new Spawner();
+    this.spawner.spawnOpeningWave(this.enemies, this.canvas.width, this.canvas.height);
     this.combatSystem = new CombatSystem();
     this.upgradeSystem = new UpgradeSystem();
     this.particleSystem.clear();

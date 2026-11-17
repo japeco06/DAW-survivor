@@ -18,22 +18,45 @@ export class Spawner {
   private readonly maxActiveHardwareBoxes: number = 4;
 
   public getMaxActiveArmoredWorms(elapsedTime: number): number {
-    return Math.min(4, Math.floor(2 + (elapsedTime / 60) * 0.2));
+    return Math.min(6, Math.floor(2 + (elapsedTime / 60) * 0.35));
   }
   public getMaxActiveEvasors(elapsedTime: number): number {
-    return Math.min(3, Math.floor(1 + (elapsedTime / 60) * 0.2));
+    return Math.min(4, Math.floor(2 + (elapsedTime / 60) * 0.25));
   }
   public getMaxActiveTrojanShooters(elapsedTime: number): number {
-    return Math.min(5, Math.floor(3 + (elapsedTime / 60) * 0.2));
+    return Math.min(7, Math.floor(3 + (elapsedTime / 60) * 0.35));
   }
   public getMaxActiveTrojans(elapsedTime: number): number {
-    return Math.min(7, Math.floor(4 + (elapsedTime / 60) * 0.3));
+    return Math.min(11, Math.floor(5 + (elapsedTime / 60) * 0.55));
   }
   public getMaxActiveWorms(elapsedTime: number): number {
-    return Math.min(6, Math.floor(4 + (elapsedTime / 60) * 0.2));
+    return Math.min(9, Math.floor(4 + (elapsedTime / 60) * 0.45));
   }
   public getMaxActiveRedAdware(elapsedTime: number): number {
-    return Math.min(22, Math.floor(14 + (elapsedTime / 60) * 0.8));
+    return Math.min(40, Math.floor(22 + (elapsedTime / 60) * 1.8));
+  }
+
+  /**
+   * Despliega una oleada inicial equilibrada alrededor del perímetro exterior
+   * para que haya acción desde los primeros segundos de partida.
+   */
+  public spawnOpeningWave(
+    enemies: Adware[],
+    canvasWidth: number,
+    canvasHeight: number
+  ): void {
+    const initialCount = 8;
+    const cx = canvasWidth / 2;
+    const cy = canvasHeight / 2;
+    const radiusX = canvasWidth * 0.44;
+    const radiusY = canvasHeight * 0.44;
+
+    for (let i = 0; i < initialCount; i++) {
+      const ang = (i / initialCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
+      const sx = Math.max(40, Math.min(canvasWidth - 40, cx + Math.cos(ang) * radiusX));
+      const sy = Math.max(70, Math.min(canvasHeight - 40, cy + Math.sin(ang) * radiusY));
+      enemies.push(this.createScaledRedAdware(sx, sy, 0, 1));
+    }
   }
 
   private boxCheckTimer: number = 0;
@@ -201,16 +224,16 @@ export class Spawner {
       }
     }
 
-    // 4. Micro-oleadas de flanco: intervalo y cantidad escalan con el tiempo
+    // 4. Micro-oleadas de flanco: intervalo y cantidad escalan suavemente con el tiempo
     this.flankWaveTimer += dt;
     if (this.flankWaveTimer >= this.nextFlankWaveInterval) {
       this.flankWaveTimer = 0;
       const timeMinutes = elapsedTime / 60;
-      this.nextFlankWaveInterval = Math.max(9, (15 + Math.random() * 5) - timeMinutes * 0.65);
+      this.nextFlankWaveInterval = Math.max(8.5, (14 + Math.random() * 4) - timeMinutes * 0.65);
       this.spawnFlankMicroWave(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight);
     }
 
-    const currentSpawnInterval = Math.max(0.24, 0.90 * Math.pow(0.92, elapsedTime / 14));
+    const currentSpawnInterval = Math.max(0.20, 0.55 * Math.pow(0.92, elapsedTime / 16));
 
     this.timer += dt;
     while (this.timer >= currentSpawnInterval) {
@@ -224,6 +247,20 @@ export class Spawner {
       );
       if (spawned) {
         enemies.push(spawned);
+      }
+
+      // Ligero refuerzo adicional a partir de los 3 minutos sin saturar la arena
+      if (elapsedTime >= 180 && Math.random() < Math.min(0.32, (elapsedTime - 180) / 1400)) {
+        const extra = this.spawnScaledMalware(
+          elapsedTime,
+          hpMultiplier,
+          enemies,
+          canvasWidth,
+          canvasHeight
+        );
+        if (extra) {
+          enemies.push(extra);
+        }
       }
     }
 
@@ -330,8 +367,8 @@ export class Spawner {
       return worm;
     }
 
-    // Enemigos amarillos (Trojan) vivos simultáneamente en pantalla (escala de 5 a 12)
-    const trojanChance = elapsedTime >= 12 ? Math.min(0.36, 0.16 + elapsedTime * 0.0028) : 0;
+    // Enemigos amarillos (Trojan) vivos simultáneamente en pantalla (escala de 5 a 11)
+    const trojanChance = elapsedTime >= 8 ? Math.min(0.36, 0.18 + elapsedTime * 0.0026) : 0;
     if (roll >= 0.38 && roll < 0.38 + trojanChance && activeTrojanCount < this.getMaxActiveTrojans(elapsedTime)) {
       const trojan = new Trojan(pos.x, pos.y, hpMultiplier);
       trojan.damage = Math.round(trojan.damage * dmgMult);
@@ -339,7 +376,7 @@ export class Spawner {
       return trojan;
     }
 
-    // Límite dinámico en pantalla de enemigos 'rojos' (Adware base) (escala de 14 a 32)
+    // Límite dinámico en pantalla de enemigos 'rojos' (Adware base) (escala de 22 a 40)
     if (activeRedAdwareCount >= this.getMaxActiveRedAdware(elapsedTime)) {
       return null;
     }
@@ -381,7 +418,7 @@ export class Spawner {
   ): void {
     const edge = Math.floor(Math.random() * 4); // 0=Arriba, 1=Derecha, 2=Abajo, 3=Izquierda
     const timeMinutes = elapsedTime / 60;
-    const count = Math.min(10, 4 + Math.floor(Math.random() * 3) + Math.floor(timeMinutes * 0.55));
+    const count = Math.min(11, 5 + Math.floor(Math.random() * 2) + Math.floor(timeMinutes * 0.6));
     const centerNorm = 0.2 + Math.random() * 0.6; // Entre 20% y 80% del borde
 
     for (let i = 0; i < count; i++) {
