@@ -33,6 +33,9 @@ export interface CombatEvents {
   homingShotsFired: number;
   vampirismHeals: number;
   droneExploded?: boolean;
+  shieldBlocked?: boolean;
+  dodgedHit?: boolean;
+  surgeTriggered?: boolean;
 }
 
 export interface ReactiveDroneSlot {
@@ -82,15 +85,26 @@ export class FirewallPulseRing {
   public radius: number = 18;
   public maxRadius: number;
   public damage: number;
+  public isEvolved: boolean;
   public active: boolean = true;
   private expansionSpeed: number = 340;
   private hitEnemies: Set<Adware> = new Set();
 
-  constructor(x: number, y: number, maxRadius: number, damage: number) {
+  constructor(
+    x: number,
+    y: number,
+    maxRadius: number,
+    damage: number,
+    isEvolved: boolean = false
+  ) {
     this.x = x;
     this.y = y;
     this.maxRadius = maxRadius;
     this.damage = damage;
+    this.isEvolved = isEvolved;
+    if (isEvolved) {
+      this.expansionSpeed = 460;
+    }
   }
 
   public update(
@@ -124,15 +138,21 @@ export class FirewallPulseRing {
     const alpha = Math.max(0.1, 1 - progress * 0.75);
 
     ctx.save();
-    ctx.fillStyle = `rgba(255, 115, 0, ${alpha * 0.16})`;
-    ctx.strokeStyle = `rgba(255, 102, 0, ${alpha * 0.35})`;
-    ctx.lineWidth = 9;
+    ctx.fillStyle = this.isEvolved
+      ? `rgba(250, 204, 21, ${alpha * 0.2})`
+      : `rgba(255, 115, 0, ${alpha * 0.16})`;
+    ctx.strokeStyle = this.isEvolved
+      ? `rgba(250, 204, 21, ${alpha * 0.5})`
+      : `rgba(255, 102, 0, ${alpha * 0.35})`;
+    ctx.lineWidth = this.isEvolved ? 12 : 9;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
-    ctx.strokeStyle = `rgba(255, 136, 0, ${alpha})`;
+    ctx.strokeStyle = this.isEvolved
+      ? `rgba(249, 115, 22, ${alpha})`
+      : `rgba(255, 136, 0, ${alpha})`;
     ctx.lineWidth = 4.5;
     ctx.stroke();
 
@@ -154,6 +174,7 @@ export class SqlInjectionBeam {
   public thickness: number;
   public length: number = 68;
   public damage: number;
+  public isEvolved: boolean;
   public active: boolean = true;
   private lifeTime: number = 2.4;
   private hitEnemies: Set<Adware> = new Set();
@@ -164,7 +185,8 @@ export class SqlInjectionBeam {
     angle: number,
     speed: number,
     damage: number,
-    thickness: number
+    thickness: number,
+    isEvolved: boolean = false
   ) {
     this.x = x;
     this.y = y;
@@ -173,25 +195,31 @@ export class SqlInjectionBeam {
     this.vy = Math.sin(angle) * speed;
     this.damage = damage;
     this.thickness = thickness;
+    this.isEvolved = isEvolved;
+    if (isEvolved) {
+      this.length = 86;
+    }
   }
 
   public update(
     dt: number,
     enemies: Adware[],
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    viewOriginX: number = 0,
+    viewOriginY: number = 0
   ): { enemy: Adware; damage: number; blocked: boolean }[] {
     this.lifeTime -= dt;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 
-    const margin = 100;
+    const margin = 120;
     if (
       this.lifeTime <= 0 ||
-      this.x < -margin ||
-      this.x > canvasWidth + margin ||
-      this.y < -margin ||
-      this.y > canvasHeight + margin
+      this.x < viewOriginX - margin ||
+      this.x > viewOriginX + canvasWidth + margin ||
+      this.y < viewOriginY - margin ||
+      this.y > viewOriginY + canvasHeight + margin
     ) {
       this.active = false;
       return [];
@@ -226,8 +254,9 @@ export class SqlInjectionBeam {
     const halfL = this.length * 0.5;
     const halfT = this.thickness * 0.55;
 
-    // Halo exterior barato + haz de plasma afilado tipo lanza SQL
-    ctx.fillStyle = 'rgba(217, 70, 239, 0.28)';
+    ctx.fillStyle = this.isEvolved
+      ? 'rgba(251, 191, 36, 0.34)'
+      : 'rgba(217, 70, 239, 0.28)';
     ctx.beginPath();
     ctx.moveTo(halfL + 9, 0);
     ctx.lineTo(halfL * 0.4, -(halfT + 3));
@@ -238,7 +267,7 @@ export class SqlInjectionBeam {
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#a855f7';
+    ctx.fillStyle = this.isEvolved ? '#f43f5e' : '#a855f7';
     ctx.beginPath();
     ctx.moveTo(halfL + 6, 0);
     ctx.lineTo(halfL * 0.4, -halfT);
@@ -250,12 +279,197 @@ export class SqlInjectionBeam {
     ctx.fill();
 
     // Núcleo energético incandescente blanco
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = this.isEvolved ? '#fef08a' : '#ffffff';
     ctx.beginPath();
     ctx.moveTo(halfL + 1, 0);
     ctx.lineTo(-halfL * 0.55, -halfT * 0.36);
     ctx.lineTo(-halfL * 0.55, halfT * 0.36);
     ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+interface TeslaArcVisual {
+  points: { x: number; y: number }[];
+  life: number;
+  maxLife: number;
+  color: string;
+}
+
+interface CryoRingVisual {
+  x: number;
+  y: number;
+  radius: number;
+  maxRadius: number;
+  alpha: number;
+  color: string;
+}
+
+export class CryoShardProjectile extends Entity {
+  public vx: number;
+  public vy: number;
+  public damage: number;
+  public aoeRadius: number;
+  public isEvolved: boolean;
+  private lifeTime: number = 2.0;
+
+  constructor(
+    x: number,
+    y: number,
+    angle: number,
+    speed: number,
+    damage: number,
+    aoeRadius: number,
+    isEvolved: boolean
+  ) {
+    super(x, y, isEvolved ? 13 : 10, speed, isEvolved ? '#67e8f9' : '#38bdf8');
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.damage = damage;
+    this.aoeRadius = aoeRadius;
+    this.isEvolved = isEvolved;
+  }
+
+  public update(
+    dt: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    viewOriginX: number = 0,
+    viewOriginY: number = 0
+  ): void {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.lifeTime -= dt;
+
+    const margin = 90;
+    if (
+      this.lifeTime <= 0 ||
+      this.x < viewOriginX - margin ||
+      this.x > viewOriginX + canvasWidth + margin ||
+      this.y < viewOriginY - margin ||
+      this.y > viewOriginY + canvasHeight + margin
+    ) {
+      this.active = false;
+    }
+  }
+
+  public override draw(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(Math.atan2(this.vy, this.vx));
+    ctx.fillStyle = this.isEvolved ? '#cffafe' : '#38bdf8';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.4;
+    const s = this.size * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(s * 1.4, 0);
+    ctx.lineTo(0, -s * 0.55);
+    ctx.lineTo(-s * 1.1, 0);
+    ctx.lineTo(0, s * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+export class SawDiscProjectile extends Entity {
+  public damage: number;
+  public isEvolved: boolean;
+  private dirX: number;
+  private dirY: number;
+  private elapsed: number = 0;
+  private readonly maxDuration: number;
+  private spinAngle: number = 0;
+  private hitTimers: WeakMap<Adware, number> = new WeakMap();
+
+  constructor(
+    x: number,
+    y: number,
+    angle: number,
+    damage: number,
+    isEvolved: boolean
+  ) {
+    super(x, y, isEvolved ? 34 : 24, isEvolved ? 520 : 410, isEvolved ? '#fbbf24' : '#fb923c');
+    this.dirX = Math.cos(angle);
+    this.dirY = Math.sin(angle);
+    this.damage = damage;
+    this.isEvolved = isEvolved;
+    this.maxDuration = isEvolved ? 2.1 : 1.65;
+  }
+
+  public update(_dt: number): void {}
+
+  public updateDisc(dt: number, player: Player, enemies: Adware[]): Adware[] {
+    this.elapsed += dt;
+    this.spinAngle += dt * (this.isEvolved ? 20 : 14);
+    if (this.elapsed >= this.maxDuration) {
+      this.active = false;
+      return [];
+    }
+
+    const halfLife = this.maxDuration * 0.5;
+    if (this.elapsed < halfLife) {
+      const progress = this.elapsed / halfLife;
+      const curSpeed = this.speed * (1 - progress * 0.55);
+      this.x += this.dirX * curSpeed * dt;
+      this.y += this.dirY * curSpeed * dt;
+    } else {
+      const dx = player.x - this.x;
+      const dy = player.y - this.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const returnSpd = this.speed * 1.15;
+      this.x += (dx / dist) * returnSpd * dt;
+      this.y += (dy / dist) * returnSpd * dt;
+      if (dist <= 20 && this.elapsed > halfLife + 0.15) {
+        this.active = false;
+      }
+    }
+
+    const hits: Adware[] = [];
+    const hitR = this.size * 0.55;
+    for (const enemy of enemies) {
+      if (!enemy.active) continue;
+      const cd = (this.hitTimers.get(enemy) ?? 0) - dt;
+      if (cd > 0) {
+        this.hitTimers.set(enemy, cd);
+        continue;
+      }
+      if (Math.hypot(enemy.x - this.x, enemy.y - this.y) <= hitR + enemy.size * 0.45) {
+        this.hitTimers.set(enemy, 0.24);
+        hits.push(enemy);
+      }
+    }
+    return hits;
+  }
+
+  public override draw(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.spinAngle);
+
+    const r = this.size * 0.5;
+    ctx.fillStyle = this.isEvolved ? '#f59e0b' : '#f97316';
+    ctx.strokeStyle = this.isEvolved ? '#fef08a' : '#fed7aa';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    const teeth = 8;
+    for (let i = 0; i < teeth * 2; i++) {
+      const a = (i * Math.PI) / teeth;
+      const rad = i % 2 === 0 ? r : r * 0.62;
+      const px = Math.cos(a) * rad;
+      const py = Math.sin(a) * rad;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.28, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -270,30 +484,33 @@ export class SqlInjectionBeam {
  * 4. Nodos del Firewall Orbital.
  */
 export class CombatSystem {
-  // 1. Arma Base: Ráfaga de Firewall (Disparo recto)
+  // 1. Arma Base: Ráfaga de Firewall (Disparo recto -> Cañón Hex-Core)
   private fireTimer: number = 0;
   public fireCooldown: number = 0.42;
   public attackRange: number = 480;
   public projectileSpeed: number = 560;
   public projectileDamage: number = 25;
   public multiShotCount: number = 1;
+  public evolvedBasic: boolean = false;
 
-  // 2. Nueva Arma: Ping Tracker (Proyectil azul perseguidor)
+  // 2. Arma: Ping Tracker (-> Enjambre Satélite DDoS)
   public pingTrackerLevel: number = 0;
   private pingTimer: number = 0;
   public pingCooldown: number = 0.95;
   public pingDamage: number = 24;
   public pingSpeed: number = 430;
+  public evolvedPing: boolean = false;
 
-  // 3. Nueva Arma: Zona de Cuarentena (Área estática en el suelo con DoT)
+  // 3. Arma: Zona de Cuarentena (-> Reactor de Purga Nuclear)
   public quarantineLevel: number = 0;
   private quarantineTimer: number = 0;
   public quarantineCooldown: number = 3.6;
   public quarantineRadius: number = 82;
   public quarantineDamage: number = 14;
   public quarantineDuration: number = 4.6;
+  public evolvedQuarantine: boolean = false;
 
-  // 4. Arma Orbital: Drones Antivirus (Escudo Reactivo)
+  // 4. Arma Orbital: Drones Antivirus (-> Centinelas Omega)
   public dronesLevel: number = 0;
   public firewallCount: number = 0;
   public firewallRadius: number = 78;
@@ -303,16 +520,18 @@ export class CombatSystem {
   private firewallHitCooldowns: WeakMap<Adware, number> = new WeakMap();
   public droneSlots: ReactiveDroneSlot[] = [];
   public droneExplosions: DroneExplosionWave[] = [];
+  public evolvedDrones: boolean = false;
 
-  // 5. Nueva Arma: Cortafuegos (Ataque en Área Expansivo)
+  // 5. Arma: Cortafuegos (-> Tormenta Solar Firewall)
   public firewallPulseLevel: number = 0;
   private firewallPulseTimer: number = 0;
   public firewallPulseCooldown: number = 3.2;
   public firewallPulseDamage: number = 32;
   public firewallPulseMaxRadius: number = 175;
   public firewallPulses: FirewallPulseRing[] = [];
+  public evolvedFirewallPulse: boolean = false;
 
-  // 6. Nueva Arma: Rayo SQL Injection (Láser Penetrante)
+  // 6. Arma: Rayo SQL Injection (-> Láser Zero-Day)
   public sqlBeamLevel: number = 0;
   private sqlBeamTimer: number = 0;
   public sqlBeamCooldown: number = 2.5;
@@ -320,12 +539,40 @@ export class CombatSystem {
   public sqlBeamThickness: number = 18;
   public sqlBeamSpeed: number = 720;
   public sqlBeams: SqlInjectionBeam[] = [];
+  public evolvedSqlBeam: boolean = false;
 
-  // 7. Proyectiles enemigos (disparados por el Troyano Tirador)
+  // 7. Nueva Arma: Bobina Tesla EMP (-> Tormenta de Arco Voltaico)
+  public teslaLevel: number = 0;
+  private teslaTimer: number = 0;
+  public teslaCooldown: number = 1.85;
+  public teslaDamage: number = 28;
+  public evolvedTesla: boolean = false;
+  private teslaArcs: TeslaArcVisual[] = [];
+
+  // 8. Nueva Arma: Fragmento Criogénico (-> Cero Absoluto)
+  public cryoLevel: number = 0;
+  private cryoTimer: number = 0;
+  public cryoCooldown: number = 1.65;
+  public cryoDamage: number = 26;
+  public cryoAoeRadius: number = 78;
+  public evolvedCryo: boolean = false;
+  public cryoShards: CryoShardProjectile[] = [];
+  private cryoRings: CryoRingVisual[] = [];
+
+  // 9. Nueva Arma: Disco Kernel Rotativo (-> Sierras Phantom)
+  public sawLevel: number = 0;
+  private sawTimer: number = 0;
+  public sawCooldown: number = 2.1;
+  public sawDamage: number = 30;
+  public evolvedSaw: boolean = false;
+  public sawDiscs: SawDiscProjectile[] = [];
+
+  // 10. Proyectiles enemigos y cooldowns internos
   public enemyProjectiles: EnemyProjectile[] = [];
   private vampirismCooldown: number = 0;
+  private rootTrailHitCooldowns: WeakMap<Adware, number> = new WeakMap();
 
-  // 8. Estadísticas de Daño por Arma y Bajas (v1.0.0)
+  // 11. Estadísticas de Daño por Arma y Bajas
   public weaponDamageStats: Record<string, number> = {
     'Ráfaga Firewall': 0,
     'Ping Tracker': 0,
@@ -333,6 +580,9 @@ export class CombatSystem {
     'Cortafuegos': 0,
     'Rayo SQL': 0,
     'Drones Antivirus': 0,
+    'Bobina Tesla': 0,
+    'Crio-Shard': 0,
+    'Disco Kernel': 0,
     'Mascota Morcillita': 0,
   };
 
@@ -354,6 +604,9 @@ export class CombatSystem {
       'Cortafuegos': 0,
       'Rayo SQL': 0,
       'Drones Antivirus': 0,
+      'Bobina Tesla': 0,
+      'Crio-Shard': 0,
+      'Disco Kernel': 0,
       'Mascota Morcillita': 0,
     };
     this.killsByTypeStats = {
@@ -379,14 +632,19 @@ export class CombatSystem {
     pingProjectiles: PingProjectile[],
     quarantineZones: QuarantineZone[],
     canvasWidth: number = 1920,
-    canvasHeight: number = 1080
+    canvasHeight: number = 1080,
+    viewOriginX: number = 0,
+    viewOriginY: number = 0
   ): CombatEvents {
     this.fireTimer += dt;
     this.pingTimer += dt;
     this.quarantineTimer += dt;
     this.firewallPulseTimer += dt;
     this.sqlBeamTimer += dt;
-    this.firewallAngle += dt * this.firewallOrbitSpeed;
+    this.teslaTimer += dt;
+    this.cryoTimer += dt;
+    this.sawTimer += dt;
+    this.firewallAngle += dt * (this.evolvedDrones ? this.firewallOrbitSpeed * 1.55 : this.firewallOrbitSpeed);
 
     const destroyedEnemies: DestroyedEnemyInfo[] = [];
     const damagedEnemies: DamagedEnemyInfo[] = [];
@@ -396,6 +654,9 @@ export class CombatSystem {
     let homingShotsFired = 0;
     let vampirismHeals = 0;
     let droneExploded = false;
+    let shieldBlocked = false;
+    let dodgedHit = false;
+    let surgeTriggered = false;
 
     this.vampirismCooldown = Math.max(0, this.vampirismCooldown - dt);
     const tryTriggerVampirism = () => {
@@ -448,17 +709,19 @@ export class CombatSystem {
       };
     };
 
-    const effectiveFireCooldown = this.fireCooldown / Math.max(0.5, player.fireRateMultiplier);
-    const effectivePingCooldown = this.pingCooldown / Math.max(0.5, player.fireRateMultiplier);
+    const effectiveRof = Math.max(0.5, player.getEffectiveFireRateMultiplier());
+    const effectiveFireCooldown = (this.evolvedBasic ? this.fireCooldown * 0.78 : this.fireCooldown) / effectiveRof;
+    const effectivePingCooldown = (this.evolvedPing ? this.pingCooldown * 0.72 : this.pingCooldown) / effectiveRof;
 
-    // --- ARMA 1: Ráfaga de Firewall (Disparo recto — deshabilitado en Agente Morcillita) ---
+    // --- ARMA 1: Ráfaga de Firewall (-> Cañón Hex-Core) ---
     if (!player.isSummoner && player.active && this.fireTimer >= effectiveFireCooldown) {
-      const targets = this.findNearestEnemies(player, enemies, this.multiShotCount);
+      const shotCount = this.evolvedBasic ? Math.max(5, this.multiShotCount + 1) : this.multiShotCount;
+      const targets = this.findNearestEnemies(player, enemies, shotCount);
       if (targets.length > 0) {
         this.fireTimer = 0;
         shotsFired++;
 
-        for (let i = 0; i < this.multiShotCount; i++) {
+        for (let i = 0; i < shotCount; i++) {
           const target = targets[i % targets.length];
           const dx = target.x - player.x;
           const dy = target.y - player.y;
@@ -466,12 +729,14 @@ export class CombatSystem {
 
           const spreadIndex = Math.floor(i / targets.length);
           const spreadOffset =
-            targets.length < this.multiShotCount
-              ? (i - (this.multiShotCount - 1) / 2) * 0.14
-              : spreadIndex * 0.12;
+            targets.length < shotCount
+              ? (i - (shotCount - 1) / 2) * 0.12
+              : spreadIndex * 0.1;
 
           const finalAngle = baseAngle + spreadOffset;
-          const baseDmg = computeBaseScaledDamage(this.projectileDamage);
+          const baseDmg = computeBaseScaledDamage(
+            this.evolvedBasic ? Math.round(this.projectileDamage * 1.4) : this.projectileDamage
+          );
 
           projectiles.push(
             new Projectile(
@@ -479,28 +744,34 @@ export class CombatSystem {
               player.y,
               Math.cos(finalAngle),
               Math.sin(finalAngle),
-              this.projectileSpeed,
-              baseDmg
+              this.evolvedBasic ? this.projectileSpeed * 1.35 : this.projectileSpeed,
+              baseDmg,
+              this.evolvedBasic ? 3 : 0,
+              this.evolvedBasic
             )
           );
         }
       }
     }
 
-    // --- ARMA 2: Ping Tracker (Proyectiles azules perseguidores) ---
+    // --- ARMA 2: Ping Tracker (-> Enjambre DDoS) ---
     if (player.active && this.pingTrackerLevel > 0 && this.pingTimer >= effectivePingCooldown) {
       const activeEnemies = enemies.filter((e) => e.active);
       if (activeEnemies.length > 0) {
         this.pingTimer = 0;
         homingShotsFired++;
 
-        const projectilesToSpawn = 1 + Math.floor((this.pingTrackerLevel - 1) / 2);
+        const projectilesToSpawn = this.evolvedPing
+          ? 5
+          : 1 + Math.floor((this.pingTrackerLevel - 1) / 2);
         for (let i = 0; i < projectilesToSpawn; i++) {
           const target = activeEnemies[i % activeEnemies.length];
           const angle =
             Math.atan2(target.y - player.y, target.x - player.x) +
             (i - (projectilesToSpawn - 1) / 2) * 0.35;
-          const baseDmg = computeBaseScaledDamage(this.pingDamage);
+          const baseDmg = computeBaseScaledDamage(
+            this.evolvedPing ? Math.round(this.pingDamage * 1.35) : this.pingDamage
+          );
 
           pingProjectiles.push(
             new PingProjectile(
@@ -508,19 +779,19 @@ export class CombatSystem {
               player.y,
               Math.cos(angle),
               Math.sin(angle),
-              this.pingSpeed,
-              baseDmg
+              this.evolvedPing ? this.pingSpeed * 1.4 : this.pingSpeed,
+              baseDmg,
+              this.evolvedPing
             )
           );
         }
       }
     }
 
-    // --- ARMA 3: Zona de Cuarentena (Área estática en el suelo con DoT) ---
+    // --- ARMA 3: Zona de Cuarentena (-> Reactor de Purga) ---
     if (player.active && this.quarantineLevel > 0 && this.quarantineTimer >= this.quarantineCooldown) {
       this.quarantineTimer = 0;
 
-      // Desplegar la zona en la posición de un enemigo cercano o en la posición actual del jugador
       const nearest = this.findNearestEnemies(player, enemies, 1)[0];
       const spawnX = nearest ? (player.x + nearest.x) * 0.5 : player.x;
       const spawnY = nearest ? (player.y + nearest.y) * 0.5 : player.y;
@@ -529,31 +800,43 @@ export class CombatSystem {
         new QuarantineZone(
           spawnX,
           spawnY,
-          this.quarantineRadius,
-          computeBaseScaledDamage(this.quarantineDamage),
-          this.quarantineDuration
+          this.evolvedQuarantine ? Math.round(this.quarantineRadius * 1.45) : this.quarantineRadius,
+          computeBaseScaledDamage(
+            this.evolvedQuarantine ? Math.round(this.quarantineDamage * 1.8) : this.quarantineDamage
+          ),
+          this.evolvedQuarantine ? this.quarantineDuration + 1.5 : this.quarantineDuration,
+          this.evolvedQuarantine
         )
       );
     }
 
-    // --- ARMA 4: Cortafuegos (Anillo de energía expansivo alrededor del Agente) ---
+    // --- ARMA 4: Cortafuegos (-> Tormenta Solar) ---
     const effectivePulseCooldown =
-      this.firewallPulseCooldown / Math.max(0.5, player.fireRateMultiplier);
+      (this.evolvedFirewallPulse ? this.firewallPulseCooldown * 0.65 : this.firewallPulseCooldown) /
+      effectiveRof;
     if (
       player.active &&
       this.firewallPulseLevel > 0 &&
       this.firewallPulseTimer >= effectivePulseCooldown
     ) {
       this.firewallPulseTimer = 0;
-      const baseDmg = computeBaseScaledDamage(this.firewallPulseDamage);
+      const baseDmg = computeBaseScaledDamage(
+        this.evolvedFirewallPulse ? Math.round(this.firewallPulseDamage * 1.6) : this.firewallPulseDamage
+      );
       this.firewallPulses.push(
-        new FirewallPulseRing(player.x, player.y, this.firewallPulseMaxRadius, baseDmg)
+        new FirewallPulseRing(
+          player.x,
+          player.y,
+          this.evolvedFirewallPulse ? this.firewallPulseMaxRadius + 95 : this.firewallPulseMaxRadius,
+          baseDmg,
+          this.evolvedFirewallPulse
+        )
       );
     }
 
-    // --- ARMA 5: Rayo SQL Injection (Láser grueso penetrante en línea recta) ---
+    // --- ARMA 5: Rayo SQL Injection (-> Zero-Day Annihilator) ---
     const effectiveSqlCooldown =
-      this.sqlBeamCooldown / Math.max(0.5, player.fireRateMultiplier);
+      (this.evolvedSqlBeam ? this.sqlBeamCooldown * 0.72 : this.sqlBeamCooldown) / effectiveRof;
     if (player.active && this.sqlBeamLevel > 0 && this.sqlBeamTimer >= effectiveSqlCooldown) {
       const nearest = this.findNearestEnemies(player, enemies, 1)[0];
       const angle = nearest
@@ -561,18 +844,151 @@ export class CombatSystem {
         : this.firewallAngle;
       this.sqlBeamTimer = 0;
       shotsFired++;
-      const baseDmg = computeBaseScaledDamage(this.sqlBeamDamage);
-      this.sqlBeams.push(
-        new SqlInjectionBeam(
-          player.x,
-          player.y,
-          angle,
-          this.sqlBeamSpeed,
-          baseDmg,
-          this.sqlBeamThickness
-        )
+      const baseDmg = computeBaseScaledDamage(
+        this.evolvedSqlBeam ? Math.round(this.sqlBeamDamage * 1.45) : this.sqlBeamDamage
       );
+      const beamAngles = this.evolvedSqlBeam ? [angle - 0.17, angle, angle + 0.17] : [angle];
+      const beamThick = this.evolvedSqlBeam ? Math.round(this.sqlBeamThickness * 1.4) : this.sqlBeamThickness;
+      for (const bAng of beamAngles) {
+        this.sqlBeams.push(
+          new SqlInjectionBeam(
+            player.x,
+            player.y,
+            bAng,
+            this.sqlBeamSpeed,
+            baseDmg,
+            beamThick,
+            this.evolvedSqlBeam
+          )
+        );
+      }
     }
+
+    // --- ARMA 6: Bobina Tesla EMP (-> Tormenta de Arco Voltaico) ---
+    const effectiveTeslaCd =
+      (this.evolvedTesla ? this.teslaCooldown * 0.65 : this.teslaCooldown) / effectiveRof;
+    if (player.active && this.teslaLevel > 0 && this.teslaTimer >= effectiveTeslaCd) {
+      const chainCount = this.evolvedTesla ? 9 : 2 + Math.floor(this.teslaLevel / 2);
+      const firstTarget = this.findNearestEnemies(player, enemies, 1)[0];
+      if (firstTarget) {
+        this.teslaTimer = 0;
+        const arcPoints: { x: number; y: number }[] = [{ x: player.x, y: player.y }];
+        const visited = new Set<Adware>();
+        let currentSource: { x: number; y: number } = player;
+        let currentTarget: Adware | null = firstTarget;
+
+        for (let step = 0; step < chainCount && currentTarget; step++) {
+          visited.add(currentTarget);
+          arcPoints.push({ x: currentTarget.x, y: currentTarget.y });
+
+          const rawDmg = computeBaseScaledDamage(
+            this.evolvedTesla ? Math.round(this.teslaDamage * 1.65) : this.teslaDamage
+          );
+          const critRoll = rollCritHit(rawDmg);
+          currentTarget.takeDamage(critRoll.dmg, 0, 0);
+          if (this.evolvedTesla && currentTarget.active) {
+            currentTarget.networkFreezeTimer = Math.max(currentTarget.networkFreezeTimer, 0.55);
+          }
+          this.weaponDamageStats['Bobina Tesla'] += critRoll.dmg;
+          tryTriggerVampirism();
+          damagedEnemies.push({
+            x: currentTarget.x,
+            y: currentTarget.y,
+            damage: critRoll.dmg,
+            color: this.evolvedTesla ? '#fbbf24' : '#38bdf8',
+            isCrit: critRoll.isCrit,
+          });
+          registerEnemyKillIfDead(currentTarget);
+
+          currentSource = currentTarget;
+          let nextTarget: Adware | null = null;
+          let bestJumpDist = 230;
+          for (const candidate of enemies) {
+            if (!candidate.active || visited.has(candidate)) continue;
+            const d = Math.hypot(candidate.x - currentSource.x, candidate.y - currentSource.y);
+            if (d <= bestJumpDist) {
+              bestJumpDist = d;
+              nextTarget = candidate;
+            }
+          }
+          currentTarget = nextTarget;
+        }
+
+        if (arcPoints.length > 1) {
+          this.teslaArcs.push({
+            points: arcPoints,
+            life: 0.18,
+            maxLife: 0.18,
+            color: this.evolvedTesla ? '#fde047' : '#38bdf8',
+          });
+        }
+      }
+    }
+
+    // --- ARMA 7: Fragmento Criogénico (-> Cero Absoluto) ---
+    const effectiveCryoCd =
+      (this.evolvedCryo ? this.cryoCooldown * 0.72 : this.cryoCooldown) / effectiveRof;
+    if (player.active && this.cryoLevel > 0 && this.cryoTimer >= effectiveCryoCd) {
+      const shardCount = this.evolvedCryo ? 4 : 1 + Math.floor(this.cryoLevel / 3);
+      const targets = this.findNearestEnemies(player, enemies, shardCount);
+      if (targets.length > 0) {
+        this.cryoTimer = 0;
+        const baseDmg = computeBaseScaledDamage(
+          this.evolvedCryo ? Math.round(this.cryoDamage * 1.75) : this.cryoDamage
+        );
+        const aoeR = this.evolvedCryo ? this.cryoAoeRadius + 44 : this.cryoAoeRadius;
+        for (let i = 0; i < shardCount; i++) {
+          const tgt = targets[i % targets.length];
+          const ang =
+            Math.atan2(tgt.y - player.y, tgt.x - player.x) +
+            (i - (shardCount - 1) / 2) * 0.22;
+          this.cryoShards.push(
+            new CryoShardProjectile(
+              player.x,
+              player.y,
+              ang,
+              this.evolvedCryo ? 620 : 490,
+              baseDmg,
+              aoeR,
+              this.evolvedCryo
+            )
+          );
+        }
+      }
+    }
+
+    // --- ARMA 8: Disco Kernel Rotativo (-> Sierras Phantom) ---
+    const effectiveSawCd =
+      (this.evolvedSaw ? this.sawCooldown * 0.7 : this.sawCooldown) / effectiveRof;
+    if (player.active && this.sawLevel > 0 && this.sawTimer >= effectiveSawCd) {
+      this.sawTimer = 0;
+      const discCount = this.evolvedSaw ? 5 : 1 + Math.floor(this.sawLevel / 2);
+      const baseDmg = computeBaseScaledDamage(
+        this.evolvedSaw ? Math.round(this.sawDamage * 1.65) : this.sawDamage
+      );
+      const nearest = this.findNearestEnemies(player, enemies, 1)[0];
+      const baseAngle = nearest
+        ? Math.atan2(nearest.y - player.y, nearest.x - player.x)
+        : this.firewallAngle;
+      for (let i = 0; i < discCount; i++) {
+        const ang = baseAngle + (i * Math.PI * 2) / discCount;
+        this.sawDiscs.push(
+          new SawDiscProjectile(player.x, player.y, ang, baseDmg, this.evolvedSaw)
+        );
+      }
+    }
+
+    // Actualizar visuales Tesla & Cryo
+    for (const arc of this.teslaArcs) {
+      arc.life -= dt;
+    }
+    this.teslaArcs = this.teslaArcs.filter((a) => a.life > 0);
+
+    for (const ring of this.cryoRings) {
+      ring.radius += (ring.maxRadius - ring.radius) * 10 * dt;
+      ring.alpha -= dt * 3.2;
+    }
+    this.cryoRings = this.cryoRings.filter((r) => r.alpha > 0.03);
 
     // --- ESQUIVA LATERAL DEL ENEMIGO 'EVASOR' (Ghost Script) ---
     const incomingProjectiles: { x: number; y: number; vx: number; vy: number }[] = [];
@@ -585,7 +1001,13 @@ export class CombatSystem {
     if (incomingProjectiles.length > 0) {
       for (const enemy of enemies) {
         if (enemy.active && enemy instanceof Evasor) {
-          enemy.tryDodgeIncomingProjectiles(incomingProjectiles, canvasWidth, canvasHeight);
+          enemy.tryDodgeIncomingProjectiles(
+            incomingProjectiles,
+            canvasWidth,
+            canvasHeight,
+            viewOriginX,
+            viewOriginY
+          );
         }
       }
     }
@@ -595,10 +1017,10 @@ export class CombatSystem {
       if (!proj.active) continue;
 
       for (const enemy of enemies) {
-        if (!enemy.active) continue;
+        if (!enemy.active || proj.hasHit(enemy)) continue;
 
         if (CombatSystem.checkAABBCollision(proj, enemy)) {
-          proj.active = false;
+          proj.markHit(enemy);
           const sourceX = proj.x - proj.vx * 0.045;
           const sourceY = proj.y - proj.vy * 0.045;
 
@@ -609,7 +1031,8 @@ export class CombatSystem {
               damage: 0,
               color: '#38bdf8',
             });
-            break;
+            if (!proj.active) break;
+            continue;
           }
 
           const dx = enemy.x - player.x;
@@ -624,12 +1047,12 @@ export class CombatSystem {
             x: enemy.x,
             y: enemy.y,
             damage: critRoll.dmg,
-            color: enemy.color,
+            color: proj.isEvolved ? '#fde047' : enemy.color,
             isCrit: critRoll.isCrit,
           });
 
           registerEnemyKillIfDead(enemy);
-          break;
+          if (!proj.active) break;
         }
       }
     }
@@ -668,15 +1091,94 @@ export class CombatSystem {
             x: enemy.x,
             y: enemy.y,
             damage: critRoll.dmg,
-            color: '#0088ff',
+            color: ping.isEvolved ? '#60a5fa' : '#0088ff',
             isCrit: critRoll.isCrit,
           });
-
           registerEnemyKillIfDead(enemy);
+
+          // Evolución Enjambre DDoS: micro-explosión AoE al impactar
+          if (ping.isEvolved) {
+            const splashDmg = Math.round(ping.damage * 0.65);
+            for (const nearby of enemies) {
+              if (!nearby.active || nearby === enemy) continue;
+              if (Math.hypot(nearby.x - ping.x, nearby.y - ping.y) <= 68) {
+                nearby.takeDamage(splashDmg, 0, 0);
+                this.weaponDamageStats['Ping Tracker'] += splashDmg;
+                registerEnemyKillIfDead(nearby);
+              }
+            }
+          }
           break;
         }
       }
     }
+
+    // --- ACTUALIZACIÓN Y DAÑO: Fragmento Criogénico ---
+    for (const shard of this.cryoShards) {
+      if (!shard.active) continue;
+      shard.update(dt, canvasWidth, canvasHeight, viewOriginX, viewOriginY);
+      if (!shard.active) continue;
+
+      for (const enemy of enemies) {
+        if (!enemy.active) continue;
+        if (CombatSystem.checkAABBCollision(shard, enemy)) {
+          shard.active = false;
+          this.cryoRings.push({
+            x: shard.x,
+            y: shard.y,
+            radius: 12,
+            maxRadius: shard.aoeRadius,
+            alpha: 0.85,
+            color: shard.isEvolved ? '#67e8f9' : '#38bdf8',
+          });
+
+          for (const target of enemies) {
+            if (!target.active) continue;
+            if (Math.hypot(target.x - shard.x, target.y - shard.y) <= shard.aoeRadius + target.size * 0.45) {
+              const critRoll = rollCritHit(shard.damage);
+              target.takeDamage(critRoll.dmg, 0, 0);
+              if (target.active) {
+                target.cryoSlowTimer = Math.max(target.cryoSlowTimer, shard.isEvolved ? 2.5 : 1.8);
+                target.cryoSlowFactor = Math.min(target.cryoSlowFactor, shard.isEvolved ? 0.35 : 0.58);
+              }
+              this.weaponDamageStats['Crio-Shard'] += critRoll.dmg;
+              tryTriggerVampirism();
+              damagedEnemies.push({
+                x: target.x,
+                y: target.y,
+                damage: critRoll.dmg,
+                color: '#38bdf8',
+                isCrit: critRoll.isCrit,
+              });
+              registerEnemyKillIfDead(target);
+            }
+          }
+          break;
+        }
+      }
+    }
+    this.cryoShards = this.cryoShards.filter((s) => s.active);
+
+    // --- ACTUALIZACIÓN Y DAÑO: Disco Kernel Rotativo ---
+    for (const disc of this.sawDiscs) {
+      if (!disc.active) continue;
+      const hits = disc.updateDisc(dt, player, enemies);
+      for (const hitEnemy of hits) {
+        const critRoll = rollCritHit(disc.damage);
+        hitEnemy.takeDamage(critRoll.dmg, 0, 0);
+        this.weaponDamageStats['Disco Kernel'] += critRoll.dmg;
+        tryTriggerVampirism();
+        damagedEnemies.push({
+          x: hitEnemy.x,
+          y: hitEnemy.y,
+          damage: critRoll.dmg,
+          color: disc.isEvolved ? '#fbbf24' : '#f97316',
+          isCrit: critRoll.isCrit,
+        });
+        registerEnemyKillIfDead(hitEnemy);
+      }
+    }
+    this.sawDiscs = this.sawDiscs.filter((d) => d.active);
 
     // --- ACTUALIZACIÓN Y DAÑO CONTINUO: Zonas de Cuarentena ---
     for (const zone of quarantineZones) {
@@ -693,11 +1195,42 @@ export class CombatSystem {
           x: hit.enemy.x,
           y: hit.enemy.y,
           damage: critRoll.dmg,
-          color: '#10b981',
+          color: zone.isEvolved ? '#fbbf24' : '#10b981',
           isCrit: critRoll.isCrit,
         });
 
         registerEnemyKillIfDead(hit.enemy);
+      }
+    }
+
+    // --- PASIVA ROOT: Nodos eléctricos que queman y frenan ---
+    if (player.rootTrailNodes.length > 0) {
+      const trailDmg = Math.max(6, Math.round(9 * player.damageMultiplier));
+      for (const enemy of enemies) {
+        if (!enemy.active) continue;
+        const cd = (this.rootTrailHitCooldowns.get(enemy) ?? 0) - dt;
+        if (cd > 0) {
+          this.rootTrailHitCooldowns.set(enemy, cd);
+          continue;
+        }
+        for (const node of player.rootTrailNodes) {
+          if (Math.hypot(enemy.x - node.x, enemy.y - node.y) <= node.radius + enemy.size * 0.4) {
+            this.rootTrailHitCooldowns.set(enemy, 0.35);
+            enemy.takeDamage(trailDmg, 0, 0);
+            if (enemy.active) {
+              enemy.cryoSlowTimer = Math.max(enemy.cryoSlowTimer, 0.45);
+              enemy.cryoSlowFactor = Math.min(enemy.cryoSlowFactor, 0.7);
+            }
+            damagedEnemies.push({
+              x: enemy.x,
+              y: enemy.y,
+              damage: trailDmg,
+              color: '#60a5fa',
+            });
+            registerEnemyKillIfDead(enemy);
+            break;
+          }
+        }
       }
     }
 
@@ -719,7 +1252,7 @@ export class CombatSystem {
           x: hit.enemy.x,
           y: hit.enemy.y,
           damage: critRoll.dmg,
-          color: '#ff8800',
+          color: pulse.isEvolved ? '#fde047' : '#ff8800',
           isCrit: critRoll.isCrit,
         });
 
@@ -731,7 +1264,7 @@ export class CombatSystem {
     // --- ACTUALIZACIÓN Y DAÑO PENETRANTE: Rayo SQL Injection ---
     for (const beam of this.sqlBeams) {
       if (!beam.active) continue;
-      const beamHits = beam.update(dt, enemies, canvasWidth, canvasHeight);
+      const beamHits = beam.update(dt, enemies, canvasWidth, canvasHeight, viewOriginX, viewOriginY);
       for (const hit of beamHits) {
         if (!hit.enemy.active) continue;
         if (hit.blocked) {
@@ -755,7 +1288,7 @@ export class CombatSystem {
           x: hit.enemy.x,
           y: hit.enemy.y,
           damage: critRoll.dmg,
-          color: '#d946ef',
+          color: beam.isEvolved ? '#fbbf24' : '#d946ef',
           isCrit: critRoll.isCrit,
         });
 
@@ -764,13 +1297,17 @@ export class CombatSystem {
     }
     this.sqlBeams = this.sqlBeams.filter((b) => b.active);
 
-    // --- COLISIONES: Drones Antivirus (Escudo Reactivo) vs Enemigos ---
-    while (this.droneSlots.length < this.firewallCount) {
+    // --- COLISIONES: Drones Antivirus (Escudo Reactivo -> Centinelas Omega) vs Enemigos ---
+    const targetDroneCount = this.evolvedDrones ? Math.max(6, this.firewallCount) : this.firewallCount;
+    while (this.droneSlots.length < targetDroneCount) {
       this.droneSlots.push({ durability: 3, respawnTimer: 0 });
     }
 
     for (const slot of this.droneSlots) {
-      if (slot.durability <= 0) {
+      if (this.evolvedDrones) {
+        slot.durability = 3;
+        slot.respawnTimer = 0;
+      } else if (slot.durability <= 0) {
         slot.respawnTimer -= dt;
         if (slot.respawnTimer <= 0) {
           slot.durability = 3;
@@ -784,11 +1321,15 @@ export class CombatSystem {
     }
     this.droneExplosions = this.droneExplosions.filter((e) => e.active);
 
-    if (player.active && this.firewallCount > 0) {
+    if (player.active && targetDroneCount > 0) {
+      const savedCount = this.firewallCount;
+      this.firewallCount = targetDroneCount;
       const nodes = this.getFirewallNodePositions(player);
-      const interceptRadius = 15;
+      this.firewallCount = savedCount;
+      const interceptRadius = this.evolvedDrones ? 19 : 15;
 
       const triggerDroneHitAndCheckExplosion = (slot: ReactiveDroneSlot, nodeX: number, nodeY: number) => {
+        if (this.evolvedDrones) return; // Centinelas Omega son indestructibles
         slot.durability -= 1;
         if (slot.durability <= 0) {
           slot.durability = 0;
@@ -837,30 +1378,31 @@ export class CombatSystem {
           const distToDrone = Math.hypot(enemy.x - node.x, enemy.y - node.y);
 
           if (distToDrone <= interceptRadius + enemy.size * 0.5) {
-            // El dron intercepta al enemigo: empuja al enemigo hacia atrás (0 daño al jugador)
             const dx = enemy.x - player.x;
             const dy = enemy.y - player.y;
             const dist = Math.hypot(dx, dy) || 1;
-            const pushDist = 36;
-            const critRoll = rollCritHit(computeBaseScaledDamage(this.firewallDamage));
+            const pushDist = this.evolvedDrones ? 44 : 36;
+            const rawDroneDmg = this.evolvedDrones ? this.firewallDamage * 1.65 : this.firewallDamage;
+            const critRoll = rollCritHit(computeBaseScaledDamage(rawDroneDmg));
             enemy.takeDamage(
               critRoll.dmg,
               (dx / dist) * pushDist,
               (dy / dist) * pushDist
             );
             this.weaponDamageStats['Drones Antivirus'] += critRoll.dmg;
-            this.firewallHitCooldowns.set(enemy, 0.28);
+            this.firewallHitCooldowns.set(enemy, this.evolvedDrones ? 0.16 : 0.28);
 
             damagedEnemies.push({
               x: enemy.x,
               y: enemy.y,
               damage: critRoll.dmg,
-              color:
-                slot.durability === 3
-                  ? '#00ff66'
-                  : slot.durability === 2
-                  ? '#facc15'
-                  : '#ff1e42',
+              color: this.evolvedDrones
+                ? '#fbbf24'
+                : slot.durability === 3
+                ? '#00ff66'
+                : slot.durability === 2
+                ? '#facc15'
+                : '#ff1e42',
               isCrit: critRoll.isCrit,
             });
 
@@ -881,15 +1423,48 @@ export class CombatSystem {
       }
     }
 
+    const triggerHitOutcomeFeedback = () => {
+      if (player.lastHitOutcome === 'SHIELD_BLOCKED') {
+        shieldBlocked = true;
+        for (const foe of enemies) {
+          if (!foe.active) continue;
+          const dist = Math.hypot(foe.x - player.x, foe.y - player.y);
+          if (dist <= 185) {
+            const dx = (foe.x - player.x) / (dist || 1);
+            const dy = (foe.y - player.y) / (dist || 1);
+            foe.takeDamage(Math.round(35 * player.damageMultiplier), dx * 44, dy * 44);
+            registerEnemyKillIfDead(foe);
+          }
+        }
+      } else if (player.lastHitOutcome === 'DODGED') {
+        dodgedHit = true;
+      } else if (player.surgePulsePending) {
+        player.surgePulsePending = false;
+        surgeTriggered = true;
+        const surgeDmg = Math.round(45 * player.damageMultiplier);
+        for (const foe of enemies) {
+          if (!foe.active) continue;
+          const dist = Math.hypot(foe.x - player.x, foe.y - player.y);
+          if (dist <= 175) {
+            const dx = (foe.x - player.x) / (dist || 1);
+            const dy = (foe.y - player.y) / (dist || 1);
+            foe.takeDamage(surgeDmg, dx * 38, dy * 38);
+            registerEnemyKillIfDead(foe);
+          }
+        }
+      }
+    };
+
     for (const eProj of this.enemyProjectiles) {
       if (!eProj.active) continue;
-      eProj.update(dt, canvasWidth, canvasHeight);
+      eProj.update(dt, canvasWidth, canvasHeight, viewOriginX, viewOriginY);
 
       if (eProj.active && player.active && CombatSystem.checkAABBCollision(player, eProj)) {
         eProj.active = false;
         if (player.takeDamage(eProj.damage)) {
           playerHit = true;
         }
+        triggerHitOutcomeFeedback();
       }
     }
     this.enemyProjectiles = this.enemyProjectiles.filter((p) => p.active);
@@ -905,8 +1480,8 @@ export class CombatSystem {
             if (tookDamage) {
               playerHit = true;
             }
+            triggerHitOutcomeFeedback();
           } else if (enemy.malwareType === 'HARDWARE_BOX') {
-            // Obstáculo estático: empuja ligeramente al jugador hacia afuera sin dañarlo
             const dx = player.x - enemy.x;
             const dy = player.y - enemy.y;
             const dist = Math.hypot(dx, dy) || 1;
@@ -936,6 +1511,9 @@ export class CombatSystem {
       homingShotsFired,
       vampirismHeals,
       droneExploded,
+      shieldBlocked,
+      dodgedHit,
+      surgeTriggered,
     };
   }
 
@@ -944,30 +1522,40 @@ export class CombatSystem {
     if (player?.isSummoner && player.companion) {
       list.push(player.companion.getBranchDisplayName(1));
     } else {
-      list.push('Ráfaga Firewall');
+      list.push(this.evolvedBasic ? '★ Hex-Core' : 'Ráfaga Firewall');
     }
     if (this.pingTrackerLevel > 0) {
-      list.push(`Ping Tracker v${this.pingTrackerLevel}`);
+      list.push(this.evolvedPing ? '★ Enjambre DDoS' : `Ping Tracker v${this.pingTrackerLevel}`);
     }
     if (this.quarantineLevel > 0) {
-      list.push(`Zona Cuarentena v${this.quarantineLevel}`);
+      list.push(this.evolvedQuarantine ? '★ Purga Nuclear' : `Zona Cuarentena v${this.quarantineLevel}`);
     }
     if (this.dronesLevel > 0) {
-      list.push(`Drones Antivirus v${this.dronesLevel}`);
+      list.push(this.evolvedDrones ? '★ Centinelas Omega' : `Drones v${this.dronesLevel}`);
     }
     if (this.firewallPulseLevel > 0) {
-      list.push(`Cortafuegos v${this.firewallPulseLevel}`);
+      list.push(this.evolvedFirewallPulse ? '★ Tormenta Solar' : `Cortafuegos v${this.firewallPulseLevel}`);
     }
     if (this.sqlBeamLevel > 0) {
-      list.push(`Rayo SQL v${this.sqlBeamLevel}`);
+      list.push(this.evolvedSqlBeam ? '★ Láser Zero-Day' : `Rayo SQL v${this.sqlBeamLevel}`);
+    }
+    if (this.teslaLevel > 0) {
+      list.push(this.evolvedTesla ? '★ Arco Voltaico' : `Tesla EMP v${this.teslaLevel}`);
+    }
+    if (this.cryoLevel > 0) {
+      list.push(this.evolvedCryo ? '★ Cero Absoluto' : `Crio-Shard v${this.cryoLevel}`);
+    }
+    if (this.sawLevel > 0) {
+      list.push(this.evolvedSaw ? '★ Sierras Phantom' : `Disco Kernel v${this.sawLevel}`);
     }
     return list;
   }
 
   public getFirewallNodePositions(player: Player): { x: number; y: number }[] {
+    const count = this.evolvedDrones ? Math.max(6, this.firewallCount) : this.firewallCount;
     const positions: { x: number; y: number }[] = [];
-    for (let i = 0; i < this.firewallCount; i++) {
-      const angle = this.firewallAngle + (i * Math.PI * 2) / this.firewallCount;
+    for (let i = 0; i < count; i++) {
+      const angle = this.firewallAngle + (i * Math.PI * 2) / count;
       positions.push({
         x: player.x + Math.cos(angle) * this.firewallRadius,
         y: player.y + Math.sin(angle) * this.firewallRadius,
@@ -980,6 +1568,55 @@ export class CombatSystem {
     for (const pulse of this.firewallPulses) {
       if (pulse.active) {
         pulse.draw(ctx);
+      }
+    }
+
+    for (const ring of this.cryoRings) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, ring.alpha);
+      ctx.strokeStyle = ring.color;
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    for (const arc of this.teslaArcs) {
+      const alpha = Math.max(0, arc.life / arc.maxLife);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = arc.color;
+      ctx.lineWidth = 3.0;
+      ctx.beginPath();
+      for (let i = 0; i < arc.points.length; i++) {
+        const pt = arc.points[i];
+        if (i === 0) {
+          ctx.moveTo(pt.x, pt.y);
+        } else {
+          const prev = arc.points[i - 1];
+          const midX = (prev.x + pt.x) * 0.5 + (Math.random() - 0.5) * 18;
+          const midY = (prev.y + pt.y) * 0.5 + (Math.random() - 0.5) * 18;
+          ctx.lineTo(midX, midY);
+          ctx.lineTo(pt.x, pt.y);
+        }
+      }
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    for (const shard of this.cryoShards) {
+      if (shard.active) {
+        shard.draw(ctx);
+      }
+    }
+
+    for (const disc of this.sawDiscs) {
+      if (disc.active) {
+        disc.draw(ctx);
       }
     }
 
@@ -1001,12 +1638,13 @@ export class CombatSystem {
       }
     }
 
-    if (this.firewallCount <= 0 || !player.active) return;
+    const activeCount = this.evolvedDrones ? Math.max(6, this.firewallCount) : this.firewallCount;
+    if (activeCount <= 0 || !player.active) return;
 
     const nodes = this.getFirewallNodePositions(player);
 
     ctx.save();
-    ctx.strokeStyle = 'rgba(0, 255, 102, 0.18)';
+    ctx.strokeStyle = this.evolvedDrones ? 'rgba(251, 191, 36, 0.24)' : 'rgba(0, 255, 102, 0.18)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(player.x, player.y, this.firewallRadius, 0, Math.PI * 2);
@@ -1018,28 +1656,28 @@ export class CombatSystem {
       if (!slot || slot.durability <= 0) continue;
 
       const node = nodes[i];
-      // Color según durabilidad: 3 = Verde (#00ff66), 2 = Amarillo (#facc15), 1 = Rojo (#ff1e42)
-      const droneColor =
-        slot.durability === 3
-          ? '#00ff66'
-          : slot.durability === 2
-          ? '#facc15'
-          : '#ff1e42';
+      const droneColor = this.evolvedDrones
+        ? '#fbbf24'
+        : slot.durability === 3
+        ? '#00ff66'
+        : slot.durability === 2
+        ? '#facc15'
+        : '#ff1e42';
 
       ctx.save();
       ctx.translate(node.x, node.y);
       ctx.rotate(spin + i * 1.1);
 
-      ctx.fillStyle = '#06131a';
+      ctx.fillStyle = this.evolvedDrones ? '#1e1005' : '#06131a';
       ctx.strokeStyle = droneColor;
-      ctx.lineWidth = 2.4;
+      ctx.lineWidth = this.evolvedDrones ? 2.8 : 2.4;
 
-      // Dron hexagonal táctico con núcleo brillante
+      const hexR = this.evolvedDrones ? 12 : 10;
       ctx.beginPath();
       for (let v = 0; v < 6; v++) {
         const a = (v * Math.PI) / 3;
-        const px = Math.cos(a) * 10;
-        const py = Math.sin(a) * 10;
+        const px = Math.cos(a) * hexR;
+        const py = Math.sin(a) * hexR;
         if (v === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
@@ -1047,7 +1685,6 @@ export class CombatSystem {
       ctx.fill();
       ctx.stroke();
 
-      ctx.shadowBlur = 0;
       ctx.fillStyle = droneColor;
       ctx.beginPath();
       ctx.arc(0, 0, 4.2, 0, Math.PI * 2);

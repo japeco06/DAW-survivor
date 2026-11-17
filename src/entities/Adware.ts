@@ -25,7 +25,9 @@ export class Adware extends Entity {
   public damage: number = 12;
   public xpValue: number = 20;
   public knockbackResistance: number = 0; // 0 = retroceso normal, 1 = inmune
-  public networkFreezeTimer: number = 0; // Congelación de Red (Fibra Óptica Lvl 10: -80% velocidad)
+  public networkFreezeTimer: number = 0; // Congelación de Red (Fibra Óptica Lvl 10 / EMP: -80% velocidad)
+  public cryoSlowTimer: number = 0; // Ralentización criogénica (-45% a -65% velocidad)
+  public cryoSlowFactor: number = 0.58;
   protected hitFlashTimer: number = 0;
   protected facingAngle: number = 0;
   protected readonly animSeed: number = Math.random() * 100;
@@ -47,14 +49,23 @@ export class Adware extends Entity {
     this.xpValue = xpValue;
   }
 
+  protected tickSpeedMultiplier(dt: number): number {
+    let slowFactor = this.networkFreezeTimer > 0 ? 0.2 : 1.0;
+    if (this.networkFreezeTimer > 0) {
+      this.networkFreezeTimer = Math.max(0, this.networkFreezeTimer - dt);
+    }
+    if (this.cryoSlowTimer > 0) {
+      this.cryoSlowTimer = Math.max(0, this.cryoSlowTimer - dt);
+      slowFactor = Math.min(slowFactor, this.cryoSlowFactor);
+    }
+    return slowFactor;
+  }
+
   public update(dt: number, player: Player): void {
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);
     }
-    const slowFactor = this.networkFreezeTimer > 0 ? 0.2 : 1.0;
-    if (this.networkFreezeTimer > 0) {
-      this.networkFreezeTimer = Math.max(0, this.networkFreezeTimer - dt);
-    }
+    const slowFactor = this.tickSpeedMultiplier(dt);
 
     const dx = player.x - this.x;
     const dy = player.y - this.y;

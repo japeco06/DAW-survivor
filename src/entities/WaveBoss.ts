@@ -505,6 +505,9 @@ export class SpywareSpecterBoss extends WaveBoss {
   private blinkTimer: number = 0;
   private hitCounter: number = 0;
   private glitchPhase: number = 0;
+  public unbounded: boolean = false;
+  private anchorX: number = 960;
+  private anchorY: number = 540;
 
   constructor(x: number, y: number, scaling: number | WaveBossScalingContext = 1) {
     const ctx = typeof scaling === 'number' ? { bossLevel: scaling } : scaling;
@@ -534,8 +537,13 @@ export class SpywareSpecterBoss extends WaveBoss {
     this.y += Math.sin(angle) * distance;
 
     const margin = 70;
-    this.x = Math.max(margin, Math.min(1920 - margin, this.x));
-    this.y = Math.max(margin, Math.min(1080 - margin, this.y));
+    if (!this.unbounded) {
+      this.x = Math.max(margin, Math.min(1920 - margin, this.x));
+      this.y = Math.max(margin, Math.min(1080 - margin, this.y));
+    } else {
+      this.x = Math.max(this.anchorX - 880, Math.min(this.anchorX + 880, this.x));
+      this.y = Math.max(this.anchorY - 460, Math.min(this.anchorY + 460, this.y));
+    }
 
     // Dispara 4 fragmentos glitch cian
     for (let i = 0; i < 4; i++) {
@@ -547,6 +555,8 @@ export class SpywareSpecterBoss extends WaveBoss {
   }
 
   public override update(dt: number, player: Player): void {
+    this.anchorX = player.x;
+    this.anchorY = player.y;
     this.glitchPhase += dt * 9;
     this.blinkTimer += dt;
 

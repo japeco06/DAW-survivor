@@ -4,6 +4,7 @@ import { Player } from './Player';
 export class CryptoMiner extends Adware {
   public escapeTimer: number = 11.0;
   public escaped: boolean = false;
+  public unbounded: boolean = false;
   private wobbleTimer: number = 0;
   private wanderAngle: number = (Math.random() - 0.5) * 0.8;
 
@@ -43,10 +44,10 @@ export class CryptoMiner extends Adware {
     let vx = Math.cos(fleeAngle) * this.speed;
     let vy = Math.sin(fleeAngle) * this.speed;
 
-    const minX = 44;
-    const maxX = 1920 - 44;
-    const minY = 64;
-    const maxY = 1080 - 44;
+    const minX = this.unbounded ? player.x - 900 : 44;
+    const maxX = this.unbounded ? player.x + 900 : 1920 - 44;
+    const minY = this.unbounded ? player.y - 490 : 64;
+    const maxY = this.unbounded ? player.y + 490 : 1080 - 44;
 
     const atLeft = this.x <= minX;
     const atRight = this.x >= maxX;

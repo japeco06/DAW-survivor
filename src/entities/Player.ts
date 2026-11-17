@@ -1,11 +1,20 @@
 import { Entity } from './Entity';
 import { Input } from '../core/Input';
-import { CharacterProfile, MetaSystem } from '../systems/MetaSystem';
+import { CharacterId, CharacterProfile, MetaSystem } from '../systems/MetaSystem';
 import { HatItem } from '../systems/HatSystem';
 import { HatRenderer } from '../utils/HatRenderer';
 import { CompanionPet } from './CompanionPet';
 
+export interface RootTrailNode {
+  x: number;
+  y: number;
+  life: number;
+  maxLife: number;
+  radius: number;
+}
+
 export class Player extends Entity {
+  public characterId: CharacterId = 'STANDARD';
   public maxHp: number = 100;
   public hp: number = 100;
   public pickupRadius: number = 115;
@@ -15,6 +24,21 @@ export class Player extends Entity {
   public damageMultiplier: number = 1.0;
   public fireRateMultiplier: number = 1.0;
   public critChance: number = 0.05; // 5% probabilidad crítica base (2x daño)
+  public dodgeChance: number = 0;
+  public bonusCoinDropChance: number = 0;
+  public passiveRegenPerSec: number = 0;
+  private regenAccumulator: number = 0;
+
+  // Pasivas específicas por personaje
+  public shieldReady: boolean = false;
+  public shieldRechargeTimer: number = 0;
+  public readonly shieldMaxCooldown: number = 16;
+  public adrenalineTimer: number = 0;
+  public rootTrailNodes: RootTrailNode[] = [];
+  private rootTrailSpawnTimer: number = 0;
+  public surgePulsePending: boolean = false;
+  public lastHitOutcome: 'HIT' | 'SHIELD_BLOCKED' | 'DODGED' | 'IGNORED' = 'IGNORED';
+
   public equippedHat: HatItem | null = null;
   public borderColor: string = '#ffffff';
   public profileName: string = 'AGENTE ESTÁNDAR';
@@ -45,6 +69,7 @@ export class Player extends Entity {
     super(x, y, 28, speed, color);
 
     if (profile) {
+      this.characterId = profile.id;
       this.maxHp = Math.round(baseHp * profile.hpMultiplier);
       this.hp = this.maxHp;
       this.pickupRadius = Math.round(basePickupRadius * profile.pickupRadiusMultiplier);
@@ -53,6 +78,20 @@ export class Player extends Entity {
       if (profile.id === 'MORCILLITA') {
         this.isSummoner = true;
         this.companion = new CompanionPet(x, y);
+      } else if (profile.id === 'PROXY') {
+        this.shieldReady = true;
+      } else if (profile.id === 'CRYPTO') {
+        this.critChance += 0.05;
+        this.bonusCoinDropChance = 0.18;
+      } else if (profile.id === 'SPECTRE') {
+        this.dodgeChance = 0.22;
+        this.critChance += 0.15;
+        this.fireRateMultiplier = 1.1;
+      } else if (profile.id === 'OVERCLOCK') {
+        this.fireRateMultiplier = 1.15;
+      } else if (profile.id === 'KERNEL_X') {
+        this.damageMultiplier = 1.2;
+        this.passiveRegenPerSec = 2.0;
       }
     }
 
@@ -61,29 +100,86 @@ export class Player extends Entity {
       this.maxHp += hat.stats.maxHpBonus ?? 0;
       this.hp = this.maxHp;
       this.pickupRadius += hat.stats.magnetBonus ?? 0;
-      this.damageMultiplier = Number((1 + (hat.stats.damageMult ?? 0)).toFixed(2));
-      this.fireRateMultiplier = Number((1 + (hat.stats.fireRateMult ?? 0)).toFixed(2));
-      this.critChance = Number((0.05 + (hat.stats.critChance ?? 0)).toFixed(3));
+      this.damageMultiplier = Number((this.damageMultiplier + (hat.stats.damageMult ?? 0)).toFixed(2));
+      this.fireRateMultiplier = Number((this.fireRateMultiplier + (hat.stats.fireRateMult ?? 0)).toFixed(2));
+      this.critChance = Number((this.critChance + (hat.stats.critChance ?? 0)).toFixed(3));
     }
   }
 
-  public update(dt: number, input: Input, canvasWidth: number, canvasHeight: number): void {
+  public update(
+    dt: number,
+    input: Input,
+    canvasWidth: number,
+    canvasHeight: number,
+    unbounded: boolean = false,
+    lightGraphics: boolean = false
+  ): void {
     if (this.invulnerabilityTimer > 0) {
       this.invulnerabilityTimer = Math.max(0, this.invulnerabilityTimer - dt);
     }
 
+    if (this.characterId === 'PROXY' && !this.shieldReady) {
+      this.shieldRechargeTimer -= dt;
+      if (this.shieldRechargeTimer <= 0) {
+        this.shieldReady = true;
+        this.shieldRechargeTimer = 0;
+      }
+    }
+
+    if (this.adrenalineTimer > 0) {
+      this.adrenalineTimer = Math.max(0, this.adrenalineTimer - dt);
+    }
+
+    if (this.passiveRegenPerSec > 0 && this.active && this.hp < this.maxHp) {
+      this.regenAccumulator += this.passiveRegenPerSec * dt;
+      if (this.regenAccumulator >= 1) {
+        const healInt = Math.floor(this.regenAccumulator);
+        this.regenAccumulator -= healInt;
+        this.heal(healInt);
+      }
+    }
+
+    for (let i = this.rootTrailNodes.length - 1; i >= 0; i--) {
+      this.rootTrailNodes[i].life -= dt;
+      if (this.rootTrailNodes[i].life <= 0) {
+        this.rootTrailNodes.splice(i, 1);
+      }
+    }
+
     const dir = input.getDirection();
-    const effectiveSpeed = Math.min(520, this.speed);
+    const adrenalineSpeedMult = this.adrenalineTimer > 0 ? 1.25 : 1.0;
+    const effectiveSpeed = Math.min(540, this.speed * adrenalineSpeedMult);
     this.isMoving = dir.x !== 0 || dir.y !== 0;
 
     if (this.isMoving) {
       this.facingAngle = Math.atan2(dir.y, dir.x);
-      this.trailTimer += dt;
-      if (this.trailTimer >= 0.032) {
-        this.trailTimer = 0;
-        this.motionTrail.push({ x: this.x, y: this.y, alpha: 0.42 });
-        if (this.motionTrail.length > 6) {
-          this.motionTrail.shift();
+      if (!lightGraphics) {
+        this.trailTimer += dt;
+        if (this.trailTimer >= 0.032) {
+          this.trailTimer = 0;
+          this.motionTrail.push({ x: this.x, y: this.y, alpha: 0.42 });
+          if (this.motionTrail.length > 6) {
+            this.motionTrail.shift();
+          }
+        }
+      } else if (this.motionTrail.length > 0) {
+        this.motionTrail = [];
+      }
+
+      if (this.characterId === 'ROOT') {
+        this.rootTrailSpawnTimer += dt;
+        if (this.rootTrailSpawnTimer >= 0.22) {
+          this.rootTrailSpawnTimer = 0;
+          this.rootTrailNodes.push({
+            x: this.x,
+            y: this.y,
+            life: 2.2,
+            maxLife: 2.2,
+            radius: 26,
+          });
+          if (this.rootTrailNodes.length > 14) {
+            this.rootTrailNodes.shift();
+          }
         }
       }
     }
@@ -98,18 +194,50 @@ export class Player extends Entity {
     this.x += dir.x * effectiveSpeed * dt;
     this.y += dir.y * effectiveSpeed * dt;
 
-    const halfSize = this.size / 2;
-    this.x = Math.max(halfSize, Math.min(canvasWidth - halfSize, this.x));
-    this.y = Math.max(halfSize, Math.min(canvasHeight - halfSize, this.y));
+    if (!unbounded) {
+      const halfSize = this.size / 2;
+      this.x = Math.max(halfSize, Math.min(canvasWidth - halfSize, this.x));
+      this.y = Math.max(halfSize, Math.min(canvasHeight - halfSize, this.y));
+    }
+  }
+
+  public getEffectiveFireRateMultiplier(): number {
+    return this.adrenalineTimer > 0 ? this.fireRateMultiplier * 1.45 : this.fireRateMultiplier;
+  }
+
+  public triggerOverclockAdrenaline(): void {
+    if (this.characterId === 'OVERCLOCK') {
+      this.adrenalineTimer = 3.5;
+    }
   }
 
   public takeDamage(amount: number): boolean {
     if (this.invulnerabilityTimer > 0 || !this.active) {
+      this.lastHitOutcome = 'IGNORED';
+      return false;
+    }
+
+    if (this.characterId === 'PROXY' && this.shieldReady) {
+      this.shieldReady = false;
+      this.shieldRechargeTimer = this.shieldMaxCooldown;
+      this.invulnerabilityTimer = 0.6;
+      this.lastHitOutcome = 'SHIELD_BLOCKED';
+      return false;
+    }
+
+    if (this.dodgeChance > 0 && Math.random() < this.dodgeChance) {
+      this.invulnerabilityTimer = 0.35;
+      this.lastHitOutcome = 'DODGED';
       return false;
     }
 
     this.hp = Math.max(0, this.hp - amount);
     this.invulnerabilityTimer = this.invulnerabilityDuration;
+    this.lastHitOutcome = 'HIT';
+
+    if (this.characterId === 'STANDARD') {
+      this.surgePulsePending = true;
+    }
 
     if (this.hp <= 0) {
       this.active = false;
@@ -138,6 +266,20 @@ export class Player extends Entity {
     ctx.ellipse(this.x, this.y + this.size * 0.52, this.size * 0.52, this.size * 0.22, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // Estela de fuego eléctrico de Agente ROOT
+    if (this.rootTrailNodes.length > 0) {
+      for (const node of this.rootTrailNodes) {
+        const alpha = Math.max(0, node.life / node.maxLife);
+        ctx.fillStyle = `rgba(59, 130, 246, ${0.26 * alpha})`;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(96, 165, 250, ${0.7 * alpha})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+
     // Estela luminosa de movimiento
     for (let i = 0; i < this.motionTrail.length; i++) {
       const ghost = this.motionTrail[i];
@@ -155,14 +297,28 @@ export class Player extends Entity {
     }
     ctx.globalAlpha = 1;
 
-    // Aro sutil de telemetría alrededor del bot
-    ctx.strokeStyle = accentColor;
-    ctx.globalAlpha = 0.24;
-    ctx.lineWidth = 1.3;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.size * 0.74 + Math.sin(now * 0.006) * 1.4, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+    // Aro sutil de telemetría alrededor del bot (y escudo Aegis para PROXY / Adrenalina para OVERCLOCK)
+    if (this.characterId === 'PROXY' && this.shieldReady) {
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size * 0.92, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (this.adrenalineTimer > 0) {
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size * 0.88 + Math.sin(now * 0.02) * 2, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = accentColor;
+      ctx.globalAlpha = 0.24;
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size * 0.74 + Math.sin(now * 0.006) * 1.4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
 
     Player.drawCyberChassis(
       ctx,

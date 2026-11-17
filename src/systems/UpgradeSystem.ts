@@ -16,25 +16,26 @@ export interface UpgradeOption {
   maxLevel: number;
   isMaxed?: boolean;
   isWeapon?: boolean;
+  isEvolution?: boolean;
   isMemoryOverclock?: boolean;
   isCompanionBranchCard?: boolean;
   isBasicShotOnly?: boolean;
   isCompanionStatCard?: boolean;
+  canUnlock?: (getLevel: (id: string) => number, player?: Player) => boolean;
   apply: (player: Player, combat: CombatSystem) => void;
 }
 
 /**
- * Sistema de Experiencia y Tarjetas de Nivel (v0.3.0 - Fase 1).
- * Al llenarse la barra de XP, pausa el juego y ofrece 3 Tarjetas de Mejora (armas y pasivas),
- * incluyendo la nueva tarjeta pasiva 'Overclock de Memoria' que multiplica permanentemente la XP.
+ * Sistema de Experiencia, Evoluciones de Arma, Rerolls y Tarjetas de Nivel.
  */
-export const MAX_WEAPON_SLOTS = 4;
+export const MAX_WEAPON_SLOTS = 5;
 
 export class UpgradeSystem {
   public level: number = 1;
   public currentXp: number = 0;
   public xpToNextLevel: number = 150;
   public pendingLevelUps: number = 0;
+  public rerollsRemaining: number = 3;
 
   private upgrades: UpgradeOption[] = [];
   private companionBranchCards: UpgradeOption[] = [];
@@ -309,8 +310,8 @@ export class UpgradeSystem {
         nameEn: 'SYSTEM_RESTORE.iso',
         category: 'PASIVA // SALUD KERNEL',
         categoryEn: 'PASSIVE // KERNEL HEALTH',
-        description: 'Amplía la salud máxima y repara inmediatamente el chasis.',
-        descriptionEn: 'Expands maximum health capacity and repairs chassis.',
+        description: 'Amplía la salud máxima y repara inmediatamente el chasis. Evoluciona Cuarentena y Crio.',
+        descriptionEn: 'Expands max health, heals chassis & unlocks Quarantine / Cryo evolutions.',
         statBadge: '▲ +25 HP Máx  |  ▲ +40 HP Curación',
         statBadgeEn: '▲ +25 Max HP  |  ▲ +40 HP Heal',
         color: '#00ff66',
@@ -319,6 +320,241 @@ export class UpgradeSystem {
         apply: (player) => {
           player.maxHp += 25;
           player.heal(40);
+        },
+      },
+      // --- 3 NUEVAS ARMAS ---
+      {
+        id: 'emp_tesla',
+        name: 'BOBINA TESLA EMP',
+        nameEn: 'TESLA EMP COIL',
+        category: 'ARMA // RAYO EN CADENA',
+        categoryEn: 'WEAPON // CHAIN LIGHTNING',
+        description: 'Descarga rayos eléctricos que saltan entre múltiples enemigos cercanos.',
+        descriptionEn: 'Fires electric arcs jumping across multiple nearby enemies.',
+        statBadge: '▲ +11 Daño  |  ▲ +Saltos  |  ▼ -14% CD',
+        statBadgeEn: '▲ +11 Damage  |  ▲ +Chains  |  ▼ -14% CD',
+        color: '#38bdf8',
+        level: 0,
+        maxLevel: 5,
+        isWeapon: true,
+        apply: (_player, combat) => {
+          combat.teslaLevel += 1;
+          combat.teslaDamage += 11;
+          combat.teslaCooldown = Math.max(0.8, combat.teslaCooldown * 0.86);
+        },
+      },
+      {
+        id: 'cryo_shard',
+        name: 'FRAGMENTO CRIOGÉNICO',
+        nameEn: 'CRYO SHARD CANNON',
+        category: 'ARMA // EXPLOSIÓN LENTA',
+        categoryEn: 'WEAPON // CRYO BLAST',
+        description: 'Dispara picos de nitrógeno con explosión en área que ralentizan enemigos (-42%).',
+        descriptionEn: 'Fires nitrogen shards exploding on impact & slowing foes (-42%).',
+        statBadge: '▲ +10 Daño  |  ▲ +10px Radio  |  Ralentiza',
+        statBadgeEn: '▲ +10 Dmg  |  ▲ +10px AoE  |  Slows Foes',
+        color: '#67e8f9',
+        level: 0,
+        maxLevel: 5,
+        isWeapon: true,
+        apply: (_player, combat) => {
+          combat.cryoLevel += 1;
+          combat.cryoDamage += 10;
+          combat.cryoAoeRadius += 10;
+          combat.cryoCooldown = Math.max(0.75, combat.cryoCooldown * 0.87);
+        },
+      },
+      {
+        id: 'orbital_saw',
+        name: 'DISCO KERNEL ROTATIVO',
+        nameEn: 'KERNEL SAWBLADE',
+        category: 'ARMA // BOOMERANG',
+        categoryEn: 'WEAPON // BOOMERANG',
+        description: 'Lanza sierras cibernéticas giratorias que atraviesan enemigos ida y vuelta.',
+        descriptionEn: 'Throws spinning cyber-discs slicing enemies outward & back.',
+        statBadge: '▲ +12 Daño  |  ▲ +Discos  |  ▼ -13% CD',
+        statBadgeEn: '▲ +12 Dmg  |  ▲ +Discs  |  ▼ -13% CD',
+        color: '#fb923c',
+        level: 0,
+        maxLevel: 5,
+        isWeapon: true,
+        apply: (_player, combat) => {
+          combat.sawLevel += 1;
+          combat.sawDamage += 12;
+          combat.sawCooldown = Math.max(0.9, combat.sawCooldown * 0.87);
+        },
+      },
+      // --- 9 EVOLUCIONES DE ARMAS ---
+      {
+        id: 'evo_hex_core',
+        name: 'CAÑÓN QUÁNTICO HEX-CORE',
+        nameEn: 'HEX-CORE QUANTUM CANNON',
+        category: '★ EVOLUCIÓN // ARMA BASE',
+        categoryEn: '★ EVOLUTION // PRIMARY',
+        description: 'Ráfaga Firewall evoluciona: 5+ disparos perforantes oro-cian de alta velocidad.',
+        descriptionEn: 'Evolves Firewall Burst into 5+ high-speed piercing golden-cyan bolts.',
+        statBadge: '◆ +40% Daño  |  ▲ Perfora 3x  |  5+ Balas',
+        statBadgeEn: '◆ +40% Dmg  |  ▲ 3x Pierce  |  5+ Bolts',
+        color: '#fbbf24',
+        level: 0,
+        maxLevel: 1,
+        isEvolution: true,
+        canUnlock: (getLvl, p) =>
+          !p?.isSummoner && getLvl('overclocking') >= 4 && (getLvl('multithreading') >= 1 || getLvl('deepscan') >= 1),
+        apply: (_player, combat) => {
+          combat.evolvedBasic = true;
+        },
+      },
+      {
+        id: 'evo_ddos_swarm',
+        name: 'ENJAMBRE SATÉLITE DDoS',
+        nameEn: 'DDoS SATELLITE SWARM',
+        category: '★ EVOLUCIÓN // PING + IMÁN',
+        categoryEn: '★ EVOLUTION // PING + MAGNET',
+        description: 'Ping Tracker evoluciona en enjambres de 5 misiles rápidos con detonación en área.',
+        descriptionEn: 'Evolves Ping Tracker into 5 rapid missiles with splash explosions.',
+        statBadge: '◆ 5 Misiles  |  ▲ +35% Daño  |  Explosión AoE',
+        statBadgeEn: '◆ 5 Missiles  |  ▲ +35% Dmg  |  Splash AoE',
+        color: '#fbbf24',
+        level: 0,
+        maxLevel: 1,
+        isEvolution: true,
+        canUnlock: (getLvl) => getLvl('ping_tracker') >= 5 && getLvl('electromagnet') >= 1,
+        apply: (_player, combat) => {
+          combat.evolvedPing = true;
+        },
+      },
+      {
+        id: 'evo_purge_reactor',
+        name: 'REACTOR PURGA NUCLEAR',
+        nameEn: 'NUCLEAR PURGE REACTOR',
+        category: '★ EVOLUCIÓN // CUARENTENA + RESTORE',
+        categoryEn: '★ EVOLUTION // QUARANTINE + RESTORE',
+        description: 'Cuarentena evoluciona en reactores gigantes (+45% radio) que queman y frenan -45%.',
+        descriptionEn: 'Evolves Quarantine into huge reactors (+45% AoE) burning & slowing -45%.',
+        statBadge: '◆ +80% Daño  |  ▲ +45% Radio  |  Frena -45%',
+        statBadgeEn: '◆ +80% Dmg  |  ▲ +45% AoE  |  -45% Slow',
+        color: '#fbbf24',
+        level: 0,
+        maxLevel: 1,
+        isEvolution: true,
+        canUnlock: (getLvl) => getLvl('quarantine_zone') >= 5 && getLvl('system_restore') >= 1,
+        apply: (_player, combat) => {
+          combat.evolvedQuarantine = true;
+        },
+      },
+      {
+        id: 'evo_omega_drones',
+        name: 'CENTINELAS OMEGA',
+        nameEn: 'OMEGA SENTINELS',
+        category: '★ EVOLUCIÓN // DRONES + VAMPIRISMO',
+        categoryEn: '★ EVOLUTION // DRONES + LEECH',
+        description: '6 Centinelas dorados indestructibles de alta rotación (nunca entran en cooldown).',
+        descriptionEn: '6 indestructible golden orbiters with rapid spin (never go on cooldown).',
+        statBadge: '◆ 6 Drones Inmortales  |  ▲ +65% Daño',
+        statBadgeEn: '◆ 6 Immortal Drones  |  ▲ +65% Damage',
+        color: '#fbbf24',
+        level: 0,
+        maxLevel: 1,
+        isEvolution: true,
+        canUnlock: (getLvl) => getLvl('antivirus_drones') >= 5 && getLvl('bandwidth_leech') >= 1,
+        apply: (_player, combat) => {
+          combat.evolvedDrones = true;
+        },
+      },
+      {
+        id: 'evo_solar_firewall',
+        name: 'TORMENTA SOLAR FIREWALL',
+        nameEn: 'SOLAR FIREWALL STORM',
+        category: '★ EVOLUCIÓN // CORTAFUEGOS + FIBRA',
+        categoryEn: '★ EVOLUTION // PULSE + FIBER',
+        description: 'Emite enormes tormentas solares rápidas de gran alcance (+95px) y +60% daño.',
+        descriptionEn: 'Unleashes rapid massive solar waves (+95px radius) & +60% damage.',
+        statBadge: '◆ +60% Daño  |  ▲ +95px Radio  |  ▼ -35% CD',
+        statBadgeEn: '◆ +60% Dmg  |  ▲ +95px AoE  |  ▼ -35% CD',
+        color: '#fbbf24',
+        level: 0,
+        maxLevel: 1,
+        isEvolution: true,
+        canUnlock: (getLvl) => getLvl('firewall_pulse') >= 5 && getLvl('fiber_bus') >= 1,
+        apply: (_player, combat) => {
+          combat.evolvedFirewallPulse = true;
+        },
+      },
+      {
+        id: 'evo_zero_day',
+        name: 'LÁSER ZERO-DAY',
+        nameEn: 'ZERO-DAY ANNIHILATOR',
+        category: '★ EVOLUCIÓN // SQL + OVERCLOCK MEM',
+        categoryEn: '★ EVOLUTION // SQL + MEMORY OC',
+        description: 'Dispara 3 haces láser masivos en abanico que desintegran oleadas completas.',
+        descriptionEn: 'Fires 3 massive wide fan beams obliterating entire enemy lines.',
+        statBadge: '◆ 3 Haces Anchos  |  ▲ +45% Daño  |  ▼ -28% CD',
+        statBadgeEn: '◆ 3 Wide Beams  |  ▲ +45% Dmg  |  ▼ -28% CD',
+        color: '#fbbf24',
+        level: 0,
+        maxLevel: 1,
+        isEvolution: true,
+        canUnlock: (getLvl) => getLvl('sql_injection_beam') >= 5 && getLvl('memory_overclock') >= 1,
+        apply: (_player, combat) => {
+          combat.evolvedSqlBeam = true;
+        },
+      },
+      {
+        id: 'evo_arc_storm',
+        name: 'TORMENTA ARCO VOLTAICO',
+        nameEn: 'VOLTAIC ARC STORM',
+        category: '★ EVOLUCIÓN // TESLA + ELECTROIMÁN',
+        categoryEn: '★ EVOLUTION // TESLA + MAGNET',
+        description: 'Rayos dorados que saltan hasta 9 enemigos a la vez y los aturden con EMP.',
+        descriptionEn: 'Golden arcs jumping up to 9 targets simultaneously with EMP stun.',
+        statBadge: '◆ 9 Saltos  |  ▲ +65% Daño  |  Aturde EMP',
+        statBadgeEn: '◆ 9 Chains  |  ▲ +65% Dmg  |  EMP Stun',
+        color: '#fbbf24',
+        level: 0,
+        maxLevel: 1,
+        isEvolution: true,
+        canUnlock: (getLvl) => getLvl('emp_tesla') >= 5 && getLvl('electromagnet') >= 1,
+        apply: (_player, combat) => {
+          combat.evolvedTesla = true;
+        },
+      },
+      {
+        id: 'evo_absolute_zero',
+        name: 'CERO ABSOLUTO CRIO-BOMBA',
+        nameEn: 'ABSOLUTE ZERO CRYO-BOMB',
+        category: '★ EVOLUCIÓN // CRIO + SYSTEM RESTORE',
+        categoryEn: '★ EVOLUTION // CRYO + RESTORE',
+        description: 'Lanza abanico de 4 cristales con enorme explosión helada que congela al -65%.',
+        descriptionEn: 'Fires a 4-crystal fan with huge frost blasts slowing foes by 65%.',
+        statBadge: '◆ 4 Cristales  |  ▲ +75% Daño  |  Congela -65%',
+        statBadgeEn: '◆ 4 Shards  |  ▲ +75% Dmg  |  -65% Freeze',
+        color: '#fbbf24',
+        level: 0,
+        maxLevel: 1,
+        isEvolution: true,
+        canUnlock: (getLvl) => getLvl('cryo_shard') >= 5 && getLvl('system_restore') >= 1,
+        apply: (_player, combat) => {
+          combat.evolvedCryo = true;
+        },
+      },
+      {
+        id: 'evo_phantom_saws',
+        name: 'SIERRAS PHANTOM',
+        nameEn: 'PHANTOM SAWBLADES',
+        category: '★ EVOLUCIÓN // DISCO + FIBRA ÓPTICA',
+        categoryEn: '★ EVOLUTION // SAW + FIBER BUS',
+        description: 'Lanza 5 discos gigantes dorados ultrarrápidos que trituran toda la pantalla.',
+        descriptionEn: 'Launches 5 giant ultra-fast golden blades shredding across screen.',
+        statBadge: '◆ 5 Discos Gigantes  |  ▲ +65% Daño  |  ▼ -30% CD',
+        statBadgeEn: '◆ 5 Giant Blades  |  ▲ +65% Dmg  |  ▼ -30% CD',
+        color: '#fbbf24',
+        level: 0,
+        maxLevel: 1,
+        isEvolution: true,
+        canUnlock: (getLvl) => getLvl('orbital_saw') >= 5 && getLvl('fiber_bus') >= 1,
+        apply: (_player, combat) => {
+          combat.evolvedSaw = true;
         },
       },
     ];
@@ -419,7 +655,7 @@ export class UpgradeSystem {
    * Si se juega con el Agente Morcillita y aún no ha elegido rama en Nivel 2,
    * ofrece obligatoriamente las 3 cartas únicas de bifurcación evolutiva.
    */
-  public rollChoices(player?: Player): UpgradeOption[] {
+  public rollChoices(player?: Player, excludedIds?: Set<string>): UpgradeOption[] {
     if (
       player?.isSummoner &&
       player.companion &&
@@ -430,30 +666,51 @@ export class UpgradeSystem {
       return this.currentChoices;
     }
 
+    const levelById = new Map<string, number>();
+    for (const u of this.upgrades) {
+      levelById.set(u.id, u.level);
+    }
+    const getLevel = (id: string) => levelById.get(id) ?? 0;
+
     const equippedWeaponsCount = this.getEquippedWeaponsCount();
     const weaponSlotsFull = equippedWeaponsCount >= MAX_WEAPON_SLOTS;
 
-    const available = this.upgrades.filter((u) => {
+    let available = this.upgrades.filter((u) => {
       if (u.isMaxed || u.level >= u.maxLevel) return false;
       if (player?.isSummoner && u.isBasicShotOnly) return false;
       if (!player?.isSummoner && u.isCompanionStatCard) return false;
-      // Si el jugador ya tiene 4 armas equipadas, bloquear la aparición de armas nuevas (level === 0)
+      if (u.isEvolution) {
+        return Boolean(u.canUnlock && u.canUnlock(getLevel, player));
+      }
+      // Si el jugador ya alcanzó el máximo de slots de armas, bloquear armas nuevas (level === 0)
       if (weaponSlotsFull && u.isWeapon && u.level === 0) return false;
       return true;
     });
 
-    const shuffled = [...available].sort(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, 3);
+    if (excludedIds && excludedIds.size > 0) {
+      const freshPool = available.filter((u) => !excludedIds.has(u.id));
+      if (freshPool.length >= 3 || freshPool.length === available.length) {
+        available = freshPool;
+      } else if (freshPool.length > 0) {
+        const remainder = available.filter((u) => excludedIds.has(u.id));
+        available = [...freshPool, ...remainder.slice(0, 3 - freshPool.length)];
+      }
+    }
 
-    // En el primer Level Up (Nivel 2), asegurar que 'Overclock de Memoria' esté presente si aún es nivel 0
+    // Priorizar evoluciones listas para aparecer junto a mejoras aleatorias
+    const readyEvos = available.filter((u) => u.isEvolution).sort(() => Math.random() - 0.5);
+    const nonEvos = available.filter((u) => !u.isEvolution).sort(() => Math.random() - 0.5);
+    const selected = [...readyEvos, ...nonEvos].slice(0, 3);
+
+    // En el primer Level Up (Nivel 2), asegurar 'Overclock de Memoria' si sigue en nivel 0
     const memOverclock = available.find((u) => u.isMemoryOverclock && u.level === 0);
     if (this.level === 2 && memOverclock && !selected.some((u) => u.id === memOverclock.id)) {
       selected[0] = memOverclock;
     }
 
-    // Si aún quedan huecos de armas (< 4), facilitar que al menos una de las armas salga temprano
-    if (!weaponSlotsFull) {
-      const newWeapons = available.filter((u) => u.isWeapon && u.level === 0);
+    // Facilitar aparición temprana de armas si aún quedan huecos
+    if (!weaponSlotsFull && readyEvos.length === 0) {
+      const newWeapons = nonEvos.filter((u) => u.isWeapon && u.level === 0);
       if (
         newWeapons.length > 0 &&
         !selected.some((u) => u.isWeapon) &&
@@ -465,6 +722,16 @@ export class UpgradeSystem {
 
     this.currentChoices = selected;
     return this.currentChoices;
+  }
+
+  public rerollChoices(player?: Player): boolean {
+    if (this.rerollsRemaining <= 0 || this.currentChoices.length === 0) return false;
+    if (this.currentChoices[0]?.isCompanionBranchCard) return false;
+
+    this.rerollsRemaining -= 1;
+    const prevIds = new Set(this.currentChoices.map((c) => c.id));
+    this.rollChoices(player, prevIds);
+    return true;
   }
 
   public selectUpgrade(index: number, player: Player, combat: CombatSystem): boolean {

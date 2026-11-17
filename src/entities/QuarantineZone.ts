@@ -17,6 +17,7 @@ export class QuarantineZone extends Entity {
   private duration: number;
   private maxDuration: number;
   private pulseTime: number = 0;
+  public isEvolved: boolean = false;
   private enemyTickTimers: WeakMap<Adware, number> = new WeakMap();
 
   constructor(
@@ -24,13 +25,15 @@ export class QuarantineZone extends Entity {
     y: number,
     radius: number = 85,
     damagePerTick: number = 14,
-    duration: number = 4.5
+    duration: number = 4.5,
+    isEvolved: boolean = false
   ) {
-    super(x, y, radius * 2, 0, '#10b981');
+    super(x, y, radius * 2, 0, isEvolved ? '#fbbf24' : '#10b981');
     this.radius = radius;
     this.damagePerTick = damagePerTick;
     this.duration = duration;
     this.maxDuration = duration;
+    this.isEvolved = isEvolved;
   }
 
   public update(dt: number, enemies: Adware[]): QuarantineHitInfo[] {
@@ -52,6 +55,10 @@ export class QuarantineZone extends Entity {
 
       // Comprobar si el enemigo está pisando el área de cuarentena
       if (dist <= this.radius + enemy.size * 0.45) {
+        if (this.isEvolved) {
+          enemy.cryoSlowTimer = Math.max(enemy.cryoSlowTimer, 0.25);
+          enemy.cryoSlowFactor = Math.min(enemy.cryoSlowFactor, 0.55);
+        }
         if (currentTimer <= 0) {
           this.enemyTickTimers.set(enemy, this.tickInterval);
           hits.push({ enemy, damage: this.damagePerTick });
@@ -72,13 +79,17 @@ export class QuarantineZone extends Entity {
     const pulse = 0.85 + Math.sin(this.pulseTime) * 0.15;
 
     // 1. Superficie translúcida en el suelo
-    ctx.fillStyle = `rgba(16, 185, 129, ${0.14 * fadeAlpha * pulse})`;
+    ctx.fillStyle = this.isEvolved
+      ? `rgba(251, 191, 36, ${0.15 * fadeAlpha * pulse})`
+      : `rgba(16, 185, 129, ${0.14 * fadeAlpha * pulse})`;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fill();
 
     // 2. Anillo perimetral de contención biológica/digital (sin shadowBlur para 60 FPS fluidos)
-    ctx.strokeStyle = `rgba(52, 211, 153, ${0.82 * fadeAlpha})`;
+    ctx.strokeStyle = this.isEvolved
+      ? `rgba(251, 191, 36, ${0.88 * fadeAlpha})`
+      : `rgba(52, 211, 153, ${0.82 * fadeAlpha})`;
     ctx.lineWidth = 2.4;
     ctx.setLineDash([10, 6]);
     ctx.beginPath();

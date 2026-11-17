@@ -23,7 +23,13 @@ export class EnemyProjectile extends Entity {
     this.damage = damage;
   }
 
-  public update(dt: number, canvasWidth: number, canvasHeight: number): void {
+  public update(
+    dt: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    viewOriginX: number = 0,
+    viewOriginY: number = 0
+  ): void {
     this.lifeTime -= dt;
     if (this.lifeTime <= 0) {
       this.active = false;
@@ -34,10 +40,10 @@ export class EnemyProjectile extends Entity {
     this.y += this.vy * dt;
 
     if (
-      this.x < -30 ||
-      this.x > canvasWidth + 30 ||
-      this.y < -30 ||
-      this.y > canvasHeight + 30
+      this.x < viewOriginX - 60 ||
+      this.x > viewOriginX + canvasWidth + 60 ||
+      this.y < viewOriginY - 60 ||
+      this.y > viewOriginY + canvasHeight + 60
     ) {
       this.active = false;
     }
@@ -93,17 +99,19 @@ export class TrojanShooter extends Adware {
       this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);
     }
 
+    const speedMult = this.tickSpeedMultiplier(dt);
+
     const dx = player.x - this.x;
     const dy = player.y - this.y;
     const distance = Math.hypot(dx, dy) || 1;
     this.angle = Math.atan2(dy, dx);
 
     if (distance > this.preferredMaxRange) {
-      this.x += (dx / distance) * this.speed * dt;
-      this.y += (dy / distance) * this.speed * dt;
+      this.x += (dx / distance) * this.speed * speedMult * dt;
+      this.y += (dy / distance) * this.speed * speedMult * dt;
     } else if (distance < this.preferredMinRange) {
-      this.x -= (dx / distance) * (this.speed * 0.5) * dt;
-      this.y -= (dy / distance) * (this.speed * 0.5) * dt;
+      this.x -= (dx / distance) * (this.speed * 0.5 * speedMult) * dt;
+      this.y -= (dy / distance) * (this.speed * 0.5 * speedMult) * dt;
     }
 
     if (distance <= this.maxFireRange) {

@@ -47,6 +47,7 @@ export class ParticleSystem {
   private readonly maxParticles: number = 140;
   private readonly maxFloatingTexts: number = 32;
   private readonly maxShockwaves: number = 6;
+  public lightMode: boolean = false;
 
   public triggerShake(intensity: number, duration: number = 0.2): void {
     this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
@@ -73,9 +74,11 @@ export class ParticleSystem {
     count: number = 18,
     withShockwave: boolean = false
   ): void {
-    const availableSlots = this.maxParticles - this.particles.length;
+    const cap = this.lightMode ? 48 : this.maxParticles;
+    const effectiveCount = this.lightMode ? Math.max(3, Math.ceil(count * 0.35)) : count;
+    const availableSlots = cap - this.particles.length;
     if (availableSlots <= 0) return;
-    const actualCount = Math.min(count, availableSlots);
+    const actualCount = Math.min(effectiveCount, availableSlots);
 
     for (let i = 0; i < actualCount; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -110,6 +113,7 @@ export class ParticleSystem {
   }
 
   public spawnHitSparks(x: number, y: number, color: string): void {
+    if (this.lightMode) return;
     if (this.particles.length >= this.maxParticles) return;
     const count = Math.min(4, this.maxParticles - this.particles.length);
     for (let i = 0; i < count; i++) {

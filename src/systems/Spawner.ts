@@ -43,19 +43,22 @@ export class Spawner {
   public spawnOpeningWave(
     enemies: Adware[],
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    originX: number = 0,
+    originY: number = 0
   ): void {
-    const initialCount = 8;
-    const cx = canvasWidth / 2;
-    const cy = canvasHeight / 2;
+    const initialCount = this.isNightmareMode ? 12 : 8;
+    const cx = originX + canvasWidth / 2;
+    const cy = originY + canvasHeight / 2;
     const radiusX = canvasWidth * 0.44;
     const radiusY = canvasHeight * 0.44;
+    const mult = this.isNightmareMode ? 1.4 : 1;
 
     for (let i = 0; i < initialCount; i++) {
       const ang = (i / initialCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
-      const sx = Math.max(40, Math.min(canvasWidth - 40, cx + Math.cos(ang) * radiusX));
-      const sy = Math.max(70, Math.min(canvasHeight - 40, cy + Math.sin(ang) * radiusY));
-      enemies.push(this.createScaledRedAdware(sx, sy, 0, 1));
+      const sx = cx + Math.cos(ang) * radiusX;
+      const sy = cy + Math.sin(ang) * radiusY;
+      enemies.push(this.createScaledRedAdware(sx, sy, 0, mult));
     }
   }
 
@@ -75,6 +78,7 @@ export class Spawner {
   private flankWaveTimer: number = 0;
   private nextFlankWaveInterval: number = 17;
   public finalBossMode: boolean = false;
+  public isNightmareMode: boolean = false;
 
   public enableFinalBossMode(): void {
     this.finalBossMode = true;
@@ -92,18 +96,20 @@ export class Spawner {
     enemies: Adware[],
     canvasWidth: number,
     canvasHeight: number,
-    elapsedTime: number = 0
+    elapsedTime: number = 0,
+    originX: number = 0,
+    originY: number = 0
   ): void {
     this.swarmActiveTimer = 6.0;
     this.swarmTriggeredJustNow = true;
 
     const timeMinutes = elapsedTime / 60;
     const swarmCount = Math.min(75, Math.floor(50 + timeMinutes * 2.5));
-    const baseHp = Math.round(8 * (1 + timeMinutes * 0.08));
+    const baseHp = Math.round(8 * (1 + timeMinutes * 0.08) * (this.isNightmareMode ? 1.45 : 1));
     const baseDmg = Math.round(4 * this.getGlobalDamageMultiplier(elapsedTime));
 
     for (let i = 0; i < swarmCount; i++) {
-      const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
+      const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight, originX, originY);
       const jitterX = (Math.random() - 0.5) * 90;
       const jitterY = (Math.random() - 0.5) * 90;
       const swarmTrojan = new Trojan(pos.x + jitterX, pos.y + jitterY, 1);
@@ -126,18 +132,21 @@ export class Spawner {
     const earlyLevelBonus = Math.max(0, playerLevel - 1) * 0.035;
     const lateLevelBonus = Math.max(0, playerLevel - 6) * 0.07;
     const timeBonus = (elapsedTime / 60) * 0.075;
+    const nightmareMult = this.isNightmareMode ? 1.45 : 1.0;
 
-    return Number((1 + earlyLevelBonus + lateLevelBonus + timeBonus).toFixed(2));
+    return Number(((1 + earlyLevelBonus + lateLevelBonus + timeBonus) * nightmareMult).toFixed(2));
   }
 
   public getGlobalDamageMultiplier(elapsedTime: number): number {
     const timeMinutes = elapsedTime / 60;
-    return Math.min(1.28, 1 + timeMinutes * 0.025);
+    const base = Math.min(1.28, 1 + timeMinutes * 0.025);
+    return this.isNightmareMode ? base * 1.25 : base;
   }
 
   public getGlobalSpeedMultiplier(elapsedTime: number): number {
     const timeMinutes = elapsedTime / 60;
-    return Math.min(1.14, 1 + timeMinutes * 0.012);
+    const base = Math.min(1.14, 1 + timeMinutes * 0.012);
+    return this.isNightmareMode ? base * 1.12 : base;
   }
 
   public update(
@@ -146,13 +155,28 @@ export class Spawner {
     playerLevel: number,
     enemies: Adware[],
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    originX: number = 0,
+    originY: number = 0
   ): void {
     this.swarmTriggeredJustNow = false;
     this.minerSpawnedJustNow = false;
 
     if (this.activeBossAlertTimer > 0) {
       this.activeBossAlertTimer = Math.max(0, this.activeBossAlertTimer - dt);
+    }
+
+    // En mapa infinito (Pesadilla), limpiar enemigos comunes que quedaron muy atrás para no saturar
+    if (this.isNightmareMode) {
+      const camCx = originX + canvasWidth / 2;
+      const camCy = originY + canvasHeight / 2;
+      for (const e of enemies) {
+        if (!e.active) continue;
+        if (e.malwareType === 'RANSOMWARE' || e.malwareType === 'FINAL_BOSS') continue;
+        if (Math.hypot(e.x - camCx, e.y - camCy) > 2350) {
+          e.active = false;
+        }
+      }
     }
 
     this.currentThreatLevel = 1 + Math.floor(elapsedTime / 20);
@@ -169,7 +193,7 @@ export class Spawner {
           (e) => e.active && e.malwareType === 'ADWARE'
         ).length;
         if (activeRedAdwareCount < 15) {
-          const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
+          const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight, originX, originY);
           const adware = this.createScaledRedAdware(pos.x, pos.y, elapsedTime, hpMultiplier);
           enemies.push(adware);
         }
@@ -185,8 +209,8 @@ export class Spawner {
         (e) => e.active && e instanceof HardwareBox
       ).length;
       if (activeBoxes < this.maxActiveHardwareBoxes && Math.random() < 0.48) {
-        const bx = 110 + Math.random() * Math.max(120, canvasWidth - 220);
-        const by = 110 + Math.random() * Math.max(120, canvasHeight - 220);
+        const bx = originX + 110 + Math.random() * Math.max(120, canvasWidth - 220);
+        const by = originY + 110 + Math.random() * Math.max(120, canvasHeight - 220);
         enemies.push(new HardwareBox(bx, by, hpMultiplier));
       }
     }
@@ -198,10 +222,12 @@ export class Spawner {
       const activeMiners = enemies.filter(
         (e) => e.active && e instanceof CryptoMiner
       ).length;
-      if (activeMiners === 0 && Math.random() < 0.14) {
-        const mx = 140 + Math.random() * Math.max(120, canvasWidth - 280);
-        const my = 140 + Math.random() * Math.max(120, canvasHeight - 280);
-        enemies.push(new CryptoMiner(mx, my, hpMultiplier));
+      if (activeMiners === 0 && Math.random() < (this.isNightmareMode ? 0.22 : 0.14)) {
+        const mx = originX + 140 + Math.random() * Math.max(120, canvasWidth - 280);
+        const my = originY + 140 + Math.random() * Math.max(120, canvasHeight - 280);
+        const miner = new CryptoMiner(mx, my, hpMultiplier);
+        miner.unbounded = this.isNightmareMode;
+        enemies.push(miner);
         this.minerSpawnedJustNow = true;
       }
     }
@@ -219,7 +245,7 @@ export class Spawner {
     if (elapsedTime >= 25 && this.swarmCheckTimer >= 16.0) {
       this.swarmCheckTimer = 0;
       if (Math.random() < 0.12) {
-        this.triggerSwarmEvent(enemies, canvasWidth, canvasHeight, elapsedTime);
+        this.triggerSwarmEvent(enemies, canvasWidth, canvasHeight, elapsedTime, originX, originY);
         return;
       }
     }
@@ -230,10 +256,11 @@ export class Spawner {
       this.flankWaveTimer = 0;
       const timeMinutes = elapsedTime / 60;
       this.nextFlankWaveInterval = Math.max(8.5, (14 + Math.random() * 4) - timeMinutes * 0.65);
-      this.spawnFlankMicroWave(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight);
+      this.spawnFlankMicroWave(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight, originX, originY);
     }
 
-    const currentSpawnInterval = Math.max(0.20, 0.55 * Math.pow(0.92, elapsedTime / 16));
+    const baseInterval = Math.max(0.20, 0.55 * Math.pow(0.92, elapsedTime / 16));
+    const currentSpawnInterval = this.isNightmareMode ? baseInterval * 0.78 : baseInterval;
 
     this.timer += dt;
     while (this.timer >= currentSpawnInterval) {
@@ -243,7 +270,9 @@ export class Spawner {
         hpMultiplier,
         enemies,
         canvasWidth,
-        canvasHeight
+        canvasHeight,
+        originX,
+        originY
       );
       if (spawned) {
         enemies.push(spawned);
@@ -256,7 +285,9 @@ export class Spawner {
           hpMultiplier,
           enemies,
           canvasWidth,
-          canvasHeight
+          canvasHeight,
+          originX,
+          originY
         );
         if (extra) {
           enemies.push(extra);
@@ -267,7 +298,7 @@ export class Spawner {
     if (elapsedTime >= this.nextBossTime) {
       this.bossCount++;
       this.nextBossTime = elapsedTime + this.bossSpawnInterval;
-      const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight);
+      const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight, originX, originY);
       const boss = createWaveBoss(
         pos.x,
         pos.y,
@@ -276,6 +307,9 @@ export class Spawner {
         elapsedTime,
         playerLevel
       );
+      if ('unbounded' in boss) {
+        (boss as WaveBoss & { unbounded: boolean }).unbounded = this.isNightmareMode;
+      }
       enemies.push(boss);
 
       this.lastBossSpawnedName = boss.bossName;
@@ -289,9 +323,11 @@ export class Spawner {
     hpMultiplier: number,
     enemies: Adware[],
     width: number,
-    height: number
+    height: number,
+    originX: number = 0,
+    originY: number = 0
   ): Adware | null {
-    const pos = this.getRandomOutsidePosition(width, height);
+    const pos = this.getRandomOutsidePosition(width, height, originX, originY);
     const roll = Math.random();
 
     const activeArmoredCount = enemies.filter(
@@ -414,7 +450,9 @@ export class Spawner {
     hpMultiplier: number,
     enemies: Adware[],
     width: number,
-    height: number
+    height: number,
+    originX: number = 0,
+    originY: number = 0
   ): void {
     const edge = Math.floor(Math.random() * 4); // 0=Arriba, 1=Derecha, 2=Abajo, 3=Izquierda
     const timeMinutes = elapsedTime / 60;
@@ -427,20 +465,20 @@ export class Spawner {
       let y = 0;
       switch (edge) {
         case 0:
-          x = Math.max(35, Math.min(width - 35, width * centerNorm + spread));
-          y = -this.spawnMargin - Math.random() * 25;
+          x = originX + Math.max(35, Math.min(width - 35, width * centerNorm + spread));
+          y = originY - this.spawnMargin - Math.random() * 25;
           break;
         case 1:
-          x = width + this.spawnMargin + Math.random() * 25;
-          y = Math.max(35, Math.min(height - 35, height * centerNorm + spread));
+          x = originX + width + this.spawnMargin + Math.random() * 25;
+          y = originY + Math.max(35, Math.min(height - 35, height * centerNorm + spread));
           break;
         case 2:
-          x = Math.max(35, Math.min(width - 35, width * centerNorm + spread));
-          y = height + this.spawnMargin + Math.random() * 25;
+          x = originX + Math.max(35, Math.min(width - 35, width * centerNorm + spread));
+          y = originY + height + this.spawnMargin + Math.random() * 25;
           break;
         default:
-          x = -this.spawnMargin - Math.random() * 25;
-          y = Math.max(35, Math.min(height - 35, height * centerNorm + spread));
+          x = originX - this.spawnMargin - Math.random() * 25;
+          y = originY + Math.max(35, Math.min(height - 35, height * centerNorm + spread));
           break;
       }
       const adware = this.createScaledRedAdware(x, y, elapsedTime, hpMultiplier);
@@ -448,17 +486,22 @@ export class Spawner {
     }
   }
 
-  private getRandomOutsidePosition(width: number, height: number): { x: number; y: number } {
+  private getRandomOutsidePosition(
+    width: number,
+    height: number,
+    originX: number = 0,
+    originY: number = 0
+  ): { x: number; y: number } {
     const edge = Math.floor(Math.random() * 4);
     switch (edge) {
       case 0:
-        return { x: Math.random() * width, y: -this.spawnMargin };
+        return { x: originX + Math.random() * width, y: originY - this.spawnMargin };
       case 1:
-        return { x: width + this.spawnMargin, y: Math.random() * height };
+        return { x: originX + width + this.spawnMargin, y: originY + Math.random() * height };
       case 2:
-        return { x: Math.random() * width, y: height + this.spawnMargin };
+        return { x: originX + Math.random() * width, y: originY + height + this.spawnMargin };
       default:
-        return { x: -this.spawnMargin, y: Math.random() * height };
+        return { x: originX - this.spawnMargin, y: originY + Math.random() * height };
     }
   }
 }

@@ -11,7 +11,18 @@ import {
   setDoc,
 } from 'firebase/firestore';
 
-export type CharacterId = 'STANDARD' | 'ROOT' | 'PROXY' | 'MORCILLITA';
+export type CharacterId =
+  | 'STANDARD'
+  | 'ROOT'
+  | 'PROXY'
+  | 'MORCILLITA'
+  | 'CRYPTO'
+  | 'SPECTRE'
+  | 'OVERCLOCK'
+  | 'KERNEL_X';
+
+export type GameMode = 'CLASSIC' | 'NIGHTMARE';
+export const NIGHTMARE_ENTRY_COST = 15;
 
 export interface LeaderboardEntry {
   uid: string;
@@ -28,6 +39,10 @@ export interface CharacterProfile {
   subtitleEn?: string;
   description: string;
   descriptionEn?: string;
+  passiveName: string;
+  passiveNameEn: string;
+  passiveDesc: string;
+  passiveDescEn: string;
   color: string;
   borderColor: string;
   speedMultiplier: number;
@@ -72,17 +87,30 @@ export class MetaSystem {
   private dirty: boolean = false;
   private lastSaveTime: number = 0;
 
-  public readonly characterOrder: CharacterId[] = ['STANDARD', 'ROOT', 'PROXY', 'MORCILLITA'];
+  public readonly characterOrder: CharacterId[] = [
+    'STANDARD',
+    'ROOT',
+    'PROXY',
+    'MORCILLITA',
+    'CRYPTO',
+    'SPECTRE',
+    'OVERCLOCK',
+    'KERNEL_X',
+  ];
 
   public readonly characters: Record<CharacterId, CharacterProfile> = {
     STANDARD: {
       id: 'STANDARD',
       name: 'AGENTE ESTÁNDAR',
       nameEn: 'STANDARD AGENT',
-      subtitle: 'KERNEL_DEFENDER // BASE',
-      subtitleEn: 'KERNEL_DEFENDER // BASE',
-      description: 'Unidad antivirus equilibrada. Salud base (100 HP), velocidad 100% y chasis verde neón.',
-      descriptionEn: 'Balanced antivirus unit. Base health (100 HP), 100% speed, and neon green chassis.',
+      subtitle: 'KERNEL // DESCARGA',
+      subtitleEn: 'KERNEL // SURGE',
+      description: 'Unidad antivirus equilibrada. Al sufrir daño suelta un pulso eléctrico que repele malware.',
+      descriptionEn: 'Balanced unit. Emits an electric shockwave when hit and heals +1 HP every 25 kills.',
+      passiveName: 'DESCARGA KERNEL',
+      passiveNameEn: 'KERNEL SURGE',
+      passiveDesc: 'Al recibir daño emite onda (45 dmg) + cura +1 HP cada 25 bajas.',
+      passiveDescEn: 'Releases radial pulse (45 dmg) on hit + heals +1 HP every 25 kills.',
       color: '#00ff66',
       borderColor: '#ffffff',
       speedMultiplier: 1.0,
@@ -94,10 +122,14 @@ export class MetaSystem {
       id: 'ROOT',
       name: 'AGENTE ROOT',
       nameEn: 'ROOT AGENT',
-      subtitle: 'SUPERUSER // +20% VELOCIDAD',
-      subtitleEn: 'SUPERUSER // +20% SPEED',
-      description: 'Privilegios elevados de superusuario. Bot táctico cobalto que se mueve un 20% más rápido.',
-      descriptionEn: 'Elevated superuser privileges. Cobalt tactical bot moving 20% faster.',
+      subtitle: 'ESTELA // +20% VEL',
+      subtitleEn: 'TRAIL // +20% SPD',
+      description: 'Bot veloz (+20%) que deja nodos cortafuegos tras de sí dañando y frenando enemigos.',
+      descriptionEn: 'Fast bot (+20% spd) leaving burning cyber nodes behind that slow and hurt malware.',
+      passiveName: 'ESTELA OVERCLOCK',
+      passiveNameEn: 'OVERCLOCK TRAIL',
+      passiveDesc: 'Deja nodos de fuego eléctrico al moverse (-30% velocidad enemiga).',
+      passiveDescEn: 'Drops electric trail nodes while moving (-30% enemy speed).',
       color: '#1e40af',
       borderColor: '#60a5fa',
       speedMultiplier: 1.2,
@@ -109,10 +141,14 @@ export class MetaSystem {
       id: 'PROXY',
       name: 'AGENTE PROXY',
       nameEn: 'PROXY AGENT',
-      subtitle: 'HEAVY_SHIELD // 2X SALUD, -15% VEL',
-      subtitleEn: 'HEAVY_SHIELD // 2X HEALTH, -15% SPD',
-      description: 'Chasis morado blindado: tiene el doble de salud máxima (200 HP), pero su velocidad es un 15% menor.',
-      descriptionEn: 'Armored purple chassis: double maximum health (200 HP), but 15% slower speed.',
+      subtitle: 'ESCUDO // 200 HP',
+      subtitleEn: 'AEGIS // 200 HP',
+      description: 'Chasis pesado (200 HP, -15% vel) con Escudo Aegis recargable cada 16s que bloquea 1 golpe.',
+      descriptionEn: 'Heavy chassis (200 HP, -15% spd) with recharging Aegis Shield every 16s.',
+      passiveName: 'ESCUDO AEGIS',
+      passiveNameEn: 'AEGIS BARRIER',
+      passiveDesc: 'Cada 16 s bloquea por completo 1 impacto y repele enemigos.',
+      passiveDescEn: 'Every 16s completely blocks 1 enemy hit and knocks foes back.',
       color: '#9333ea',
       borderColor: '#f3e8ff',
       speedMultiplier: 0.85,
@@ -122,18 +158,98 @@ export class MetaSystem {
     },
     MORCILLITA: {
       id: 'MORCILLITA',
-      name: 'AGENTE MORCILLITA (SUMMONER)',
-      nameEn: 'MORCILLITA AGENT (SUMMONER)',
-      subtitle: 'CHASSIS ROSA // MASCOTA EVOLUTIVA LVL 20',
-      subtitleEn: 'PINK CHASSIS // EVOLVING PET LVL 20',
-      description: 'Sin disparo básico propio. Su ataque depende 100% de una mascota acompañante marrón con 3 ramas evolutivas.',
-      descriptionEn: 'No innate basic fire. Attack power depends 100% on an evolving brown companion pet with 3 branches.',
+      name: 'MORCILLITA (SUMMONER)',
+      nameEn: 'MORCILLITA (SUMMONER)',
+      subtitle: 'MASCOTA EVOLUTIVA',
+      subtitleEn: 'EVOLVING PET LVL 20',
+      description: 'Sin disparo básico propio. Su mascota evoluciona en Nivel 2 en Fuerza Bruta, Botnet o Pinball.',
+      descriptionEn: 'No innate gun. Companion pet evolves at Level 2 into Brute, Botnet, or Pinball.',
+      passiveName: 'ENLACE SIMBIÓTICO',
+      passiveNameEn: 'SYMBIOTIC LINK',
+      passiveDesc: 'Mascota autónoma con 3 ramas evolutivas y mejoras en Nv.5 / 10 / 20.',
+      passiveDescEn: 'Autonomous companion with 3 evolution branches & Lvl 5 / 10 / 20 boosts.',
       color: '#ec4899',
       borderColor: '#fbcfe8',
       speedMultiplier: 1.05,
       hpMultiplier: 1.0,
       pickupRadiusMultiplier: 1.0,
       cost: 0,
+    },
+    CRYPTO: {
+      id: 'CRYPTO',
+      name: 'CAZADOR CRIPTO',
+      nameEn: 'CRYPTO HUNTER',
+      subtitle: 'IMÁN +35% // BOTÍN+',
+      subtitleEn: 'MAGNET +35% // LOOT+',
+      description: 'Especialista en botín con +35% de imán, +5% crítico y +30% chance de soltar CryptoCoins.',
+      descriptionEn: 'Loot hunter with +35% magnet radius, +5% crit, and bonus CryptoCoin drops.',
+      passiveName: 'IMÁN DE HASH',
+      passiveNameEn: 'HASH MAGNET',
+      passiveDesc: '+35% imán, +5% crítico y mayor probabilidad de soltar CryptoCoins.',
+      passiveDescEn: '+35% magnet, +5% crit chance & bonus CryptoCoin drop rate.',
+      color: '#f59e0b',
+      borderColor: '#fef08a',
+      speedMultiplier: 1.05,
+      hpMultiplier: 1.0,
+      pickupRadiusMultiplier: 1.35,
+      cost: 20,
+    },
+    SPECTRE: {
+      id: 'SPECTRE',
+      name: 'AGENTE SPECTRE',
+      nameEn: 'SPECTRE AGENT',
+      subtitle: '22% ESQUIVA // +15% CRIT',
+      subtitleEn: '22% DODGE // +15% CRIT',
+      description: 'Unidad sigilosa capaz de esquivar el 22% de ataques enemigos y asestar críticos letales.',
+      descriptionEn: 'Stealth assassin with 22% hit evasion, +15% crit chance, and +10% fire rate.',
+      passiveName: 'FASE ESPECTRAL',
+      passiveNameEn: 'SPECTRAL PHASE',
+      passiveDesc: '22% probabilidad de esquivar cualquier daño + 15% crítico base.',
+      passiveDescEn: '22% chance to phase through any damage + 15% base crit chance.',
+      color: '#06b6d4',
+      borderColor: '#cffafe',
+      speedMultiplier: 1.12,
+      hpMultiplier: 0.9,
+      pickupRadiusMultiplier: 1.0,
+      cost: 25,
+    },
+    OVERCLOCK: {
+      id: 'OVERCLOCK',
+      name: 'AGENTE OVERCLOCK',
+      nameEn: 'OVERCLOCK AGENT',
+      subtitle: 'ADRENALINA // +15% CAD',
+      subtitleEn: 'ADRENALINE // +15% ROF',
+      description: '+15% cadencia innata y cada 25 bajas activa Sobrecarga (+45% cadencia y +25% vel durante 3.5s).',
+      descriptionEn: '+15% innate fire rate and triggers 3.5s Overdrive (+45% ROF, +25% spd) every 25 kills.',
+      passiveName: 'PULSO ADRENALINA',
+      passiveNameEn: 'ADRENALINE SURGE',
+      passiveDesc: 'Cada 25 bajas entra en Sobrecarga durante 3.5 s (+45% cadencia / +25% vel).',
+      passiveDescEn: 'Triggers 3.5s Overdrive every 25 kills (+45% fire rate / +25% speed).',
+      color: '#f97316',
+      borderColor: '#fed7aa',
+      speedMultiplier: 1.08,
+      hpMultiplier: 1.0,
+      pickupRadiusMultiplier: 1.0,
+      cost: 30,
+    },
+    KERNEL_X: {
+      id: 'KERNEL_X',
+      name: 'TITÁN KERNEL-X',
+      nameEn: 'KERNEL-X TITAN',
+      subtitle: '+20% DAÑO // +2 HP/s',
+      subtitleEn: '+20% DMG // +2 HP/s',
+      description: 'Coloso ofensivo con +20% daño global, +1 proyectil extra base y regeneración pasiva de +2 HP/s.',
+      descriptionEn: 'Heavy vanguard with +20% damage, +1 extra base projectile, and +2 HP/s regen.',
+      passiveName: 'NÚCLEO REGENERATIVO',
+      passiveNameEn: 'REGEN CORE',
+      passiveDesc: 'Regenera +2 HP/s continuamente y empieza con +20% daño +1 bala.',
+      passiveDescEn: 'Passively regenerates +2 HP/s and starts with +20% dmg +1 extra shot.',
+      color: '#ef4444',
+      borderColor: '#fecaca',
+      speedMultiplier: 0.9,
+      hpMultiplier: 1.35,
+      pickupRadiusMultiplier: 1.0,
+      cost: 40,
     },
   };
 
@@ -618,6 +734,22 @@ export class MetaSystem {
     if (now - this.lastSaveTime >= intervalMs) {
       this.save();
     }
+  }
+
+  public payNightmareEntry(): { success: boolean; message: string } {
+    if (this.coins < NIGHTMARE_ENTRY_COST) {
+      return {
+        success: false,
+        message: `> ERROR: Necesitas ${NIGHTMARE_ENTRY_COST} CryptoCoins para activar Modo Pesadilla (Tienes ${this.coins}).`,
+      };
+    }
+    this.coins -= NIGHTMARE_ENTRY_COST;
+    this.save();
+    void this.syncToCloud();
+    return {
+      success: true,
+      message: `> PROTOCOLO PESADILLA ACTIVADO (-${NIGHTMARE_ENTRY_COST} CR). ¡Suerte, Agente!`,
+    };
   }
 
   public flushPendingSave(): void {

@@ -12,25 +12,34 @@ export class PingProjectile extends Entity {
   private lifeTime: number = 3.2;
   private turnSpeed: number = 7.5; // Capacidad de giro para perseguir objetivos
 
+  public isEvolved: boolean;
+
   constructor(
     x: number,
     y: number,
     dirX: number,
     dirY: number,
     speed: number = 420,
-    damage: number = 22
+    damage: number = 22,
+    isEvolved: boolean = false
   ) {
-    super(x, y, 10, speed, '#0088ff');
+    super(x, y, isEvolved ? 12 : 10, speed, isEvolved ? '#60a5fa' : '#0088ff');
     this.vx = dirX * speed;
     this.vy = dirY * speed;
     this.damage = damage;
+    this.isEvolved = isEvolved;
+    if (isEvolved) {
+      this.turnSpeed = 10.5;
+    }
   }
 
   public update(
     dt: number,
     enemies: Adware[],
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    viewOriginX: number = 0,
+    viewOriginY: number = 0
   ): void {
     this.lifeTime -= dt;
 
@@ -57,13 +66,13 @@ export class PingProjectile extends Entity {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 
-    const margin = 80;
+    const margin = 120;
     if (
       this.lifeTime <= 0 ||
-      this.x < -margin ||
-      this.x > canvasWidth + margin ||
-      this.y < -margin ||
-      this.y > canvasHeight + margin
+      this.x < viewOriginX - margin ||
+      this.x > viewOriginX + canvasWidth + margin ||
+      this.y < viewOriginY - margin ||
+      this.y > viewOriginY + canvasHeight + margin
     ) {
       this.active = false;
     }

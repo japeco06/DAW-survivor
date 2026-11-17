@@ -20,9 +20,13 @@ import { CombatSystem } from '../systems/CombatSystem';
 import { UpgradeSystem } from '../systems/UpgradeSystem';
 import { ParticleSystem } from '../systems/ParticleSystem';
 import { AchievementSystem } from '../systems/AchievementSystem';
+import { DailyMissionSystem } from '../systems/DailyMissionSystem';
+import { TerrainEventSystem } from '../systems/TerrainEventSystem';
 import {
   MetaSystem,
   CharacterId,
+  GameMode,
+  NIGHTMARE_ENTRY_COST,
   GACHA_PULL_SINGLE_COST,
   GACHA_PULL_TEN_COST,
   GachaPullEntry,
@@ -72,9 +76,10 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.2.2';
+const GAME_VERSION = 'v1.3.0';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
+const LIGHT_GFX_STORAGE_KEY = 'cyber_survivor_light_gfx_v1';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -82,6 +87,7 @@ export class Game {
   private ctx: CanvasRenderingContext2D;
   private bgCacheCanvas: HTMLCanvasElement | null = null;
   private scanLineCache: HTMLCanvasElement | null = null;
+  private infiniteTileCache: HTMLCanvasElement | null = null;
   private input: Input;
   private sound: SoundSystem;
   private metaSystem: MetaSystem;
@@ -143,6 +149,19 @@ export class Game {
   private hoveredHelpBtn: boolean = false;
   private hoveredOverlayBackBtn: boolean = false;
   private hoveredStartBtn: boolean = false;
+  private hoveredLightGfxBtn: boolean = false;
+  private hoveredDailyMissionsBtn: boolean = false;
+  private showDailyMissionsOverlay: boolean = false;
+  private hoveredRerollBtn: boolean = false;
+  private hoveredModeBtn: GameMode | null = null;
+  private selectedGameMode: GameMode = 'CLASSIC';
+  private isNightmareRun: boolean = false;
+  private lightGraphicsEnabled: boolean = false;
+  private dailyMissions: DailyMissionSystem;
+  private terrainEvents: TerrainEventSystem;
+  private lastTouchTapTime: number = 0;
+  private lastOverclockTier: number = 0;
+  private lastStandardHealTier: number = 0;
   private runBossesKilled: number = 0;
   private runTotalDamageDealt: number = 0;
   public readonly firestoreDb = db;
@@ -174,18 +193,19 @@ export class Game {
     }
     this.ctx = context;
 
-    this.resize();
-    window.addEventListener('resize', () => {
-      this.resize();
-    });
+    try {
+      this.lightGraphicsEnabled = localStorage.getItem(LIGHT_GFX_STORAGE_KEY) === '1';
+    } catch {
+      this.lightGraphicsEnabled = false;
+    }
 
     this.input = new Input();
     this.sound = new SoundSystem();
     this.metaSystem = new MetaSystem();
     this.highScoreKills = this.metaSystem.highScore;
     this.player = new Player(
-      this.canvas.width / 2,
-      this.canvas.height / 2,
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2,
       this.metaSystem.getSelectedProfile(),
       this.metaSystem.getEquippedHat()
     );
@@ -193,6 +213,23 @@ export class Game {
     this.combatSystem = new CombatSystem();
     this.upgradeSystem = new UpgradeSystem();
     this.particleSystem = new ParticleSystem();
+    this.particleSystem.lightMode = this.lightGraphicsEnabled;
+
+    this.resize();
+    window.addEventListener('resize', () => {
+      this.resize();
+    });
+
+    this.dailyMissions = new DailyMissionSystem();
+    this.dailyMissions.onCompleteCallback = (mission) => {
+      this.sound.playAchievement();
+      this.metaSystem.coins += mission.rewardCoins;
+      this.metaSystem.save();
+      void this.metaSystem.syncToCloud();
+      this.addTerminalLog(`MISIÓN DIARIA: ${mission.title} (+${mission.rewardCoins} CR)`);
+    };
+    this.terrainEvents = new TerrainEventSystem();
+
     this.achievementSystem = new AchievementSystem();
     this.achievementSystem.onUnlockCallback = (ach) => {
       this.sound.playAchievement();
@@ -217,8 +254,8 @@ export class Game {
             this.highScoreKills = this.metaSystem.highScore;
             if (this.gameState === 'MENU') {
               this.player = new Player(
-                this.canvas.width / 2,
-                this.canvas.height / 2,
+                LOGICAL_WIDTH / 2,
+                LOGICAL_HEIGHT / 2,
                 this.metaSystem.getSelectedProfile()
               );
             }
@@ -257,10 +294,10 @@ export class Game {
     }
   }
 
-  private getCanvasMousePos(e: MouseEvent): { x: number; y: number } {
+  private getCanvasClientPos(clientXCoord: number, clientYCoord: number): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
-    const canvasAspect = this.canvas.width / this.canvas.height;
-    const rectAspect = rect.width / rect.height;
+    const canvasAspect = LOGICAL_WIDTH / LOGICAL_HEIGHT;
+    const rectAspect = rect.width / Math.max(1, rect.height);
 
     let renderW = rect.width;
     let renderH = rect.height;
@@ -275,13 +312,43 @@ export class Game {
       offsetY = (rect.height - renderH) / 2;
     }
 
-    const clientX = e.clientX - rect.left - offsetX;
-    const clientY = e.clientY - rect.top - offsetY;
+    const clientX = clientXCoord - rect.left - offsetX;
+    const clientY = clientYCoord - rect.top - offsetY;
 
     return {
-      x: Math.max(0, Math.min(this.canvas.width, clientX * (this.canvas.width / renderW))),
-      y: Math.max(0, Math.min(this.canvas.height, clientY * (this.canvas.height / renderH))),
+      x: Math.max(0, Math.min(LOGICAL_WIDTH, clientX * (LOGICAL_WIDTH / Math.max(1, renderW)))),
+      y: Math.max(0, Math.min(LOGICAL_HEIGHT, clientY * (LOGICAL_HEIGHT / Math.max(1, renderH)))),
     };
+  }
+
+  private getCanvasMousePos(e: MouseEvent): { x: number; y: number } {
+    return this.getCanvasClientPos(e.clientX, e.clientY);
+  }
+
+  private getCameraOrigin(): { x: number; y: number } {
+    if (!this.isNightmareRun || this.gameState === 'MENU') {
+      return { x: 0, y: 0 };
+    }
+    return {
+      x: this.player.x - LOGICAL_WIDTH / 2,
+      y: this.player.y - LOGICAL_HEIGHT / 2,
+    };
+  }
+
+  private toggleLightGraphics(): void {
+    this.lightGraphicsEnabled = !this.lightGraphicsEnabled;
+    this.particleSystem.lightMode = this.lightGraphicsEnabled;
+    try {
+      localStorage.setItem(LIGHT_GFX_STORAGE_KEY, this.lightGraphicsEnabled ? '1' : '0');
+    } catch {
+      // Ignorar errores de almacenamiento
+    }
+    this.resize();
+    this.addTerminalLog(
+      this.lightGraphicsEnabled
+        ? 'PERF: Light Graphics ENABLED (1280x720 + reduced FX).'
+        : 'PERF: Standard Graphics ENABLED (1920x1080 Full FX).'
+    );
   }
 
   private setupEventListeners(): void {
@@ -295,13 +362,20 @@ export class Game {
     window.addEventListener('pagehide', () => {
       this.achievementSystem.flushPendingSave(true);
       this.metaSystem.flushPendingSave();
+      this.dailyMissions.flushPendingSave(true);
     });
 
     window.addEventListener('keydown', (e) => {
       unlockAudio();
       const key = e.key.toLowerCase();
 
-      if (key === 'm') {
+      if (key === 'v') {
+        this.toggleLightGraphics();
+        this.sound.playShoot(false);
+        return;
+      }
+
+      if (key === 'm' && this.gameState !== 'MENU') {
         this.sound.muted = !this.sound.muted;
         this.addTerminalLog(`Audio Synthesizer: ${this.sound.muted ? 'MUTED' : 'ONLINE'}`);
       }
@@ -320,6 +394,14 @@ export class Game {
             this.sound.playShoot(false);
           } else if (key === '2') {
             this.activeLeaderboardCategory = 'SURVIVAL_TIME';
+            this.sound.playShoot(false);
+          }
+          return;
+        }
+
+        if (this.showDailyMissionsOverlay) {
+          if (key === 'escape' || key === 'b' || key === 'm') {
+            this.showDailyMissionsOverlay = false;
             this.sound.playShoot(false);
           }
           return;
@@ -360,6 +442,10 @@ export class Game {
           '2': 'ROOT',
           '3': 'PROXY',
           '4': 'MORCILLITA',
+          '5': 'CRYPTO',
+          '6': 'SPECTRE',
+          '7': 'OVERCLOCK',
+          '8': 'KERNEL_X',
         };
         if (key === 'q') {
           this.activeMenuTab = 'SHOP';
@@ -372,6 +458,9 @@ export class Game {
           this.handleAuthButtonClick();
         } else if (key === 'r') {
           this.openLeaderboardOverlay();
+        } else if (key === 'm') {
+          this.showDailyMissionsOverlay = true;
+          this.sound.playCoinPickup();
         } else if (key === 'a') {
           this.showAchievementsOverlay = true;
           this.sound.playCoinPickup();
@@ -380,6 +469,10 @@ export class Game {
           this.sound.playShoot(false);
         } else if (key === 'h') {
           this.showHelpOverlay = true;
+          this.sound.playShoot(false);
+        } else if (key === 'b') {
+          this.selectedGameMode =
+            this.selectedGameMode === 'CLASSIC' ? 'NIGHTMARE' : 'CLASSIC';
           this.sound.playShoot(false);
         } else if (this.activeMenuTab === 'SHOP' && keyMap[key]) {
           const res = this.metaSystem.selectOrBuyCharacter(keyMap[key]);
@@ -426,20 +519,9 @@ export class Game {
 
       if (this.upgradeSystem.isChoosingUpgrade()) {
         if (key === '1' || key === '2' || key === '3') {
-          const idx = parseInt(key, 10) - 1;
-          const chosen = this.upgradeSystem.currentChoices[idx];
-          if (chosen && this.upgradeSystem.selectUpgrade(idx, this.player, this.combatSystem)) {
-            this.sound.playCoinPickup();
-            logAnalyticsEvent('select_content', {
-              content_type: 'upgrade',
-              item_id: chosen.id,
-              item_name: chosen.name,
-              level: chosen.level,
-            });
-            this.addTerminalLog(`INSTALLED: ${chosen.name} (v${chosen.level}.0)`);
-            this.particleSystem.spawnExplosion(this.player.x, this.player.y, chosen.color, 24, true);
-            this.hoveredCardIndex = -1;
-          }
+          this.applySelectedUpgrade(parseInt(key, 10) - 1);
+        } else if (key === 'r') {
+          this.handleUpgradeReroll();
         }
         return;
       }
@@ -461,47 +543,46 @@ export class Game {
       if (this.gameState === 'MENU') {
         this.hoveredMenuChar = null;
         this.hoveredHatId = null;
+        this.hoveredModeBtn = null;
 
         if (this.showLeaderboardOverlay) {
           this.hoveredLeaderboardTab = null;
           for (const tabBtn of this.getLeaderboardTabRects()) {
-            if (
-              mx >= tabBtn.x &&
-              mx <= tabBtn.x + tabBtn.width &&
-              my >= tabBtn.y &&
-              my <= tabBtn.y + tabBtn.height
-            ) {
+            if (this.isPointInRect(mx, my, tabBtn)) {
               this.hoveredLeaderboardTab = tabBtn.category;
               break;
             }
           }
+          this.hoveredLeaderboardBackBtn = this.isPointInRect(
+            mx,
+            my,
+            this.getLeaderboardBackButtonRect()
+          );
+          return;
+        }
 
-          const backBtn = this.getLeaderboardBackButtonRect();
-          this.hoveredLeaderboardBackBtn =
-            mx >= backBtn.x &&
-            mx <= backBtn.x + backBtn.width &&
-            my >= backBtn.y &&
-            my <= backBtn.y + backBtn.height;
+        if (this.showDailyMissionsOverlay) {
+          const panelH = 500;
+          const py = LOGICAL_HEIGHT / 2 - panelH / 2;
+          this.hoveredOverlayBackBtn = this.isPointInRect(
+            mx,
+            my,
+            this.getOverlayBackButtonRect(py, panelH)
+          );
           return;
         }
 
         if (this.showAchievementsOverlay) {
           const panelH = 650;
-          const py = this.canvas.height / 2 - panelH / 2;
-          const backBtn = this.getOverlayBackButtonRect(py, panelH);
-          this.hoveredOverlayBackBtn =
-            mx >= backBtn.x &&
-            mx <= backBtn.x + backBtn.width &&
-            my >= backBtn.y &&
-            my <= backBtn.y + backBtn.height;
+          const py = LOGICAL_HEIGHT / 2 - panelH / 2;
+          this.hoveredOverlayBackBtn = this.isPointInRect(
+            mx,
+            my,
+            this.getOverlayBackButtonRect(py, panelH)
+          );
           this.hoveredAchievementsTab = null;
           for (const tab of this.getAchievementsTabRects(py)) {
-            if (
-              mx >= tab.x &&
-              mx <= tab.x + tab.width &&
-              my >= tab.y &&
-              my <= tab.y + tab.height
-            ) {
+            if (this.isPointInRect(mx, my, tab)) {
               this.hoveredAchievementsTab = tab.page;
               break;
             }
@@ -511,101 +592,60 @@ export class Game {
 
         if (this.showHelpOverlay) {
           const panelH = 590;
-          const py = this.canvas.height / 2 - panelH / 2;
-          const backBtn = this.getOverlayBackButtonRect(py, panelH);
-          this.hoveredOverlayBackBtn =
-            mx >= backBtn.x &&
-            mx <= backBtn.x + backBtn.width &&
-            my >= backBtn.y &&
-            my <= backBtn.y + backBtn.height;
+          const py = LOGICAL_HEIGHT / 2 - panelH / 2;
+          this.hoveredOverlayBackBtn = this.isPointInRect(
+            mx,
+            my,
+            this.getOverlayBackButtonRect(py, panelH)
+          );
           return;
         }
 
         if (this.showSettingsOverlay) {
           const panelH = 520;
-          const py = this.canvas.height / 2 - panelH / 2;
-          const backBtn = this.getOverlayBackButtonRect(py, panelH);
-          this.hoveredOverlayBackBtn =
-            mx >= backBtn.x &&
-            mx <= backBtn.x + backBtn.width &&
-            my >= backBtn.y &&
-            my <= backBtn.y + backBtn.height;
+          const py = LOGICAL_HEIGHT / 2 - panelH / 2;
+          this.hoveredOverlayBackBtn = this.isPointInRect(
+            mx,
+            my,
+            this.getOverlayBackButtonRect(py, panelH)
+          );
           return;
         }
 
-        if (this.currentUser || this.isExternalLoginAllowed()) {
-          const authBtn = this.getAuthActionButtonRect();
-          this.hoveredAuthBtn =
-            mx >= authBtn.x &&
-            mx <= authBtn.x + authBtn.width &&
-            my >= authBtn.y &&
-            my <= authBtn.y + authBtn.height;
-        } else {
-          this.hoveredAuthBtn = false;
+        this.hoveredAuthBtn =
+          this.currentUser || this.isExternalLoginAllowed()
+            ? this.isPointInRect(mx, my, this.getAuthActionButtonRect())
+            : false;
+        this.hoveredRankingsBtn = this.isPointInRect(mx, my, this.getGlobalRankingsButtonRect());
+        this.hoveredDailyMissionsBtn = this.isPointInRect(
+          mx,
+          my,
+          this.getDailyMissionsButtonRect()
+        );
+        this.hoveredAchievementsBtn = this.isPointInRect(mx, my, this.getAchievementsButtonRect());
+        this.hoveredLightGfxBtn = this.isPointInRect(mx, my, this.getMenuLightGfxButtonRect());
+        this.hoveredSettingsBtn = this.isPointInRect(mx, my, this.getSettingsButtonRect());
+        this.hoveredFullscreenBtn = this.isPointInRect(mx, my, this.getFullscreenButtonRect());
+        this.hoveredHelpBtn = this.isPointInRect(mx, my, this.getHelpButtonRect());
+        this.hoveredStartBtn = this.isPointInRect(mx, my, this.getStartButtonRect());
+
+        for (const mBtn of this.getGameModeButtonRects()) {
+          if (this.isPointInRect(mx, my, mBtn)) {
+            this.hoveredModeBtn = mBtn.mode;
+            break;
+          }
         }
-
-        const rankingsBtn = this.getGlobalRankingsButtonRect();
-        this.hoveredRankingsBtn =
-          mx >= rankingsBtn.x &&
-          mx <= rankingsBtn.x + rankingsBtn.width &&
-          my >= rankingsBtn.y &&
-          my <= rankingsBtn.y + rankingsBtn.height;
-
-        const achBtn = this.getAchievementsButtonRect();
-        this.hoveredAchievementsBtn =
-          mx >= achBtn.x &&
-          mx <= achBtn.x + achBtn.width &&
-          my >= achBtn.y &&
-          my <= achBtn.y + achBtn.height;
-
-        const setBtn = this.getSettingsButtonRect();
-        this.hoveredSettingsBtn =
-          mx >= setBtn.x &&
-          mx <= setBtn.x + setBtn.width &&
-          my >= setBtn.y &&
-          my <= setBtn.y + setBtn.height;
-
-        const fsBtn = this.getFullscreenButtonRect();
-        this.hoveredFullscreenBtn =
-          mx >= fsBtn.x &&
-          mx <= fsBtn.x + fsBtn.width &&
-          my >= fsBtn.y &&
-          my <= fsBtn.y + fsBtn.height;
-
-        const helpBtn = this.getHelpButtonRect();
-        this.hoveredHelpBtn =
-          mx >= helpBtn.x &&
-          mx <= helpBtn.x + helpBtn.width &&
-          my >= helpBtn.y &&
-          my <= helpBtn.y + helpBtn.height;
-
-        const startBtn = this.getStartButtonRect();
-        this.hoveredStartBtn =
-          mx >= startBtn.x &&
-          mx <= startBtn.x + startBtn.width &&
-          my >= startBtn.y &&
-          my <= startBtn.y + startBtn.height;
 
         if (this.activeMenuTab === 'SHOP') {
           for (const charRect of this.getMenuCharacterRects()) {
-            if (
-              mx >= charRect.x &&
-              mx <= charRect.x + charRect.width &&
-              my >= charRect.y &&
-              my <= charRect.y + charRect.height
-            ) {
+            if (this.isPointInRect(mx, my, charRect)) {
               this.hoveredMenuChar = charRect.id;
               break;
             }
           }
         } else if (this.activeMenuTab === 'INVENTORY') {
           for (const slot of this.getInventoryHatRects()) {
-            if (
-              mx >= slot.x &&
-              mx <= slot.x + slot.width &&
-              my >= slot.y &&
-              my <= slot.y + slot.height
-            ) {
+            if (this.isPointInRect(mx, my, slot)) {
               this.hoveredHatId = slot.hat.id;
               break;
             }
@@ -617,12 +657,7 @@ export class Game {
       if (this.isPaused) {
         this.hoveredPauseAction = null;
         for (const btn of this.getPauseButtonRects()) {
-          if (
-            mx >= btn.x &&
-            mx <= btn.x + btn.width &&
-            my >= btn.y &&
-            my <= btn.y + btn.height
-          ) {
+          if (this.isPointInRect(mx, my, btn)) {
             this.hoveredPauseAction = btn.action;
             break;
           }
@@ -632,377 +667,424 @@ export class Game {
 
       if (this.gameState !== 'PLAYING' || !this.upgradeSystem.isChoosingUpgrade()) {
         this.hoveredCardIndex = -1;
+        this.hoveredRerollBtn = false;
         return;
       }
 
       this.hoveredCardIndex = -1;
       for (const card of this.getUpgradeCardRects()) {
-        if (
-          mx >= card.x &&
-          mx <= card.x + card.width &&
-          my >= card.y &&
-          my <= card.y + card.height
-        ) {
+        if (this.isPointInRect(mx, my, card)) {
           this.hoveredCardIndex = card.index;
           break;
         }
       }
+      this.hoveredRerollBtn = this.isPointInRect(mx, my, this.getRerollButtonRect());
     });
+
+    this.canvas.addEventListener(
+      'touchstart',
+      (e) => {
+        e.preventDefault();
+        unlockAudio();
+        this.input.hasUsedTouch = true;
+
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const touch = e.changedTouches[i];
+          const pt = this.getCanvasClientPos(touch.clientX, touch.clientY);
+
+          if (
+            this.gameState === 'PLAYING' &&
+            !this.isPaused &&
+            !this.upgradeSystem.isChoosingUpgrade()
+          ) {
+            if (this.isPointInRect(pt.x, pt.y, this.getInGameLightGfxButtonRect())) {
+              this.toggleLightGraphics();
+              this.sound.playShoot(false);
+              this.lastTouchTapTime = performance.now();
+              continue;
+            }
+            if (this.isPointInRect(pt.x, pt.y, this.getInGamePauseButtonRect())) {
+              this.togglePause();
+              this.lastTouchTapTime = performance.now();
+              continue;
+            }
+            if (!this.input.isTouchActive()) {
+              this.input.startTouch(touch.identifier, pt.x, pt.y);
+            }
+          } else {
+            this.lastTouchTapTime = performance.now();
+            this.handleCanvasTap(pt.x, pt.y);
+          }
+        }
+      },
+      { passive: false }
+    );
+
+    this.canvas.addEventListener(
+      'touchmove',
+      (e) => {
+        e.preventDefault();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const touch = e.changedTouches[i];
+          if (this.input.getActiveTouchId() === touch.identifier) {
+            const pt = this.getCanvasClientPos(touch.clientX, touch.clientY);
+            this.input.moveTouch(touch.identifier, pt.x, pt.y);
+          }
+        }
+      },
+      { passive: false }
+    );
+
+    const handleTouchRelease = (e: TouchEvent) => {
+      e.preventDefault();
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        this.input.endTouch(e.changedTouches[i].identifier);
+      }
+    };
+    this.canvas.addEventListener('touchend', handleTouchRelease, { passive: false });
+    this.canvas.addEventListener('touchcancel', handleTouchRelease, { passive: false });
 
     this.canvas.addEventListener('click', (e) => {
-      this.sound.ensureContext();
-      if (this.gameState === 'MENU' && this.sound.getCurrentTrack() === 'NONE') {
-        this.sound.setTrack('MENU');
+      if (performance.now() - this.lastTouchTapTime < 450) {
+        return;
       }
-
+      unlockAudio();
       const pos = this.getCanvasMousePos(e);
-      const mx = pos.x;
-      const my = pos.y;
-
-      if (this.gameState === 'MENU') {
-        if (this.showLeaderboardOverlay) {
-          for (const tabBtn of this.getLeaderboardTabRects()) {
-            if (
-              mx >= tabBtn.x &&
-              mx <= tabBtn.x + tabBtn.width &&
-              my >= tabBtn.y &&
-              my <= tabBtn.y + tabBtn.height
-            ) {
-              this.activeLeaderboardCategory = tabBtn.category;
-              this.sound.playShoot(false);
-              void this.refreshLeaderboards();
-              return;
-            }
-          }
-
-          const backBtn = this.getLeaderboardBackButtonRect();
-          if (
-            mx >= backBtn.x &&
-            mx <= backBtn.x + backBtn.width &&
-            my >= backBtn.y &&
-            my <= backBtn.y + backBtn.height
-          ) {
-            this.showLeaderboardOverlay = false;
-            this.sound.playShoot(false);
-            return;
-          }
-          return;
-        }
-
-        if (this.showAchievementsOverlay) {
-          const panelH = 650;
-          const py = this.canvas.height / 2 - panelH / 2;
-          const backBtn = this.getOverlayBackButtonRect(py, panelH);
-          if (
-            mx >= backBtn.x &&
-            mx <= backBtn.x + backBtn.width &&
-            my >= backBtn.y &&
-            my <= backBtn.y + backBtn.height
-          ) {
-            this.showAchievementsOverlay = false;
-            this.sound.playShoot(false);
-            return;
-          }
-          for (const tab of this.getAchievementsTabRects(py)) {
-            if (
-              mx >= tab.x &&
-              mx <= tab.x + tab.width &&
-              my >= tab.y &&
-              my <= tab.y + tab.height
-            ) {
-              if (this.achievementsPage !== tab.page) {
-                this.achievementsPage = tab.page;
-                this.sound.playShoot(false);
-              }
-              return;
-            }
-          }
-          return;
-        }
-
-        if (this.showSettingsOverlay) {
-          this.handleSettingsClick(mx, my);
-          return;
-        }
-
-        if (this.showHelpOverlay) {
-          const backBtn = this.getOverlayBackButtonRect(this.canvas.height / 2 - 295, 590);
-          if (
-            mx >= backBtn.x &&
-            mx <= backBtn.x + backBtn.width &&
-            my >= backBtn.y &&
-            my <= backBtn.y + backBtn.height
-          ) {
-            this.showHelpOverlay = false;
-            this.sound.playShoot(false);
-          }
-          return;
-        }
-
-        const achBtn = this.getAchievementsButtonRect();
-        if (
-          mx >= achBtn.x &&
-          mx <= achBtn.x + achBtn.width &&
-          my >= achBtn.y &&
-          my <= achBtn.y + achBtn.height
-        ) {
-          this.showAchievementsOverlay = true;
-          this.sound.playCoinPickup();
-          return;
-        }
-
-        const setBtn = this.getSettingsButtonRect();
-        if (
-          mx >= setBtn.x &&
-          mx <= setBtn.x + setBtn.width &&
-          my >= setBtn.y &&
-          my <= setBtn.y + setBtn.height
-        ) {
-          this.showSettingsOverlay = true;
-          this.sound.playShoot(false);
-          return;
-        }
-
-        const fsBtn = this.getFullscreenButtonRect();
-        if (
-          mx >= fsBtn.x &&
-          mx <= fsBtn.x + fsBtn.width &&
-          my >= fsBtn.y &&
-          my <= fsBtn.y + fsBtn.height
-        ) {
-          this.toggleFullscreen();
-          this.sound.playShoot(false);
-          return;
-        }
-
-        const helpBtn = this.getHelpButtonRect();
-        if (
-          mx >= helpBtn.x &&
-          mx <= helpBtn.x + helpBtn.width &&
-          my >= helpBtn.y &&
-          my <= helpBtn.y + helpBtn.height
-        ) {
-          this.showHelpOverlay = true;
-          this.sound.playShoot(false);
-          return;
-        }
-
-        if (this.currentUser || this.isExternalLoginAllowed()) {
-          const authBtn = this.getAuthActionButtonRect();
-          if (
-            mx >= authBtn.x &&
-            mx <= authBtn.x + authBtn.width &&
-            my >= authBtn.y &&
-            my <= authBtn.y + authBtn.height
-          ) {
-            this.handleAuthButtonClick();
-            return;
-          }
-        }
-
-        const rankingsBtn = this.getGlobalRankingsButtonRect();
-        if (
-          mx >= rankingsBtn.x &&
-          mx <= rankingsBtn.x + rankingsBtn.width &&
-          my >= rankingsBtn.y &&
-          my <= rankingsBtn.y + rankingsBtn.height
-        ) {
-          this.openLeaderboardOverlay();
-          return;
-        }
-
-        // Pestañas superiores del Menú Principal (AGENTES | GACHA | INVENTARIO)
-        for (const tabRect of this.getMenuTabRects()) {
-          if (
-            mx >= tabRect.x &&
-            mx <= tabRect.x + tabRect.width &&
-            my >= tabRect.y &&
-            my <= tabRect.y + tabRect.height
-          ) {
-            this.activeMenuTab = tabRect.tab;
-            if (tabRect.tab === 'INVENTORY') {
-              this.inventoryPage = 0;
-            }
-            this.sound.playShoot(false);
-            return;
-          }
-        }
-
-        if (this.activeMenuTab === 'SHOP') {
-          for (const charRect of this.getMenuCharacterRects()) {
-            if (
-              mx >= charRect.x &&
-              mx <= charRect.x + charRect.width &&
-              my >= charRect.y &&
-              my <= charRect.y + charRect.height
-            ) {
-              const res = this.metaSystem.selectOrBuyCharacter(charRect.id);
-              this.menuFeedbackMessage = res.message;
-              if (res.success) {
-                this.sound.playCoinPickup();
-              }
-              return;
-            }
-          }
-        } else if (this.activeMenuTab === 'GACHA') {
-          for (const pullBtn of this.getGachaPullButtonRects()) {
-            if (
-              mx >= pullBtn.x &&
-              mx <= pullBtn.x + pullBtn.width &&
-              my >= pullBtn.y &&
-              my <= pullBtn.y + pullBtn.height
-            ) {
-              const res = this.metaSystem.pullGachaBatch(pullBtn.count);
-              this.menuFeedbackMessage = res.message;
-              if (res.success && res.results.length > 0) {
-                this.lastGachaResults = res.results;
-                this.gachaRevealTimer = 1.2;
-                this.sound.playCoinPickup();
-                this.achievementSystem.reportProgress(
-                  'gacha_collector_20',
-                  this.metaSystem.unlockedHats.size,
-                  true
-                );
-                if (
-                  res.results.some(
-                    (r) => r.hat.rarity === 'MITICA' || r.hat.rarity === 'LEGENDARIA'
-                  )
-                ) {
-                  this.achievementSystem.reportProgress('gacha_mythic', 1, true);
-                }
-                const bestEntry = res.results[0];
-                const rColor = RARITY_CONFIG[bestEntry.hat.rarity].color;
-                this.particleSystem.spawnExplosion(
-                  this.canvas.width / 2,
-                  this.canvas.height / 2 + 55,
-                  rColor,
-                  pullBtn.count === 10 ? 60 : 30,
-                  true
-                );
-              } else {
-                this.sound.playExplosion(false);
-              }
-              return;
-            }
-          }
-        } else if (this.activeMenuTab === 'INVENTORY') {
-          for (const slot of this.getInventoryHatRects()) {
-            if (
-              mx >= slot.x &&
-              mx <= slot.x + slot.width &&
-              my >= slot.y &&
-              my <= slot.y + slot.height
-            ) {
-              const res = this.metaSystem.equipHat(slot.hat.id);
-              this.menuFeedbackMessage = res.message;
-              if (res.success) {
-                this.sound.playCoinPickup();
-              }
-              return;
-            }
-          }
-
-          for (const pageBtn of this.getInventoryPaginationRects()) {
-            if (
-              mx >= pageBtn.x &&
-              mx <= pageBtn.x + pageBtn.width &&
-              my >= pageBtn.y &&
-              my <= pageBtn.y + pageBtn.height
-            ) {
-              const totalUnlocked = this.metaSystem.getUnlockedHatsList().length;
-              const maxPage = Math.max(0, Math.ceil(totalUnlocked / 9) - 1);
-              if (pageBtn.dir === 'PREV') {
-                this.inventoryPage = Math.max(0, this.inventoryPage - 1);
-              } else {
-                this.inventoryPage = Math.min(maxPage, this.inventoryPage + 1);
-              }
-              this.sound.playShoot(false);
-              return;
-            }
-          }
-        }
-
-        const startBtn = this.getStartButtonRect();
-        if (
-          mx >= startBtn.x &&
-          mx <= startBtn.x + startBtn.width &&
-          my >= startBtn.y &&
-          my <= startBtn.y + startBtn.height
-        ) {
-          this.startNewRun();
-        }
-        return;
-      }
-
-      if (this.isPaused) {
-        if (this.showSettingsOverlay) {
-          this.handleSettingsClick(mx, my);
-          return;
-        }
-
-        for (const btn of this.getPauseButtonRects()) {
-          if (
-            mx >= btn.x &&
-            mx <= btn.x + btn.width &&
-            my >= btn.y &&
-            my <= btn.y + btn.height
-          ) {
-            if (btn.action === 'RESUME') {
-              this.togglePause();
-            } else if (btn.action === 'SETTINGS') {
-              this.showSettingsOverlay = true;
-              this.sound.playShoot(false);
-            } else if (btn.action === 'EXIT_TO_MENU') {
-              this.exitToMainMenu();
-            }
-            return;
-          }
-        }
-        return;
-      }
-
-      if (this.gameState === 'GAMEOVER') {
-        this.exitToMainMenu();
-        return;
-      }
-
-      if (!this.upgradeSystem.isChoosingUpgrade()) return;
-
-      for (const card of this.getUpgradeCardRects()) {
-        if (
-          mx >= card.x &&
-          mx <= card.x + card.width &&
-          my >= card.y &&
-          my <= card.y + card.height
-        ) {
-          const chosen = this.upgradeSystem.currentChoices[card.index];
-          if (
-            chosen &&
-            this.upgradeSystem.selectUpgrade(card.index, this.player, this.combatSystem)
-          ) {
-            this.sound.playCoinPickup();
-            logAnalyticsEvent('select_content', {
-              content_type: 'upgrade',
-              item_id: chosen.id,
-              item_name: chosen.name,
-              level: chosen.level,
-            });
-            this.addTerminalLog(`INSTALLED: ${chosen.name} (v${chosen.level}.0)`);
-            this.particleSystem.spawnExplosion(this.player.x, this.player.y, chosen.color, 24, true);
-            this.hoveredCardIndex = -1;
-          }
-          break;
-        }
-      }
+      this.handleCanvasTap(pos.x, pos.y);
     });
+  }
+
+  private isPointInRect(
+    mx: number,
+    my: number,
+    rect: { x: number; y: number; width: number; height: number }
+  ): boolean {
+    return (
+      mx >= rect.x &&
+      mx <= rect.x + rect.width &&
+      my >= rect.y &&
+      my <= rect.y + rect.height
+    );
+  }
+
+  private applySelectedUpgrade(index: number): void {
+    const chosen = this.upgradeSystem.currentChoices[index];
+    if (chosen && this.upgradeSystem.selectUpgrade(index, this.player, this.combatSystem)) {
+      if (chosen.isEvolution) {
+        this.sound.playAchievement();
+        this.dailyMissions.reportProgress('EVOLUTION', 1);
+        this.addTerminalLog(`★ EVOLUTION COMPLETED: ${chosen.name}!`);
+      } else {
+        this.sound.playCoinPickup();
+        this.addTerminalLog(`INSTALLED: ${chosen.name} (v${chosen.level}.0)`);
+      }
+      logAnalyticsEvent('select_content', {
+        content_type: chosen.isEvolution ? 'weapon_evolution' : 'upgrade',
+        item_id: chosen.id,
+        item_name: chosen.name,
+        level: chosen.level,
+      });
+      this.particleSystem.spawnExplosion(this.player.x, this.player.y, chosen.color, 26, true);
+      this.hoveredCardIndex = -1;
+      this.hoveredRerollBtn = false;
+    }
+  }
+
+  private handleUpgradeReroll(): void {
+    if (this.upgradeSystem.rerollChoices(this.player)) {
+      this.sound.playShoot(true);
+      this.addTerminalLog(
+        `REROLL: Modules refreshed (${this.upgradeSystem.rerollsRemaining}/3 left).`
+      );
+      this.hoveredCardIndex = -1;
+    } else {
+      this.sound.playExplosion(false);
+    }
+  }
+
+  private handleCanvasTap(mx: number, my: number): void {
+    if (this.gameState === 'MENU') {
+      if (this.showLeaderboardOverlay) {
+        for (const tabBtn of this.getLeaderboardTabRects()) {
+          if (this.isPointInRect(mx, my, tabBtn)) {
+            this.activeLeaderboardCategory = tabBtn.category;
+            this.sound.playShoot(false);
+            void this.refreshLeaderboards();
+            return;
+          }
+        }
+        if (this.isPointInRect(mx, my, this.getLeaderboardBackButtonRect())) {
+          this.showLeaderboardOverlay = false;
+          this.sound.playShoot(false);
+        }
+        return;
+      }
+
+      if (this.showDailyMissionsOverlay) {
+        const panelH = 500;
+        const py = LOGICAL_HEIGHT / 2 - panelH / 2;
+        if (this.isPointInRect(mx, my, this.getOverlayBackButtonRect(py, panelH))) {
+          this.showDailyMissionsOverlay = false;
+          this.sound.playShoot(false);
+        }
+        return;
+      }
+
+      if (this.showAchievementsOverlay) {
+        const panelH = 650;
+        const py = LOGICAL_HEIGHT / 2 - panelH / 2;
+        if (this.isPointInRect(mx, my, this.getOverlayBackButtonRect(py, panelH))) {
+          this.showAchievementsOverlay = false;
+          this.sound.playShoot(false);
+          return;
+        }
+        for (const tab of this.getAchievementsTabRects(py)) {
+          if (this.isPointInRect(mx, my, tab)) {
+            if (this.achievementsPage !== tab.page) {
+              this.achievementsPage = tab.page;
+              this.sound.playShoot(false);
+            }
+            return;
+          }
+        }
+        return;
+      }
+
+      if (this.showSettingsOverlay) {
+        this.handleSettingsClick(mx, my);
+        return;
+      }
+
+      if (this.showHelpOverlay) {
+        const backBtn = this.getOverlayBackButtonRect(LOGICAL_HEIGHT / 2 - 295, 590);
+        if (this.isPointInRect(mx, my, backBtn)) {
+          this.showHelpOverlay = false;
+          this.sound.playShoot(false);
+        }
+        return;
+      }
+
+      if (this.isPointInRect(mx, my, this.getDailyMissionsButtonRect())) {
+        this.showDailyMissionsOverlay = true;
+        this.sound.playCoinPickup();
+        return;
+      }
+
+      if (this.isPointInRect(mx, my, this.getMenuLightGfxButtonRect())) {
+        this.toggleLightGraphics();
+        this.sound.playShoot(false);
+        return;
+      }
+
+      if (this.isPointInRect(mx, my, this.getAchievementsButtonRect())) {
+        this.showAchievementsOverlay = true;
+        this.sound.playCoinPickup();
+        return;
+      }
+
+      if (this.isPointInRect(mx, my, this.getSettingsButtonRect())) {
+        this.showSettingsOverlay = true;
+        this.sound.playShoot(false);
+        return;
+      }
+
+      if (this.isPointInRect(mx, my, this.getFullscreenButtonRect())) {
+        this.toggleFullscreen();
+        this.sound.playShoot(false);
+        return;
+      }
+
+      if (this.isPointInRect(mx, my, this.getHelpButtonRect())) {
+        this.showHelpOverlay = true;
+        this.sound.playShoot(false);
+        return;
+      }
+
+      if (
+        (this.currentUser || this.isExternalLoginAllowed()) &&
+        this.isPointInRect(mx, my, this.getAuthActionButtonRect())
+      ) {
+        this.handleAuthButtonClick();
+        return;
+      }
+
+      if (this.isPointInRect(mx, my, this.getGlobalRankingsButtonRect())) {
+        this.openLeaderboardOverlay();
+        return;
+      }
+
+      for (const tabRect of this.getMenuTabRects()) {
+        if (this.isPointInRect(mx, my, tabRect)) {
+          this.activeMenuTab = tabRect.tab;
+          if (tabRect.tab === 'INVENTORY') {
+            this.inventoryPage = 0;
+          }
+          this.sound.playShoot(false);
+          return;
+        }
+      }
+
+      if (this.activeMenuTab === 'SHOP') {
+        for (const charRect of this.getMenuCharacterRects()) {
+          if (this.isPointInRect(mx, my, charRect)) {
+            const res = this.metaSystem.selectOrBuyCharacter(charRect.id);
+            this.menuFeedbackMessage = res.message;
+            if (res.success) {
+              this.sound.playCoinPickup();
+            }
+            return;
+          }
+        }
+      } else if (this.activeMenuTab === 'GACHA') {
+        for (const pullBtn of this.getGachaPullButtonRects()) {
+          if (this.isPointInRect(mx, my, pullBtn)) {
+            const res = this.metaSystem.pullGachaBatch(pullBtn.count);
+            this.menuFeedbackMessage = res.message;
+            if (res.success && res.results.length > 0) {
+              this.lastGachaResults = res.results;
+              this.gachaRevealTimer = 1.2;
+              this.sound.playCoinPickup();
+              this.achievementSystem.reportProgress(
+                'gacha_collector_20',
+                this.metaSystem.unlockedHats.size,
+                true
+              );
+              if (
+                res.results.some(
+                  (r) => r.hat.rarity === 'MITICA' || r.hat.rarity === 'LEGENDARIA'
+                )
+              ) {
+                this.achievementSystem.reportProgress('gacha_mythic', 1, true);
+              }
+              const bestEntry = res.results[0];
+              const rColor = RARITY_CONFIG[bestEntry.hat.rarity].color;
+              this.particleSystem.spawnExplosion(
+                LOGICAL_WIDTH / 2,
+                LOGICAL_HEIGHT / 2 + 55,
+                rColor,
+                pullBtn.count === 10 ? 60 : 30,
+                true
+              );
+            } else {
+              this.sound.playExplosion(false);
+            }
+            return;
+          }
+        }
+      } else if (this.activeMenuTab === 'INVENTORY') {
+        for (const slot of this.getInventoryHatRects()) {
+          if (this.isPointInRect(mx, my, slot)) {
+            const res = this.metaSystem.equipHat(slot.hat.id);
+            this.menuFeedbackMessage = res.message;
+            if (res.success) {
+              this.sound.playCoinPickup();
+            }
+            return;
+          }
+        }
+
+        for (const pageBtn of this.getInventoryPaginationRects()) {
+          if (this.isPointInRect(mx, my, pageBtn)) {
+            const totalUnlocked = this.metaSystem.getUnlockedHatsList().length;
+            const maxPage = Math.max(0, Math.ceil(totalUnlocked / 9) - 1);
+            if (pageBtn.dir === 'PREV') {
+              this.inventoryPage = Math.max(0, this.inventoryPage - 1);
+            } else {
+              this.inventoryPage = Math.min(maxPage, this.inventoryPage + 1);
+            }
+            this.sound.playShoot(false);
+            return;
+          }
+        }
+      }
+
+      for (const mBtn of this.getGameModeButtonRects()) {
+        if (this.isPointInRect(mx, my, mBtn)) {
+          this.selectedGameMode = mBtn.mode;
+          this.menuFeedbackMessage =
+            mBtn.mode === 'NIGHTMARE'
+              ? i18n.t(
+                  `Modo Pesadilla seleccionado: Mapa Infinito, Eventos y x2 Cripto (Coste: ${NIGHTMARE_ENTRY_COST} CR).`,
+                  `Nightmare Mode selected: Infinite Map, Events & 2x Crypto (Cost: ${NIGHTMARE_ENTRY_COST} CR).`
+                )
+              : i18n.t(
+                  'Modo Clásico seleccionado: Arena estándar gratuita 1920x1080.',
+                  'Classic Mode selected: Free standard 1920x1080 arena.'
+                );
+          this.sound.playShoot(false);
+          return;
+        }
+      }
+
+      if (this.isPointInRect(mx, my, this.getStartButtonRect())) {
+        this.startNewRun();
+      }
+      return;
+    }
+
+    if (this.isPaused) {
+      if (this.showSettingsOverlay) {
+        this.handleSettingsClick(mx, my);
+        return;
+      }
+
+      for (const btn of this.getPauseButtonRects()) {
+        if (this.isPointInRect(mx, my, btn)) {
+          if (btn.action === 'RESUME') {
+            this.togglePause();
+          } else if (btn.action === 'SETTINGS') {
+            this.showSettingsOverlay = true;
+            this.sound.playShoot(false);
+          } else if (btn.action === 'EXIT_TO_MENU') {
+            this.exitToMainMenu();
+          }
+          return;
+        }
+      }
+      return;
+    }
+
+    if (this.gameState === 'GAMEOVER') {
+      this.exitToMainMenu();
+      return;
+    }
+
+    if (this.gameState === 'PLAYING' && !this.upgradeSystem.isChoosingUpgrade()) {
+      if (this.isPointInRect(mx, my, this.getInGameLightGfxButtonRect())) {
+        this.toggleLightGraphics();
+        this.sound.playShoot(false);
+        return;
+      }
+      if (this.isPointInRect(mx, my, this.getInGamePauseButtonRect())) {
+        this.togglePause();
+        return;
+      }
+      return;
+    }
+
+    if (!this.upgradeSystem.isChoosingUpgrade()) return;
+
+    if (this.isPointInRect(mx, my, this.getRerollButtonRect())) {
+      this.handleUpgradeReroll();
+      return;
+    }
+
+    for (const card of this.getUpgradeCardRects()) {
+      if (this.isPointInRect(mx, my, card)) {
+        this.applySelectedUpgrade(card.index);
+        break;
+      }
+    }
   }
 
   private togglePause(): void {
     this.isPaused = !this.isPaused;
     this.hoveredPauseAction = null;
     if (this.isPaused) {
+      this.input.clearTouch();
       this.achievementSystem.flushPendingSave(true);
       this.metaSystem.flushPendingSave();
+      this.dailyMissions.flushPendingSave(true);
     } else {
       this.lastTime = performance.now();
     }
@@ -1015,9 +1097,12 @@ export class Game {
     this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
     this.achievementSystem.flushPendingSave(true);
     this.metaSystem.flushPendingSave();
+    this.dailyMissions.flushPendingSave(true);
     this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
     void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
+    this.input.clearTouch();
     this.isPaused = false;
+    this.isNightmareRun = false;
     this.hoveredPauseAction = null;
     this.hoveredCardIndex = -1;
     this.enemies = [];
@@ -1044,8 +1129,8 @@ export class Game {
     this.runTotalDamageDealt = 0;
     this.damageVignetteAlpha = 0;
     this.player = new Player(
-      this.canvas.width / 2,
-      this.canvas.height / 2,
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2,
       this.metaSystem.getSelectedProfile(),
       this.metaSystem.getEquippedHat()
     );
@@ -1055,20 +1140,40 @@ export class Game {
   }
 
   private resize(): void {
-    this.canvas.width = LOGICAL_WIDTH;
-    this.canvas.height = LOGICAL_HEIGHT;
-    this.bgCacheCanvas = null;
+    const targetW = this.lightGraphicsEnabled ? 1280 : LOGICAL_WIDTH;
+    const targetH = this.lightGraphicsEnabled ? 720 : LOGICAL_HEIGHT;
+    if (this.canvas.width !== targetW || this.canvas.height !== targetH) {
+      this.canvas.width = targetW;
+      this.canvas.height = targetH;
+      this.bgCacheCanvas = null;
+      this.infiniteTileCache = null;
+    }
   }
 
   private startNewRun(): void {
+    if (this.selectedGameMode === 'NIGHTMARE') {
+      const payRes = this.metaSystem.payNightmareEntry();
+      if (!payRes.success) {
+        this.menuFeedbackMessage = payRes.message;
+        this.sound.playExplosion(false);
+        return;
+      }
+      this.isNightmareRun = true;
+      this.menuFeedbackMessage = payRes.message;
+    } else {
+      this.isNightmareRun = false;
+    }
+
     const profile = this.metaSystem.getSelectedProfile();
     logAnalyticsEvent('level_start', {
       character: profile.name,
       equipped_hat: this.metaSystem.getEquippedHat() || 'none',
+      mode: this.isNightmareRun ? 'NIGHTMARE' : 'CLASSIC',
     });
+    this.input.clearTouch();
     this.player = new Player(
-      this.canvas.width / 2,
-      this.canvas.height / 2,
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2,
       profile,
       this.metaSystem.getEquippedHat()
     );
@@ -1076,10 +1181,6 @@ export class Game {
     this.projectiles = [];
     this.pingProjectiles = [];
     this.quarantineZones = [];
-    this.combatSystem.enemyProjectiles = [];
-    this.combatSystem.firewallPulses = [];
-    this.combatSystem.sqlBeams = [];
-    this.combatSystem.droneExplosions = [];
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.powerUps = [];
@@ -1088,26 +1189,36 @@ export class Game {
     this.finalBoss = null;
     this.isPaused = false;
     this.hoveredPauseAction = null;
-    this.spawner = new Spawner();
-    this.spawner.spawnOpeningWave(this.enemies, this.canvas.width, this.canvas.height);
     this.combatSystem = new CombatSystem();
+    if (profile.id === 'KERNEL_X') {
+      this.combatSystem.multiShotCount += 1;
+    }
     this.upgradeSystem = new UpgradeSystem();
+    this.spawner = new Spawner();
+    this.spawner.isNightmareMode = this.isNightmareRun;
+    const cam = this.getCameraOrigin();
+    this.spawner.spawnOpeningWave(this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, cam.x, cam.y);
+    if (this.isNightmareRun) {
+      this.terrainEvents.reset(this.player.x, this.player.y);
+    }
     this.particleSystem.clear();
     this.elapsedTime = 0;
     this.killCount = 0;
+    this.lastOverclockTier = 0;
     this.runCoinsCollected = 0;
     this.runDamageToToro = 0;
     this.runBossesKilled = 0;
     this.runTotalDamageDealt = 0;
     this.hoveredCardIndex = -1;
+    this.hoveredRerollBtn = false;
     this.damageVignetteAlpha = 0;
     this.gameState = 'PLAYING';
     this.sound.setTrack('INGAME');
     this.lastTime = performance.now();
     this.sound.playShoot(false);
     this.terminalLogs = [
-      `[000.0s] > DEPLOYED: ${profile.name} (HP: ${this.player.maxHp} | Magnet: ${this.player.pickupRadius}px)`,
-      `[000.0s] > Controls: [WASD/Arrows] Move | [P] Pause | [H] Hitboxes.`,
+      `[000.0s] > DEPLOYED: ${profile.name} [${this.isNightmareRun ? 'PESADILLA x2 CR' : 'CLÁSICO'}]`,
+      `[000.0s] > Passive: ${i18n.currentLang === 'EN' ? profile.passiveNameEn : profile.passiveName}`,
     ];
   }
 
@@ -1118,9 +1229,14 @@ export class Game {
     this.achievementSystem.reportProgress('toro_arrival', 1);
     this.spawner.enableFinalBossMode();
     this.enemies = [];
-    const spawnY =
-      this.player.y > this.canvas.height * 0.45 ? 120 : this.canvas.height - 120;
-    this.finalBoss = new ElToroBoss(this.canvas.width / 2, spawnY);
+    const spawnX = this.isNightmareRun ? this.player.x : LOGICAL_WIDTH / 2;
+    const spawnY = this.isNightmareRun
+      ? this.player.y - 420
+      : this.player.y > LOGICAL_HEIGHT * 0.45
+      ? 120
+      : LOGICAL_HEIGHT - 120;
+    this.finalBoss = new ElToroBoss(spawnX, spawnY);
+    this.finalBoss.unbounded = this.isNightmareRun;
     this.enemies.push(this.finalBoss);
     logAnalyticsEvent('boss_spawn', { boss_name: 'EL_TORO' });
 
@@ -1128,8 +1244,8 @@ export class Game {
     this.particleSystem.triggerShake(18, 0.7);
     this.particleSystem.spawnExplosion(this.finalBoss.x, this.finalBoss.y, '#dc2626', 100, true);
     this.particleSystem.spawnFloatingText(
-      this.canvas.width / 2,
-      this.canvas.height / 2 - 40,
+      this.player.x,
+      this.player.y - 50,
       '¡¡ALERTA MÁXIMA: PROTOCOLO TORO ACTIVADO!!',
       '#ff0044',
       2.0
@@ -1163,6 +1279,7 @@ export class Game {
   private update(dt: number): void {
     this.particleSystem.update(dt);
     this.achievementSystem.updateToasts(dt);
+    this.dailyMissions.updateToasts(dt);
     if (this.gachaRevealTimer > 0) {
       this.gachaRevealTimer = Math.max(0, this.gachaRevealTimer - dt);
     }
@@ -1176,6 +1293,7 @@ export class Game {
     }
 
     this.elapsedTime += dt;
+    const cam = this.getCameraOrigin();
 
     if (this.finalBoss && this.finalBoss.active) {
       if (this.sound.getCurrentTrack() !== 'FINAL_BOSS') {
@@ -1197,8 +1315,111 @@ export class Game {
     this.achievementSystem.reportProgress('survivor_15min', this.elapsedTime, true);
     this.achievementSystem.reportProgress('level_20', this.upgradeSystem.level, true);
     this.achievementSystem.reportProgress('level_30', this.upgradeSystem.level, true);
+    this.dailyMissions.reportProgress('SURVIVAL_SEC', Math.floor(this.elapsedTime));
+    this.dailyMissions.reportProgress('LEVEL', this.upgradeSystem.level);
 
-    this.player.update(dt, this.input, this.canvas.width, this.canvas.height);
+    this.player.update(
+      dt,
+      this.input,
+      LOGICAL_WIDTH,
+      LOGICAL_HEIGHT,
+      this.isNightmareRun,
+      this.lightGraphicsEnabled
+    );
+
+    // Actualizar origen tras mover jugador para spawns y proyectiles centrados en Pesadilla
+    const activeCam = this.getCameraOrigin();
+
+    // Eventos de terreno en Modo Pesadilla
+    if (this.isNightmareRun) {
+      const tRes = this.terrainEvents.update(dt, this.player, this.elapsedTime);
+      if (tRes.coolingActivated) {
+        this.thermalOverclockTimer = Math.max(this.thermalOverclockTimer, 10.0);
+        this.player.heal(20);
+        this.sound.playCoinPickup();
+        this.particleSystem.spawnFloatingText(
+          this.player.x,
+          this.player.y - 34,
+          i18n.t('❄ ¡SERVIDOR CRIO: +OVERCLOCK +20 HP!', '❄ CRYO SERVER: +OVERCLOCK +20 HP!'),
+          '#38bdf8',
+          1.25
+        );
+        this.addTerminalLog('TERRAIN: Cryo Server activated (+10s Overclock & +20 HP).');
+      }
+      if (tRes.empDetonation) {
+        const emp = tRes.empDetonation;
+        this.sound.playExplosion(true);
+        this.particleSystem.triggerShake(10, 0.3);
+        this.particleSystem.spawnExplosion(emp.x, emp.y, '#a855f7', 35, true);
+        const killed = this.terrainEvents.applyAreaBlast(
+          this.enemies,
+          emp.x,
+          emp.y,
+          emp.radius,
+          emp.damage,
+          2.5
+        );
+        for (const k of killed) {
+          this.spawnCodeFragment(k.x, k.y, k.xpValue);
+          this.killCount++;
+        }
+        this.particleSystem.spawnFloatingText(
+          emp.x,
+          emp.y - 24,
+          i18n.t('⚡ ¡PULSO EMP DETONADO!', '⚡ EMP BLAST TRIGGERED!'),
+          '#c084fc',
+          1.3
+        );
+        this.addTerminalLog(`TERRAIN: EMP Pylon stunned sector (${killed.length} purged).`);
+      }
+      if (tRes.vaultReward) {
+        const v = tRes.vaultReward;
+        this.sound.playAchievement();
+        this.particleSystem.spawnExplosion(v.x, v.y, '#fbbf24', 36, true);
+        for (let c = 0; c < v.coins; c++) {
+          this.spawnCryptoCoin(
+            v.x + (Math.random() - 0.5) * 80,
+            v.y + (Math.random() - 0.5) * 80,
+            1
+          );
+        }
+        for (let f = 0; f < 4; f++) {
+          this.spawnCodeFragment(
+            v.x + (Math.random() - 0.5) * 60,
+            v.y + (Math.random() - 0.5) * 60,
+            Math.round(v.xp / 4)
+          );
+        }
+        this.particleSystem.spawnFloatingText(
+          v.x,
+          v.y - 26,
+          i18n.t('₿ ¡BÓVEDA CRIPTO CONQUISTADA!', '₿ CRYPTO VAULT CAPTURED!'),
+          '#fbbf24',
+          1.35
+        );
+        this.addTerminalLog('TERRAIN: Corrupted Vault captured! Bonus CryptoCoins & XP!');
+      }
+      if (tRes.stormBlast) {
+        const sb = tRes.stormBlast;
+        this.sound.playExplosion(false);
+        this.particleSystem.spawnExplosion(sb.x, sb.y, '#ff1e42', 28, true);
+        const stormKilled = this.terrainEvents.applyAreaBlast(
+          this.enemies,
+          sb.x,
+          sb.y,
+          sb.radius,
+          sb.damageToEnemies
+        );
+        for (const sk of stormKilled) {
+          this.spawnCodeFragment(sk.x, sk.y, sk.xpValue);
+        }
+        if (sb.hitPlayer && this.player.takeDamage(22)) {
+          this.particleSystem.triggerShake(9, 0.25);
+          this.damageVignetteAlpha = 0.6;
+          this.addTerminalLog('ALERT: Hit by Data Storm (-22 HP)!');
+        }
+      }
+    }
 
     // Comprobar llegada del Jefe Final ("El Toro") a los ~11-12 minutos (700s)
     if (
@@ -1217,8 +1438,10 @@ export class Game {
       this.elapsedTime,
       this.upgradeSystem.level,
       this.enemies,
-      this.canvas.width,
-      this.canvas.height
+      LOGICAL_WIDTH,
+      LOGICAL_HEIGHT,
+      activeCam.x,
+      activeCam.y
     );
 
     if (this.spawner.currentThreatLevel > prevThreat) {
@@ -1242,10 +1465,10 @@ export class Game {
     }
 
     for (const proj of this.projectiles) {
-      proj.update(dt, this.canvas.width, this.canvas.height);
+      proj.update(dt, LOGICAL_WIDTH, LOGICAL_HEIGHT, activeCam.x, activeCam.y);
     }
     for (const ping of this.pingProjectiles) {
-      ping.update(dt, this.enemies, this.canvas.width, this.canvas.height);
+      ping.update(dt, this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, activeCam.x, activeCam.y);
     }
     for (const enemy of this.enemies) {
       if (isFrozen && !(enemy instanceof ElToroBoss)) {
@@ -1281,8 +1504,10 @@ export class Game {
       this.projectiles,
       this.pingProjectiles,
       this.quarantineZones,
-      this.canvas.width,
-      this.canvas.height
+      LOGICAL_WIDTH,
+      LOGICAL_HEIGHT,
+      activeCam.x,
+      activeCam.y
     );
 
     if (this.player.companion && this.player.active) {
@@ -1291,8 +1516,10 @@ export class Game {
         this.player,
         this.upgradeSystem.level,
         this.enemies,
-        this.canvas.width,
-        this.canvas.height
+        LOGICAL_WIDTH,
+        LOGICAL_HEIGHT,
+        cam.x,
+        cam.y
       );
       combatEvents.enemiesKilled += compEvents.killedEnemies.length;
       combatEvents.damagedEnemies.push(...compEvents.damagedEnemies);
@@ -1348,6 +1575,61 @@ export class Game {
 
     const prevKillCount = this.killCount;
     this.killCount += combatEvents.enemiesKilled;
+    if (combatEvents.enemiesKilled > 0) {
+      this.dailyMissions.reportProgress('KILLS', combatEvents.enemiesKilled);
+      if (this.isNightmareRun) {
+        this.dailyMissions.reportProgress('NIGHTMARE_KILLS', combatEvents.enemiesKilled);
+      }
+    }
+    const killMilestone = Math.floor(this.killCount / 25);
+    if (killMilestone > this.lastOverclockTier && this.player.active) {
+      this.lastOverclockTier = killMilestone;
+      if (this.player.characterId === 'OVERCLOCK') {
+        this.player.triggerOverclockAdrenaline();
+        this.particleSystem.spawnFloatingText(
+          this.player.x,
+          this.player.y - 34,
+          '⚡ ¡SOBRECARGA ADRENALINA!',
+          '#f97316',
+          1.15
+        );
+      } else if (this.player.characterId === 'STANDARD') {
+        this.player.heal(1);
+      }
+    }
+
+    if (combatEvents.shieldBlocked) {
+      this.sound.playShoot(true);
+      this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#38bdf8', 18, true);
+      this.particleSystem.spawnFloatingText(
+        this.player.x,
+        this.player.y - 32,
+        '🛡 ¡ESCUDO AEGIS!',
+        '#38bdf8',
+        1.2
+      );
+    }
+    if (combatEvents.dodgedHit) {
+      this.particleSystem.spawnFloatingText(
+        this.player.x,
+        this.player.y - 28,
+        'EVADIDO!',
+        '#67e8f9',
+        1.1
+      );
+    }
+    if (combatEvents.surgeTriggered) {
+      this.sound.playExplosion(false);
+      this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#00ff66', 20, true);
+      this.particleSystem.spawnFloatingText(
+        this.player.x,
+        this.player.y - 36,
+        '⚡ DESCARGA KERNEL!',
+        '#00ff66',
+        1.15
+      );
+    }
+
     this.achievementSystem.reportProgress('first_patch', this.killCount, true);
     this.achievementSystem.reportProgress('mass_purge', this.killCount, true);
     this.achievementSystem.reportProgress('mass_purge_elite', this.killCount, true);
@@ -1510,6 +1792,7 @@ export class Game {
 
       if (isBoss && !this.spawner.finalBossMode) {
         this.runBossesKilled++;
+        this.dailyMissions.reportProgress('BOSSES', 1);
         this.achievementSystem.reportProgress('first_boss_killed', 1);
         this.achievementSystem.reportProgress('all_four_bosses', this.runBossesKilled, true);
         this.achievementSystem.reportProgress('boss_slayer_ten', this.runBossesKilled, true);
@@ -1546,7 +1829,8 @@ export class Game {
           const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
           this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
         }
-        if (Math.random() < 0.06) {
+        const dropChance = 0.06 + this.player.bonusCoinDropChance;
+        if (Math.random() < dropChance) {
           this.spawnCryptoCoin(drop.x + 8, drop.y - 8, 1);
         }
       }
@@ -1604,6 +1888,7 @@ export class Game {
         this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
         this.achievementSystem.flushPendingSave(true);
         this.metaSystem.flushPendingSave();
+        this.dailyMissions.flushPendingSave(true);
         this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
         void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
         this.sound.playExplosion(true);
@@ -1662,13 +1947,15 @@ export class Game {
 
       if (collected) {
         coin.active = false;
-        this.runCoinsCollected += coin.value;
-        this.metaSystem.addCoins(coin.value);
+        const awarded = this.isNightmareRun ? coin.value * 2 : coin.value;
+        this.runCoinsCollected += awarded;
+        this.metaSystem.addCoins(awarded);
+        this.dailyMissions.reportProgress('COINS', awarded);
         this.sound.playCoinPickup();
         this.particleSystem.spawnFloatingText(
           this.player.x,
           this.player.y - 28,
-          `+${coin.value} CRYPTO`,
+          `+${awarded} CRYPTO${this.isNightmareRun ? ' (x2)' : ''}`,
           '#fbbf24',
           1.0
         );
@@ -1695,6 +1982,7 @@ export class Game {
     this.cryptoCoins = this.cryptoCoins.filter((c) => c.active);
     this.powerUps = this.powerUps.filter((p) => p.active);
     this.achievementSystem.flushPendingSave(false);
+    this.dailyMissions.flushPendingSave(false);
   }
 
   private spawnCodeFragment(x: number, y: number, xpValue: number): void {
@@ -1794,19 +2082,101 @@ export class Game {
     }
   }
 
-  private render(): void {
-    this.ctx.fillStyle = '#060a13';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  private ensureInfiniteTileCache(): HTMLCanvasElement {
+    if (this.infiniteTileCache) return this.infiniteTileCache;
+    const tile = document.createElement('canvas');
+    tile.width = 256;
+    tile.height = 256;
+    const tCtx = tile.getContext('2d', { alpha: false }) || tile.getContext('2d');
+    if (tCtx) {
+      tCtx.fillStyle = '#070b15';
+      tCtx.fillRect(0, 0, 256, 256);
 
-    const shake = this.sound.screenShakeEnabled
-      ? this.particleSystem.getShakeOffset()
-      : { x: 0, y: 0 };
+      // Rejilla secundaria PCB
+      tCtx.strokeStyle = 'rgba(56, 189, 248, 0.05)';
+      tCtx.lineWidth = 1;
+      tCtx.beginPath();
+      for (let i = 0; i < 256; i += 64) {
+        tCtx.moveTo(i, 0);
+        tCtx.lineTo(i, 256);
+        tCtx.moveTo(0, i);
+        tCtx.lineTo(256, i);
+      }
+      tCtx.stroke();
+
+      // Líneas maestras + trazas 45° de sector
+      tCtx.strokeStyle = 'rgba(244, 63, 94, 0.14)';
+      tCtx.beginPath();
+      tCtx.moveTo(0, 0);
+      tCtx.lineTo(256, 0);
+      tCtx.moveTo(0, 0);
+      tCtx.lineTo(0, 256);
+      tCtx.stroke();
+
+      tCtx.strokeStyle = 'rgba(16, 185, 129, 0.11)';
+      tCtx.lineWidth = 1.6;
+      tCtx.beginPath();
+      tCtx.moveTo(86, 128);
+      tCtx.lineTo(110, 128);
+      tCtx.lineTo(128, 146);
+      tCtx.lineTo(162, 146);
+      tCtx.stroke();
+
+      tCtx.fillStyle = 'rgba(251, 191, 36, 0.24)';
+      tCtx.beginPath();
+      tCtx.arc(86, 128, 2.3, 0, Math.PI * 2);
+      tCtx.fill();
+    }
+    this.infiniteTileCache = tile;
+    return tile;
+  }
+
+  private drawInfiniteCyberGrid(camX: number, camY: number): void {
+    const tile = this.ensureInfiniteTileCache();
+    const ox = ((camX % 256) + 256) % 256;
+    const oy = ((camY % 256) + 256) % 256;
+
+    this.ctx.save();
+    for (let x = -ox - 64; x < LOGICAL_WIDTH + 64; x += 256) {
+      for (let y = -oy - 64; y < LOGICAL_HEIGHT + 64; y += 256) {
+        this.ctx.drawImage(tile, x, y);
+      }
+    }
+    // Tinte carmesí sutil en bordes para atmósfera Pesadilla
+    this.ctx.fillStyle = 'rgba(127, 29, 29, 0.08)';
+    this.ctx.fillRect(-24, -24, LOGICAL_WIDTH + 48, LOGICAL_HEIGHT + 48);
+    this.ctx.restore();
+  }
+
+  private render(): void {
+    const scale = this.canvas.width / LOGICAL_WIDTH;
+    this.ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    this.ctx.fillStyle = '#060a13';
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
+    const shake =
+      this.sound.screenShakeEnabled && !this.lightGraphicsEnabled
+        ? this.particleSystem.getShakeOffset()
+        : { x: 0, y: 0 };
+    const cam = this.getCameraOrigin();
+
     this.ctx.save();
     this.ctx.translate(shake.x, shake.y);
 
-    this.drawCyberGrid();
+    if (this.isNightmareRun && this.gameState !== 'MENU') {
+      this.drawInfiniteCyberGrid(cam.x, cam.y);
+    } else {
+      this.drawCyberGrid();
+    }
 
     if (this.gameState !== 'MENU') {
+      this.ctx.save();
+      this.ctx.translate(-cam.x, -cam.y);
+
+      if (this.isNightmareRun) {
+        this.terrainEvents.draw(this.ctx);
+      }
+
       for (const zone of this.quarantineZones) {
         zone.draw(this.ctx);
       }
@@ -1855,12 +2225,14 @@ export class Game {
       if (this.showHitboxes) {
         this.drawDebugHitboxes();
       }
+
+      this.ctx.restore();
     }
 
     this.ctx.restore();
 
     if (this.gameState === 'PLAYING') {
-      this.drawOffScreenIndicators();
+      this.drawOffScreenIndicators(cam.x, cam.y);
       if (this.systemFreezeTimer > 0) {
         this.drawFreezeOverlay();
       }
@@ -1882,8 +2254,13 @@ export class Game {
     } else {
       this.drawXpBar();
       this.drawHUD();
+      this.drawInGameQuickButtons();
+      if (this.isNightmareRun) {
+        this.drawNightmareMinimap();
+      }
       this.drawTerminalLogBox();
       this.drawBossHUD();
+      this.drawTouchJoystick();
 
       if (this.upgradeSystem.isChoosingUpgrade() && this.player.active) {
         this.drawUpgradeModal();
@@ -1898,14 +2275,17 @@ export class Game {
       }
     }
 
-    this.achievementSystem.drawToasts(this.ctx, this.canvas.width);
-    this.drawCRTScanlines();
+    this.achievementSystem.drawToasts(this.ctx, LOGICAL_WIDTH);
+    this.dailyMissions.drawToasts(this.ctx, LOGICAL_WIDTH);
+    if (!this.lightGraphicsEnabled) {
+      this.drawCRTScanlines();
+    }
     this.drawVersionBadge();
   }
 
   private getPauseButtonRects(): PauseButtonRect[] {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
     const btnW = 380;
     const btnH = 46;
 
@@ -1938,12 +2318,12 @@ export class Game {
   }
 
   private drawPauseMenuOverlay(): void {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(5, 9, 18, 0.84)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const boxW = 500;
     const boxH = 320;
@@ -2012,7 +2392,7 @@ export class Game {
     this.ctx.textAlign = 'right';
     this.ctx.fillStyle = 'rgba(125, 211, 252, 0.78)';
     this.ctx.font = `bold 12px ${FONT_MONO}`;
-    this.ctx.fillText(GAME_VERSION, this.canvas.width - 18, this.canvas.height - 14);
+    this.ctx.fillText(GAME_VERSION, LOGICAL_WIDTH - 18, LOGICAL_HEIGHT - 14);
     this.ctx.restore();
   }
 
@@ -2021,7 +2401,7 @@ export class Game {
     // Filtro rojo suave sobre todo el Canvas durante los 15s de 'El Enjambre'
     const pulseAlpha = 0.12 + Math.sin(performance.now() * 0.008) * 0.04;
     this.ctx.fillStyle = `rgba(255, 15, 45, ${pulseAlpha})`;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     // Alarma visual superior
     const blink = Math.floor(performance.now() / 280) % 2 === 0;
@@ -2033,7 +2413,7 @@ export class Game {
         `⚠️ ALERTA DE PLAGA: EL ENJAMBRE (${this.spawner.swarmActiveTimer.toFixed(1)}s) // ¡50 ENEMIGOS DETECTADOS! ⚠️`,
         `⚠️ PLAGUE ALERT: THE SWARM (${this.spawner.swarmActiveTimer.toFixed(1)}s) // 50 HOSTILES DETECTED! ⚠️`
       ),
-      this.canvas.width / 2,
+      LOGICAL_WIDTH / 2,
       102
     );
     this.ctx.restore();
@@ -2042,17 +2422,17 @@ export class Game {
   private drawDamageVignette(): void {
     this.ctx.save();
     const grad = this.ctx.createRadialGradient(
-      this.canvas.width / 2,
-      this.canvas.height / 2,
-      this.canvas.width * 0.25,
-      this.canvas.width / 2,
-      this.canvas.height / 2,
-      this.canvas.width * 0.65
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2,
+      LOGICAL_WIDTH * 0.25,
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2,
+      LOGICAL_WIDTH * 0.65
     );
     grad.addColorStop(0, 'rgba(255, 0, 50, 0)');
     grad.addColorStop(1, `rgba(255, 15, 60, ${this.damageVignetteAlpha * 0.45})`);
     this.ctx.fillStyle = grad;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     this.ctx.restore();
   }
 
@@ -2077,17 +2457,15 @@ export class Game {
         this.ctx.lineWidth = 1;
         this.ctx.strokeRect(barX - 1, barY - 1, barW + 2, barH + 2);
         this.ctx.fillStyle = hpRatio > 0.5 ? '#00ff66' : hpRatio > 0.25 ? '#facc15' : '#ff1e42';
-        this.ctx.shadowColor = this.ctx.fillStyle;
-        this.ctx.shadowBlur = 6;
         this.ctx.fillRect(barX, barY, barW * hpRatio, barH);
         this.ctx.restore();
       }
     }
   }
 
-  private drawOffScreenIndicators(): void {
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+  private drawOffScreenIndicators(camX: number = 0, camY: number = 0): void {
+    const w = LOGICAL_WIDTH;
+    const h = LOGICAL_HEIGHT;
     const edgePadding = 26;
     const flashAlpha = 0.45 + 0.55 * Math.abs(Math.sin(Date.now() * 0.007));
 
@@ -2102,13 +2480,15 @@ export class Game {
 
       if (!isMiner && !isElite) continue;
 
-      const isOffScreen = enemy.x < 0 || enemy.x > w || enemy.y < 0 || enemy.y > h;
+      const screenX = enemy.x - camX;
+      const screenY = enemy.y - camY;
+      const isOffScreen = screenX < 0 || screenX > w || screenY < 0 || screenY > h;
       if (!isOffScreen) continue;
 
       const cx = w / 2;
       const cy = h / 2;
-      const dx = enemy.x - cx;
-      const dy = enemy.y - cy;
+      const dx = screenX - cx;
+      const dy = screenY - cy;
       const angle = Math.atan2(dy, dx);
 
       const edgeX = Math.max(edgePadding, Math.min(w - edgePadding, cx + dx));
@@ -2143,24 +2523,24 @@ export class Game {
   private drawFreezeOverlay(): void {
     this.ctx.save();
     const grad = this.ctx.createRadialGradient(
-      this.canvas.width / 2,
-      this.canvas.height / 2,
-      this.canvas.width * 0.3,
-      this.canvas.width / 2,
-      this.canvas.height / 2,
-      this.canvas.width * 0.7
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2,
+      LOGICAL_WIDTH * 0.3,
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2,
+      LOGICAL_WIDTH * 0.7
     );
     grad.addColorStop(0, 'rgba(0, 240, 255, 0)');
     grad.addColorStop(1, 'rgba(0, 200, 255, 0.28)');
     this.ctx.fillStyle = grad;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     this.ctx.font = 'bold 15px "JetBrains Mono", Consolas, monospace';
     this.ctx.fillStyle = '#38bdf8';
     this.ctx.textAlign = 'center';
     this.ctx.fillText(
       `❄ SISTEMA CONGELADO: ${this.systemFreezeTimer.toFixed(1)}s`,
-      this.canvas.width / 2,
+      LOGICAL_WIDTH / 2,
       72
     );
     this.ctx.restore();
@@ -2176,15 +2556,15 @@ export class Game {
         `⚡ OVERCLOCK TÉRMICO (x2 CADENCIA + 100% CRIT): ${this.thermalOverclockTimer.toFixed(1)}s`,
         `⚡ THERMAL OVERCLOCK (2x FIRE RATE + 100% CRIT): ${this.thermalOverclockTimer.toFixed(1)}s`
       ),
-      this.canvas.width / 2,
+      LOGICAL_WIDTH / 2,
       110
     );
     this.ctx.restore();
   }
 
   private drawCRTScanlines(): void {
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = LOGICAL_WIDTH;
+    const h = LOGICAL_HEIGHT;
     const arm = 26;
     const pad = 10;
 
@@ -2219,7 +2599,7 @@ export class Game {
 
     const boxX = 16;
     const boxH = 44;
-    const boxY = this.canvas.height - boxH - 14;
+    const boxY = LOGICAL_HEIGHT - boxH - 14;
     const boxW = 440;
 
     this.ctx.save();
@@ -2260,8 +2640,8 @@ export class Game {
     bayW: number;
     bayH: number;
   } {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
     const panelW = 1140;
     const panelH = 626;
     const px = cx - panelW / 2;
@@ -2320,27 +2700,54 @@ export class Game {
 
   private getMenuCharacterRects(): MenuCharacterRect[] {
     const { py, leftCx } = this.getMenuLayout();
-    const cardW = 370;
+    const cardW = 180;
     const cardH = 148;
-    const gapX = 18;
-    const gapY = 14;
-    const startX = leftCx - cardW - gapX / 2;
-    const startY = py + 158;
+    const gapX = 12;
+    const gapY = 12;
+    const totalW = cardW * 4 + gapX * 3;
+    const startX = leftCx - totalW / 2;
+    const startY = py + 154;
 
     return this.metaSystem.characterOrder.map((id, idx) => {
-      const col = idx % 2;
-      const row = Math.floor(idx / 2);
-      const isLastSingleRowCard =
-        idx === this.metaSystem.characterOrder.length - 1 &&
-        this.metaSystem.characterOrder.length % 2 === 1;
+      const col = idx % 4;
+      const row = Math.floor(idx / 4);
       return {
         id,
-        x: isLastSingleRowCard ? leftCx - cardW / 2 : startX + col * (cardW + gapX),
+        x: startX + col * (cardW + gapX),
         y: startY + row * (cardH + gapY),
         width: cardW,
         height: cardH,
       };
     });
+  }
+
+  private getGameModeButtonRects(): {
+    mode: GameMode;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const { py, leftCx } = this.getMenuLayout();
+    const btnW = 368;
+    const btnH = 38;
+    const gap = 16;
+    return [
+      {
+        mode: 'CLASSIC',
+        x: leftCx - btnW - gap / 2,
+        y: py + 474,
+        width: btnW,
+        height: btnH,
+      },
+      {
+        mode: 'NIGHTMARE',
+        x: leftCx + gap / 2,
+        y: py + 474,
+        width: btnW,
+        height: btnH,
+      },
+    ];
   }
 
   private getGachaPullButtonRects(): {
@@ -2450,11 +2857,11 @@ export class Game {
 
   private getStartButtonRect(): { x: number; y: number; width: number; height: number } {
     const { py, leftCx } = this.getMenuLayout();
-    const width = 560;
-    const height = 50;
+    const width = 580;
+    const height = 48;
     return {
       x: leftCx - width / 2,
-      y: py + 544,
+      y: py + 548,
       width,
       height,
     };
@@ -2462,45 +2869,90 @@ export class Game {
 
   private getFullscreenButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1000,
+      x: 752,
       y: 26,
-      width: 195,
+      width: 174,
       height: 44,
     };
   }
 
   private getHelpButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1207,
+      x: 936,
       y: 26,
-      width: 145,
+      width: 126,
       height: 44,
     };
   }
 
   private getGlobalRankingsButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1364,
+      x: 1072,
       y: 26,
-      width: 145,
+      width: 130,
+      height: 44,
+    };
+  }
+
+  private getDailyMissionsButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 1212,
+      y: 26,
+      width: 186,
       height: 44,
     };
   }
 
   private getAchievementsButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1521,
+      x: 1408,
       y: 26,
-      width: 215,
+      width: 186,
+      height: 44,
+    };
+  }
+
+  private getMenuLightGfxButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 1604,
+      y: 26,
+      width: 146,
       height: 44,
     };
   }
 
   private getSettingsButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1748,
+      x: 1760,
       y: 26,
-      width: 140,
+      width: 128,
+      height: 44,
+    };
+  }
+
+  private getInGameLightGfxButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 386,
+      y: 20,
+      width: 176,
+      height: 36,
+    };
+  }
+
+  private getInGamePauseButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: LOGICAL_WIDTH - 110,
+      y: 24,
+      width: 84,
+      height: 24,
+    };
+  }
+
+  private getRerollButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: LOGICAL_WIDTH / 2 - 185,
+      y: LOGICAL_HEIGHT / 2 + 202,
+      width: 370,
       height: 44,
     };
   }
@@ -2537,7 +2989,7 @@ export class Game {
     this.ctx.fillStyle = fill;
     this.ctx.strokeStyle = stroke;
     this.ctx.lineWidth = lineWidth;
-    if (glowColor && glowBlur > 0) {
+    if (glowColor && glowBlur > 0 && !this.lightGraphicsEnabled) {
       this.ctx.shadowColor = glowColor;
       this.ctx.shadowBlur = glowBlur;
     }
@@ -2549,8 +3001,8 @@ export class Game {
 
   /** Fondo animado de modo atractivo detrás del Kernel Hub con estética de placa base / radar táctico. */
   private drawMenuAttractBackdrop(): void {
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = LOGICAL_WIDTH;
+    const h = LOGICAL_HEIGHT;
     const cx = w * 0.5;
     const cy = h * 0.5;
     const t = performance.now() * 0.001;
@@ -2729,8 +3181,8 @@ export class Game {
     width: number;
     height: number;
   }[] {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
     const panelH = 520;
     const py = cy - panelH / 2;
     const rowStartY = py + 104;
@@ -2781,8 +3233,8 @@ export class Game {
     width: number;
     height: number;
   }[] {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
     const py = cy - 290;
     const tabW = 310;
     const tabH = 36;
@@ -2811,8 +3263,8 @@ export class Game {
   }
 
   private getLeaderboardBackButtonRect(): { x: number; y: number; width: number; height: number } {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
     const py = cy - 290;
     const width = 260;
     const height = 38;
@@ -3035,8 +3487,13 @@ export class Game {
         ? i18n.t('[ HARDWARE DISPONIBLE ]', '[ HARDWARE ONLINE ]')
         : i18n.t(`[ BLOQUEADO: ${profile.cost} CR ]`, `[ LOCKED: ${profile.cost} CR ]`),
       cxBay,
-      bayY + 228
+      bayY + 226
     );
+
+    const pPassiveName = i18n.currentLang === 'EN' ? profile.passiveNameEn : profile.passiveName;
+    this.ctx.fillStyle = '#fbbf24';
+    this.ctx.font = `bold 10px ${FONT_MONO}`;
+    this.ctx.fillText(`★ ${pPassiveName}`, cxBay, bayY + 244);
 
     // Barras de telemetría de unidad (incluyendo bonos del sombrero si aplican)
     const hpTotal = Math.round(100 * profile.hpMultiplier + (shownHat?.stats.maxHpBonus ?? 0));
@@ -3045,9 +3502,9 @@ export class Game {
 
     const statX = bayX + 22;
     const statW = bayW - 44;
-    this.drawHardwareStatRow(statX, bayY + 258, statW, 'KERNEL HP', `${hpTotal} HP`, hpTotal / 240, '#10b981');
-    this.drawHardwareStatRow(statX, bayY + 292, statW, 'CLOCK SPD', `${spdPct}%`, spdPct / 150, '#38bdf8');
-    this.drawHardwareStatRow(statX, bayY + 326, statW, 'MAGNET BUS', `${magTotal}px`, magTotal / 200, '#a855f7');
+    this.drawHardwareStatRow(statX, bayY + 266, statW, 'KERNEL HP', `${hpTotal} HP`, hpTotal / 240, '#10b981');
+    this.drawHardwareStatRow(statX, bayY + 298, statW, 'CLOCK SPD', `${spdPct}%`, spdPct / 150, '#38bdf8');
+    this.drawHardwareStatRow(statX, bayY + 330, statW, 'MAGNET BUS', `${magTotal}px`, magTotal / 200, '#a855f7');
 
     // Módulo de Sombrero / Accesorio Vectorial Activo
     const modX = bayX + 16;
@@ -3118,7 +3575,7 @@ export class Game {
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(5, 9, 18, 0.78)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     this.drawMenuAttractBackdrop();
 
     // ==========================================
@@ -3220,10 +3677,24 @@ export class Game {
       this.hoveredRankingsBtn ? '#ffffff' : '#fbbf24',
       this.hoveredRankingsBtn ? 2.2 : 1.5,
       this.hoveredRankingsBtn ? '#ffffff' : '#fde68a',
-      12,
+      11.5,
       `[R] ${i18n.t('RANKINGS', 'RANKINGS')}`,
       '#fbbf24',
       this.hoveredRankingsBtn ? 12 : 4
+    );
+
+    const dailyBtn = this.getDailyMissionsButtonRect();
+    const dailyDone = this.dailyMissions.getCompletedCount();
+    this.drawClippedButton(
+      dailyBtn,
+      this.hoveredDailyMissionsBtn ? 'rgba(74, 42, 10, 0.96)' : 'rgba(26, 20, 14, 0.94)',
+      this.hoveredDailyMissionsBtn ? '#ffffff' : '#f59e0b',
+      this.hoveredDailyMissionsBtn ? 2.2 : 1.5,
+      this.hoveredDailyMissionsBtn ? '#ffffff' : '#fde68a',
+      11.5,
+      `[M] ${i18n.t('DIARIAS', 'DAILY')} (${dailyDone}/3)`,
+      '#f59e0b',
+      this.hoveredDailyMissionsBtn ? 12 : 4
     );
 
     const achBtn = this.getAchievementsButtonRect();
@@ -3236,9 +3707,26 @@ export class Game {
       this.hoveredAchievementsBtn ? 2.2 : 1.5,
       this.hoveredAchievementsBtn ? '#ffffff' : '#a7f3d0',
       11.5,
-      `[A] ${i18n.t('LOGROS', 'ACHIEVEMENTS')} (${achUnlocked}/${totalAch})`,
+      `[A] ${i18n.t('LOGROS', 'ACHIEV.')} (${achUnlocked}/${totalAch})`,
       '#10b981',
       this.hoveredAchievementsBtn ? 12 : 4
+    );
+
+    const lightBtn = this.getMenuLightGfxButtonRect();
+    this.drawClippedButton(
+      lightBtn,
+      this.lightGraphicsEnabled
+        ? 'rgba(6, 62, 42, 0.96)'
+        : this.hoveredLightGfxBtn
+        ? 'rgba(14, 52, 82, 0.96)'
+        : 'rgba(11, 22, 40, 0.94)',
+      this.hoveredLightGfxBtn ? '#ffffff' : this.lightGraphicsEnabled ? '#10b981' : '#38bdf8',
+      this.hoveredLightGfxBtn ? 2.2 : 1.5,
+      this.lightGraphicsEnabled ? '#6ee7b7' : '#bae6fd',
+      11,
+      `[V] ${this.lightGraphicsEnabled ? i18n.t('LIGEROS: ON', 'LITE GFX: ON') : i18n.t('LIGEROS: OFF', 'LITE GFX: OFF')}`,
+      this.lightGraphicsEnabled ? '#10b981' : '#38bdf8',
+      this.hoveredLightGfxBtn ? 10 : 3
     );
 
     const setBtn = this.getSettingsButtonRect();
@@ -3248,7 +3736,7 @@ export class Game {
       this.hoveredSettingsBtn ? '#ffffff' : '#64748b',
       this.hoveredSettingsBtn ? 2.2 : 1.5,
       this.hoveredSettingsBtn ? '#ffffff' : '#cbd5e1',
-      12,
+      11.5,
       `[O] ${i18n.t('AJUSTES', 'SETTINGS')}`,
       '#38bdf8',
       this.hoveredSettingsBtn ? 10 : 3
@@ -3345,7 +3833,7 @@ export class Game {
           rect.y,
           rect.width,
           rect.height,
-          12,
+          10,
           selected
             ? 'rgba(10, 46, 56, 0.96)'
             : hovered
@@ -3354,19 +3842,19 @@ export class Game {
           selected ? '#10b981' : hovered ? '#38bdf8' : unlocked ? 'rgba(148, 163, 184, 0.45)' : '#f59e0b',
           selected || hovered ? 2.2 : 1.4,
           selected ? '#10b981' : hovered ? '#38bdf8' : undefined,
-          selected || hovered ? 10 : 0
+          selected || hovered ? 8 : 0
         );
 
-        this.traceChamferRect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4, 10);
+        this.traceChamferRect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4, 8);
         this.ctx.clip();
 
-        const previewX = rect.x + 34;
-        const previewY = rect.y + 38;
+        const previewX = rect.x + 26;
+        const previewY = rect.y + 30;
         Player.drawCyberChassis(
           this.ctx,
           previewX,
           previewY,
-          28,
+          24,
           profile.color,
           profile.borderColor,
           now,
@@ -3377,52 +3865,60 @@ export class Game {
 
         if (rect.id === 'MORCILLITA') {
           this.ctx.save();
-          this.ctx.translate(previewX + 16, previewY - 12);
+          this.ctx.translate(previewX + 13, previewY - 10);
           this.ctx.rotate(Math.PI / 4);
           this.ctx.fillStyle = '#92400e';
           this.ctx.strokeStyle = '#fbbf24';
-          this.ctx.lineWidth = 1.5;
-          this.ctx.fillRect(-5, -5, 10, 10);
-          this.ctx.strokeRect(-5, -5, 10, 10);
+          this.ctx.lineWidth = 1.4;
+          this.ctx.fillRect(-4, -4, 8, 8);
+          this.ctx.strokeRect(-4, -4, 8, 8);
           this.ctx.restore();
         }
 
         this.ctx.shadowBlur = 0;
         const pName = i18n.currentLang === 'EN' && profile.nameEn ? profile.nameEn : profile.name;
         const pSub = i18n.currentLang === 'EN' && profile.subtitleEn ? profile.subtitleEn : profile.subtitle;
-        const pDesc = i18n.currentLang === 'EN' && profile.descriptionEn ? profile.descriptionEn : profile.description;
+        const pPassive = i18n.currentLang === 'EN' ? profile.passiveDescEn : profile.passiveDesc;
 
         this.ctx.textAlign = 'left';
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = pName.length > 20 ? `bold 13.5px ${FONT_DISPLAY}` : `bold 15px ${FONT_DISPLAY}`;
-        this.ctx.fillText(`[${i + 1}] ${pName}`, rect.x + 62, rect.y + 30);
+        let nameFont = 12;
+        const maxTitleW = rect.width - 54;
+        const titleStr = `[${i + 1}] ${pName}`;
+        this.ctx.font = `bold ${nameFont}px ${FONT_DISPLAY}`;
+        const tW = this.ctx.measureText(titleStr).width;
+        if (tW > maxTitleW) {
+          nameFont = Math.max(9.5, Math.floor(12 * (maxTitleW / tW)));
+          this.ctx.font = `bold ${nameFont}px ${FONT_DISPLAY}`;
+        }
+        this.ctx.fillText(titleStr, rect.x + 48, rect.y + 25, rect.width - 58);
 
         this.ctx.fillStyle = '#38bdf8';
-        this.ctx.font = `bold 11px ${FONT_MONO}`;
-        this.ctx.fillText(pSub, rect.x + 62, rect.y + 48);
+        this.ctx.font = `bold 9.5px ${FONT_MONO}`;
+        this.ctx.fillText(pSub, rect.x + 48, rect.y + 41, rect.width - 58);
 
         this.ctx.fillStyle = '#cbd5e1';
-        this.ctx.font = `12px ${FONT_DISPLAY}`;
-        this.wrapText(pDesc, rect.x + 14, rect.y + 74, rect.width - 28, 16, 3);
+        this.ctx.font = `10.8px ${FONT_DISPLAY}`;
+        this.wrapText(pPassive, rect.x + 10, rect.y + 62, rect.width - 20, 14, 4);
 
-        this.ctx.font = `bold 11.5px ${FONT_MONO}`;
+        this.ctx.font = `bold 10.5px ${FONT_MONO}`;
         if (selected) {
           this.ctx.fillStyle = '#10b981';
-          this.ctx.fillText(i18n.t('[✓] EQUIPADO Y LISTO', '[✓] EQUIPPED & READY'), rect.x + 14, rect.y + rect.height - 13);
+          this.ctx.fillText(i18n.t('[✓] EQUIPADO', '[✓] EQUIPPED'), rect.x + 10, rect.y + rect.height - 11);
         } else if (unlocked) {
           this.ctx.fillStyle = '#38bdf8';
           this.ctx.fillText(
-            i18n.t(`▸ PULSA [${i + 1}] O CLIC PARA EQUIPAR`, `▸ PRESS [${i + 1}] OR CLICK TO EQUIP`),
-            rect.x + 14,
-            rect.y + rect.height - 13
+            i18n.t(`▸ [${i + 1}] EQUIPAR`, `▸ [${i + 1}] EQUIP`),
+            rect.x + 10,
+            rect.y + rect.height - 11
           );
         } else {
           const canAfford = this.metaSystem.coins >= profile.cost;
           this.ctx.fillStyle = canAfford ? '#fbbf24' : '#f43f5e';
           this.ctx.fillText(
             i18n.t(`DESBLOQUEAR (${profile.cost} CR)`, `UNLOCK (${profile.cost} CR)`),
-            rect.x + 14,
-            rect.y + rect.height - 13
+            rect.x + 10,
+            rect.y + rect.height - 11
           );
         }
 
@@ -3731,21 +4227,70 @@ export class Game {
       }
     }
 
+    // Selector de Modo de Juego ([B]: CLÁSICO vs PESADILLA 15 CR)
+    for (const mBtn of this.getGameModeButtonRects()) {
+      const isNight = mBtn.mode === 'NIGHTMARE';
+      const isSelected = this.selectedGameMode === mBtn.mode;
+      const isHov = this.hoveredModeBtn === mBtn.mode;
+      const canPay = !isNight || this.metaSystem.coins >= NIGHTMARE_ENTRY_COST;
+      const strokeCol = isNight
+        ? isSelected
+          ? canPay
+            ? '#f43f5e'
+            : '#fb7185'
+          : 'rgba(244, 63, 94, 0.4)'
+        : isSelected
+        ? '#38bdf8'
+        : 'rgba(56, 189, 248, 0.4)';
+
+      this.drawClippedButton(
+        mBtn,
+        isSelected
+          ? isNight
+            ? 'rgba(88, 18, 32, 0.96)'
+            : 'rgba(14, 52, 82, 0.96)'
+          : isHov
+          ? 'rgba(22, 34, 56, 0.95)'
+          : 'rgba(13, 20, 36, 0.92)',
+        isHov ? '#ffffff' : strokeCol,
+        isSelected ? 2.1 : 1.3,
+        isSelected ? '#ffffff' : isNight ? '#fda4af' : '#94a3b8',
+        11.5,
+        isNight
+          ? i18n.t(
+              `💀 MODO PESADILLA (${NIGHTMARE_ENTRY_COST} CR) • MAPA INFINITO + x2 CR`,
+              `💀 NIGHTMARE MODE (${NIGHTMARE_ENTRY_COST} CR) • INFINITE MAP + 2x CR`
+            )
+          : i18n.t('🛡️ MODO CLÁSICO (GRATIS) • ARENA ESTÁNDAR', '🛡️ CLASSIC MODE (FREE) • STANDARD ARENA'),
+        isSelected ? strokeCol : undefined,
+        isSelected ? 8 : 0
+      );
+    }
+
     this.ctx.save();
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#38bdf8';
-    let feedbackFont = 12.5;
+    let feedbackFont = 12;
     const maxFeedbackW = 740;
     this.ctx.font = `bold ${feedbackFont}px ${FONT_DISPLAY}`;
     const fbMetrics = this.ctx.measureText(this.menuFeedbackMessage).width;
     if (fbMetrics > maxFeedbackW) {
-      feedbackFont = Math.max(10, Math.floor(12.5 * (maxFeedbackW / fbMetrics)));
+      feedbackFont = Math.max(9.5, Math.floor(12 * (maxFeedbackW / fbMetrics)));
       this.ctx.font = `bold ${feedbackFont}px ${FONT_DISPLAY}`;
     }
-    this.ctx.fillText(this.menuFeedbackMessage, leftCx, py + 522);
+    this.ctx.fillText(this.menuFeedbackMessage, leftCx, py + 532);
     this.ctx.restore();
 
     const startBtn = this.getStartButtonRect();
+    const isNightmareSelected = this.selectedGameMode === 'NIGHTMARE';
+    const startBg = isNightmareSelected
+      ? this.hoveredStartBtn
+        ? 'rgba(127, 29, 29, 0.98)'
+        : 'rgba(88, 16, 28, 0.95)'
+      : this.hoveredStartBtn
+      ? 'rgba(6, 78, 59, 0.98)'
+      : 'rgba(6, 48, 42, 0.95)';
+    const startStroke = isNightmareSelected ? '#f43f5e' : '#10b981';
     this.ctx.save();
     this.drawCyberPanel(
       startBtn.x,
@@ -3753,10 +4298,10 @@ export class Game {
       startBtn.width,
       startBtn.height,
       12,
-      this.hoveredStartBtn ? 'rgba(6, 78, 59, 0.98)' : 'rgba(6, 48, 42, 0.95)',
-      this.hoveredStartBtn ? '#ffffff' : '#10b981',
+      startBg,
+      this.hoveredStartBtn ? '#ffffff' : startStroke,
       this.hoveredStartBtn ? 2.4 : 2.0,
-      '#10b981',
+      startStroke,
       this.hoveredStartBtn ? 16 : 8 + Math.sin(now * 0.006) * 4
     );
 
@@ -3764,14 +4309,16 @@ export class Game {
     this.ctx.clip();
 
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = this.hoveredStartBtn ? '#ffffff' : '#a7f3d0';
-    let startFont = 15.5;
+    this.ctx.fillStyle = this.hoveredStartBtn ? '#ffffff' : isNightmareSelected ? '#fecdd3' : '#a7f3d0';
+    let startFont = 15;
     const maxStartW = startBtn.width - 28;
-    const startText = `▸ ${i18n.t('PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR', 'PRESS [ENTER] OR CLICK TO DEPLOY')}`;
+    const startText = isNightmareSelected
+      ? `▸ ${i18n.t(`DESPLEGAR EN PESADILLA (-${NIGHTMARE_ENTRY_COST} CR)`, `DEPLOY NIGHTMARE (-${NIGHTMARE_ENTRY_COST} CR)`)}`
+      : `▸ ${i18n.t('PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR', 'PRESS [ENTER] OR CLICK TO DEPLOY')}`;
     this.ctx.font = `bold ${startFont}px ${FONT_DISPLAY}`;
     const stMetrics = this.ctx.measureText(startText).width;
     if (stMetrics > maxStartW) {
-      startFont = Math.max(11, Math.floor(15.5 * (maxStartW / stMetrics)));
+      startFont = Math.max(11, Math.floor(15 * (maxStartW / stMetrics)));
       this.ctx.font = `bold ${startFont}px ${FONT_DISPLAY}`;
     }
     this.ctx.fillText(startText, leftCx, startBtn.y + 30);
@@ -3779,6 +4326,8 @@ export class Game {
 
     if (this.showLeaderboardOverlay) {
       this.drawLeaderboardOverlay();
+    } else if (this.showDailyMissionsOverlay) {
+      this.drawDailyMissionsOverlay();
     } else if (this.showAchievementsOverlay) {
       this.drawAchievementsOverlay();
     } else if (this.showSettingsOverlay) {
@@ -3791,14 +4340,14 @@ export class Game {
   }
 
   private drawLeaderboardOverlay(): void {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(5, 9, 18, 0.9)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
-    const panelW = Math.min(720, this.canvas.width - 32);
+    const panelW = Math.min(720, LOGICAL_WIDTH - 32);
     const panelH = 576;
     const px = cx - panelW / 2;
     const py = cy - 290;
@@ -3977,7 +4526,7 @@ export class Game {
     panelY: number,
     panelH: number
   ): { x: number; y: number; width: number; height: number } {
-    const cx = this.canvas.width / 2;
+    const cx = LOGICAL_WIDTH / 2;
     const width = 280;
     const height = 38;
     return {
@@ -4052,7 +4601,7 @@ export class Game {
     width: number;
     height: number;
   }[] {
-    const cx = this.canvas.width / 2;
+    const cx = LOGICAL_WIDTH / 2;
     const tabW = 420;
     const tabH = 34;
     const gap = 20;
@@ -4082,12 +4631,12 @@ export class Game {
   }
 
   private drawAchievementsOverlay(): void {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(5, 9, 18, 0.9)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const panelW = 920;
     const panelH = 650;
@@ -4277,12 +4826,12 @@ export class Game {
   }
 
   private drawSettingsOverlay(): void {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(5, 9, 18, 0.9)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const panelW = 660;
     const panelH = 520;
@@ -4453,12 +5002,12 @@ export class Game {
   }
 
   private drawHelpOverlay(): void {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(5, 9, 18, 0.9)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const panelW = 900;
     const panelH = 590;
@@ -4494,37 +5043,37 @@ export class Game {
         lines:
           i18n.currentLang === 'EN'
             ? [
-                '• [WASD / Arrows]: Agent movement.',
-                '• [P]: Tactical system pause.',
-                '• [H in combat]: Toggle attack range circle.',
-                '• Auto-fire: Weapons target highest threat.',
+                '• [WASD / Arrows] or Touch Joystick: Move.',
+                '• [P]: Pause  |  [V]: Light Graphics  |  [R]: Reroll.',
+                '• [M]: Daily Missions  |  [B]: Nightmare Infinite Mode.',
+                '• [H]: Range Circle  |  Auto-fire targets threat.',
               ]
             : [
-                '• [WASD / Flechas]: Desplazamiento del Agente.',
-                '• [P]: Pausa táctica del sistema.',
-                '• [H en combate]: Alternar círculo de alcance.',
-                '• Disparo automático: Ataca al malware prioritario.',
+                '• [WASD / Flechas] o Joystick Táctil: Mover.',
+                '• [P]: Pausa  |  [V]: Gráficos Ligeros  |  [R]: Reroll.',
+                '• [M]: Misiones Diarias  |  [B]: Modo Pesadilla.',
+                '• [H]: Círculo alcance  |  Disparo automático.',
               ],
         color: '#10b981',
         border: 'rgba(16, 185, 129, 0.45)',
       },
       {
-        title: i18n.t('02 // ARSENAL Y SOMBREROS', '02 // ARSENAL & GEAR'),
+        title: i18n.t('02 // ARSENAL, PASIVAS Y EVOLUCIONES', '02 // ARSENAL, PASSIVES & EVOS'),
         lines:
           i18n.currentLang === 'EN'
             ? [
-                '• Collect XP orbs to install level-up patches.',
-                '• Strict limit of 4 active weapon slots.',
-                '• Combine weapons and passives for synergies.',
-                '• Unlock hats in the Gacha [G] for permanent',
-                '  passive bonuses mounted right on your bot.',
+                '• 5 active weapon slots + 3 Rerolls [R] per run.',
+                '• Combine Lv4+ weapons & passives to EVOLVE!',
+                '• Each agent has a unique passive skill in combat.',
+                '• Nightmare Mode (15 CR): infinite map, minimap,',
+                '  terrain events & 2x CryptoCoin rewards!',
               ]
             : [
-                '• Recoge orbes de XP para instalar parches de nivel.',
-                '• Límite estricto de 4 ranuras de armas activas.',
-                '• Combina armas y pasivas para crear sinergias.',
-                '• Desbloquea sombreros en el Gacha [G] para',
-                '  equipar bonificaciones pasivas en tu bot.',
+                '• 5 ranuras de armas + 3 Rerolls [R] por partida.',
+                '• ¡Combina armas Nv4+ con pasivas para EVOLUCIONAR!',
+                '• Cada agente tiene una habilidad pasiva única.',
+                '• Modo Pesadilla (15 CR): mapa infinito, minimapa,',
+                '  eventos de terreno y CryptoMonedas x2!',
               ],
         color: '#38bdf8',
         border: 'rgba(56, 189, 248, 0.45)',
@@ -4689,8 +5238,8 @@ export class Game {
   }
 
   private ensureBgCache(): HTMLCanvasElement {
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = LOGICAL_WIDTH;
+    const h = LOGICAL_HEIGHT;
     if (
       this.bgCacheCanvas &&
       this.bgCacheCanvas.width === w &&
@@ -4810,26 +5359,28 @@ export class Game {
   }
 
   private drawCyberGrid(): void {
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = LOGICAL_WIDTH;
+    const h = LOGICAL_HEIGHT;
     const tSec = performance.now() * 0.001;
 
     this.ctx.save();
     this.ctx.drawImage(this.ensureBgCache(), 0, 0);
 
-    // Pulso horizontal suave de escaneo de bus (sin recrear gradientes cada frame)
-    const scanY = ((tSec * 82) % (h + 160)) - 80;
-    this.ctx.drawImage(this.ensureScanLineCache(), 0, scanY - 40, w, 80);
+    if (!this.lightGraphicsEnabled) {
+      // Pulso horizontal suave de escaneo de bus (sin recrear gradientes cada frame)
+      const scanY = ((tSec * 82) % (h + 160)) - 80;
+      this.ctx.drawImage(this.ensureScanLineCache(), 0, scanY - 40, w, 80);
 
-    // Paquetes ambientales discretos circulando por el silicio
-    for (let i = 0; i < this.ambientNodes.length; i++) {
-      const node = this.ambientNodes[i];
-      const nx = (((node.x + node.vx * tSec) % w) + w) % w;
-      const ny = (((node.y + node.vy * tSec) % h) + h) % h;
-      const pulse = 0.65 + 0.35 * Math.sin(tSec * 2.1 + i);
-      this.ctx.fillStyle = i % 3 === 0 ? '#38bdf8' : '#10b981';
-      this.ctx.globalAlpha = node.alpha * 0.75 * pulse;
-      this.ctx.fillRect(nx - node.size * 0.5, ny - node.size * 0.5, node.size, node.size);
+      // Paquetes ambientales discretos circulando por el silicio
+      for (let i = 0; i < this.ambientNodes.length; i++) {
+        const node = this.ambientNodes[i];
+        const nx = (((node.x + node.vx * tSec) % w) + w) % w;
+        const ny = (((node.y + node.vy * tSec) % h) + h) % h;
+        const pulse = 0.65 + 0.35 * Math.sin(tSec * 2.1 + i);
+        this.ctx.fillStyle = i % 3 === 0 ? '#38bdf8' : '#10b981';
+        this.ctx.globalAlpha = node.alpha * 0.75 * pulse;
+        this.ctx.fillRect(nx - node.size * 0.5, ny - node.size * 0.5, node.size, node.size);
+      }
     }
 
     this.ctx.restore();
@@ -4837,7 +5388,7 @@ export class Game {
 
   private drawXpBar(): void {
     const barHeight = 9;
-    const w = this.canvas.width;
+    const w = LOGICAL_WIDTH;
     const ratio = Math.max(
       0,
       Math.min(1, this.upgradeSystem.currentXp / Math.max(1, this.upgradeSystem.xpToNextLevel))
@@ -4875,7 +5426,7 @@ export class Game {
   }
 
   private drawHUD(): void {
-    const w = this.canvas.width;
+    const w = LOGICAL_WIDTH;
     const hpRatio = Math.max(0, Math.min(1, this.player.hp / Math.max(1, this.player.maxHp)));
 
     this.ctx.save();
@@ -5013,10 +5564,16 @@ export class Game {
     this.ctx.fillStyle = '#fde68a';
     this.ctx.fillText(`${this.runCoinsCollected} CR`, rx + 179, ry + 25);
 
-    this.ctx.textAlign = 'right';
-    this.ctx.fillStyle = '#94a3b8';
-    this.ctx.font = `bold 11px ${FONT_MONO}`;
-    this.ctx.fillText(`[P] ${i18n.t('PAUSA', 'PAUSE')}`, rx + rw - 14, ry + 24);
+    const pauseBtn = this.getInGamePauseButtonRect();
+    this.drawClippedButton(
+      pauseBtn,
+      'rgba(30, 41, 59, 0.92)',
+      'rgba(148, 163, 184, 0.55)',
+      1.1,
+      '#cbd5e1',
+      10,
+      `[P] ${i18n.t('PAUSA', 'PAUSE')}`
+    );
 
     this.ctx.fillStyle = 'rgba(56, 189, 248, 0.22)';
     this.ctx.fillRect(rx + 14, ry + 37, rw - 28, 1);
@@ -5050,10 +5607,10 @@ export class Game {
 
     // UI Dedicada exclusivamente al Jefe Final ("El Toro") cuando está activo
     if (this.finalBoss && this.finalBoss.active) {
-      const panelW = Math.min(640, this.canvas.width * 0.72);
+      const panelW = Math.min(640, LOGICAL_WIDTH * 0.72);
       const panelH = 68;
-      const px = (this.canvas.width - panelW) / 2;
-      const py = this.canvas.height - 84;
+      const px = (LOGICAL_WIDTH - panelW) / 2;
+      const py = LOGICAL_HEIGHT - 84;
 
       this.drawCyberPanel(
         px,
@@ -5075,7 +5632,7 @@ export class Game {
           `JEFE FINAL: EL TORO [INVENCIBLE // CONTACTO: 50% HP MÁX] | ${this.finalBoss.getDashStatusText()}`,
           `FINAL BOSS: EL TORO [INVINCIBLE // CONTACT: 50% MAX HP] | ${this.finalBoss.getDashStatusText()}`
         ),
-        this.canvas.width / 2,
+        LOGICAL_WIDTH / 2,
         py + 24
       );
 
@@ -5083,7 +5640,7 @@ export class Game {
       this.ctx.font = `bold 19px ${FONT_MONO}`;
       this.ctx.fillText(
         `${i18n.t('DAÑO TOTAL ACUMULADO', 'TOTAL DAMAGE DEALT')}: ${Math.round(this.finalBoss.totalDamageTaken).toLocaleString('en-US')}`,
-        this.canvas.width / 2,
+        LOGICAL_WIDTH / 2,
         py + 52
       );
 
@@ -5103,17 +5660,17 @@ export class Game {
         this.ctx.font = `bold 20px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           `ALERTA // ${this.spawner.lastBossSpawnedName} DETECTED`,
-          this.canvas.width / 2,
+          LOGICAL_WIDTH / 2,
           104
         );
       }
     }
 
     if (activeBoss) {
-      const barWidth = Math.min(540, this.canvas.width * 0.56);
+      const barWidth = Math.min(540, LOGICAL_WIDTH * 0.56);
       const barHeight = 14;
-      const x = (this.canvas.width - barWidth) / 2;
-      const y = this.canvas.height - 46;
+      const x = (LOGICAL_WIDTH - barWidth) / 2;
+      const y = LOGICAL_HEIGHT - 46;
       const ratio = Math.max(0, activeBoss.hp / Math.max(1, activeBoss.maxHp));
       const bossColor = activeBoss.bossColor || '#f43f5e';
 
@@ -5121,7 +5678,7 @@ export class Game {
       this.ctx.font = `bold 13px ${FONT_MONO}`;
       this.ctx.fillText(
         `${activeBoss.bossName} // INTEGRITY: ${Math.max(0, Math.ceil(activeBoss.hp)).toLocaleString('en-US')} / ${activeBoss.maxHp.toLocaleString('en-US')}`,
-        this.canvas.width / 2,
+        LOGICAL_WIDTH / 2,
         y - 8
       );
 
@@ -5146,8 +5703,8 @@ export class Game {
     const cardHeight = 308;
     const gap = 30;
     const totalWidth = choices.length * cardWidth + (choices.length - 1) * gap;
-    const startX = (this.canvas.width - totalWidth) / 2;
-    const y = this.canvas.height / 2 - cardHeight / 2 + 28;
+    const startX = (LOGICAL_WIDTH - totalWidth) / 2;
+    const y = LOGICAL_HEIGHT / 2 - cardHeight / 2 + 28;
 
     return choices.map((_, index) => ({
       index,
@@ -5198,7 +5755,7 @@ export class Game {
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(5, 9, 18, 0.88)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#f8fafc';
@@ -5207,8 +5764,8 @@ export class Game {
     this.ctx.font = `bold 27px ${FONT_DISPLAY}`;
     this.ctx.fillText(
       `// ${i18n.t('MÓDULOS DE MEJORA', 'SYSTEM UPGRADE MODULES')} :: ${i18n.t('NIVEL', 'LEVEL')} ${this.upgradeSystem.level}.0 //`,
-      this.canvas.width / 2,
-      this.canvas.height / 2 - 186
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2 - 186
     );
 
     this.ctx.shadowBlur = 0;
@@ -5219,8 +5776,8 @@ export class Game {
         'Elige 1 de las 3 Tarjetas de Mejora con las teclas [1] [2] [3] o haciendo clic:',
         'Choose 1 of 3 Upgrade Cards using keys [1] [2] [3] or clicking:'
       ),
-      this.canvas.width / 2,
-      this.canvas.height / 2 - 154
+      LOGICAL_WIDTH / 2,
+      LOGICAL_HEIGHT / 2 - 154
     );
 
     for (let i = 0; i < choices.length; i++) {
@@ -5495,7 +6052,9 @@ export class Game {
       this.ctx.fillStyle = isHovered ? '#ffffff' : opt.color;
       this.ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
       this.ctx.fillText(
-        `▸ ${i18n.t('SELECCIONAR TARJETA', 'SELECT CARD')} [${i + 1}]`,
+        opt.isEvolution
+          ? `★ ${i18n.t('EVOLUCIONAR ARMA', 'EVOLVE WEAPON')} [${i + 1}]`
+          : `▸ ${i18n.t('SELECCIONAR TARJETA', 'SELECT CARD')} [${i + 1}]`,
         rect.x + rect.width / 2,
         rect.y + rect.height - 18
       );
@@ -5503,6 +6062,298 @@ export class Game {
       this.ctx.restore();
     }
 
+    // Botón de Reroll (3 por partida) debajo de las tarjetas
+    const rerollBtn = this.getRerollButtonRect();
+    const canReroll =
+      this.upgradeSystem.rerollsRemaining > 0 && !choices[0]?.isCompanionBranchCard;
+    this.drawClippedButton(
+      rerollBtn,
+      !canReroll
+        ? 'rgba(15, 23, 42, 0.7)'
+        : this.hoveredRerollBtn
+        ? 'rgba(72, 46, 12, 0.96)'
+        : 'rgba(26, 20, 12, 0.95)',
+      !canReroll ? '#475569' : this.hoveredRerollBtn ? '#ffffff' : '#fbbf24',
+      this.hoveredRerollBtn && canReroll ? 2.4 : 1.6,
+      !canReroll ? '#64748b' : this.hoveredRerollBtn ? '#ffffff' : '#fde68a',
+      13.5,
+      `🎲 [R] ${i18n.t('RELANZAR OPCIONES', 'REROLL CARDS')} (${this.upgradeSystem.rerollsRemaining}/3)`
+    );
+
+    this.ctx.restore();
+  }
+
+  private drawDailyMissionsOverlay(): void {
+    this.dailyMissions.ensureTodayMissions();
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
+    const panelW = 780;
+    const panelH = 500;
+    const px = cx - panelW / 2;
+    const py = cy - panelH / 2;
+
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(5, 9, 18, 0.9)';
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
+    this.drawCyberPanel(
+      px,
+      py,
+      panelW,
+      panelH,
+      14,
+      'rgba(11, 19, 34, 0.98)',
+      '#f59e0b',
+      2.2,
+      '#f59e0b',
+      14
+    );
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#fde047';
+    this.ctx.font = `bold 23px ${FONT_DISPLAY}`;
+    this.ctx.fillText(
+      `★ ${i18n.t('MISIONES DIARIAS DEL PROTOCOLO', 'DAILY PROTOCOL MISSIONS')} (${this.dailyMissions.getCompletedCount()}/3)`,
+      cx,
+      py + 42
+    );
+
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.font = `12px ${FONT_MONO}`;
+    this.ctx.fillText(
+      i18n.t(
+        `Se reinician automáticamente en: ${this.dailyMissions.getTimeUntilResetText()}  •  Recompensas automáticas`,
+        `Auto-resets in: ${this.dailyMissions.getTimeUntilResetText()}  •  Auto-credited CryptoCoins`
+      ),
+      cx,
+      py + 68
+    );
+
+    const cardW = panelW - 72;
+    const cardH = 96;
+    const cardX = cx - cardW / 2;
+    const startY = py + 96;
+
+    for (let i = 0; i < this.dailyMissions.missions.length; i++) {
+      const m = this.dailyMissions.missions[i];
+      const y = startY + i * (cardH + 14);
+      this.drawCyberPanel(
+        cardX,
+        y,
+        cardW,
+        cardH,
+        10,
+        m.completed ? 'rgba(6, 52, 42, 0.94)' : 'rgba(15, 24, 42, 0.94)',
+        m.completed ? '#10b981' : '#f59e0b',
+        m.completed ? 2.0 : 1.5
+      );
+
+      this.ctx.textAlign = 'left';
+      this.ctx.fillStyle = m.completed ? '#6ee7b7' : '#ffffff';
+      this.ctx.font = `bold 15px ${FONT_DISPLAY}`;
+      this.ctx.fillText(
+        `${m.completed ? '✓' : '▸'} ${i18n.currentLang === 'EN' ? m.titleEn : m.title}`,
+        cardX + 20,
+        y + 30
+      );
+
+      this.ctx.fillStyle = '#cbd5e1';
+      this.ctx.font = `12.5px ${FONT_DISPLAY}`;
+      this.ctx.fillText(
+        i18n.currentLang === 'EN' ? m.descriptionEn : m.description,
+        cardX + 20,
+        y + 53
+      );
+
+      this.ctx.textAlign = 'right';
+      this.ctx.fillStyle = m.completed ? '#10b981' : '#fbbf24';
+      this.ctx.font = `bold 14px ${FONT_MONO}`;
+      this.ctx.fillText(`+${m.rewardCoins} CR`, cardX + cardW - 20, y + 30);
+
+      const barX = cardX + 20;
+      const barY = y + 68;
+      const barW = cardW - 150;
+      const barH = 10;
+      const ratio = Math.min(1, m.current / Math.max(1, m.target));
+      this.ctx.fillStyle = 'rgba(7, 11, 20, 0.95)';
+      this.ctx.fillRect(barX, barY, barW, barH);
+      this.ctx.fillStyle = m.completed ? '#10b981' : '#f59e0b';
+      this.ctx.fillRect(barX, barY, barW * ratio, barH);
+
+      this.ctx.fillStyle = m.completed ? '#6ee7b7' : '#fde68a';
+      this.ctx.font = `bold 11.5px ${FONT_MONO}`;
+      this.ctx.fillText(
+        m.completed ? i18n.t('COMPLETA', 'COMPLETED') : `${Math.floor(m.current)}/${m.target}`,
+        cardX + cardW - 20,
+        y + 77
+      );
+    }
+
+    const backBtn = this.getOverlayBackButtonRect(py, panelH);
+    this.drawClippedButton(
+      backBtn,
+      this.hoveredOverlayBackBtn ? 'rgba(6, 78, 59, 0.96)' : 'rgba(15, 25, 44, 0.95)',
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#10b981',
+      this.hoveredOverlayBackBtn ? 2.4 : 1.8,
+      this.hoveredOverlayBackBtn ? '#ffffff' : '#a7f3d0',
+      13.5,
+      `[ESC / CLICK] ${i18n.t('VOLVER AL HANGAR', 'RETURN TO HANGAR')}`
+    );
+    this.ctx.restore();
+  }
+
+  private drawInGameQuickButtons(): void {
+    const lightBtn = this.getInGameLightGfxButtonRect();
+    this.drawClippedButton(
+      lightBtn,
+      this.lightGraphicsEnabled ? 'rgba(6, 62, 42, 0.92)' : 'rgba(11, 19, 34, 0.88)',
+      this.lightGraphicsEnabled ? '#10b981' : 'rgba(56, 189, 248, 0.6)',
+      1.5,
+      this.lightGraphicsEnabled ? '#6ee7b7' : '#bae6fd',
+      11,
+      `⚡ [V] ${this.lightGraphicsEnabled ? i18n.t('LIGEROS: ON', 'LITE: ON') : i18n.t('LIGEROS: OFF', 'LITE: OFF')}`
+    );
+  }
+
+  private drawNightmareMinimap(): void {
+    const size = 166;
+    const x = LOGICAL_WIDTH - size - 16;
+    const y = 104;
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const radarRange = 2000;
+    const scale = (size * 0.45) / radarRange;
+
+    this.ctx.save();
+    this.drawCyberPanel(
+      x,
+      y,
+      size,
+      size,
+      10,
+      'rgba(8, 13, 24, 0.88)',
+      'rgba(244, 63, 94, 0.72)',
+      1.6
+    );
+    this.traceChamferRect(x + 2, y + 2, size - 4, size - 4, 8);
+    this.ctx.clip();
+
+    // Retícula radar
+    this.ctx.strokeStyle = 'rgba(244, 63, 94, 0.16)';
+    this.ctx.lineWidth = 1;
+    this.ctx.beginPath();
+    this.ctx.moveTo(cx, y);
+    this.ctx.lineTo(cx, y + size);
+    this.ctx.moveTo(x, cy);
+    this.ctx.lineTo(x + size, cy);
+    this.ctx.arc(cx, cy, size * 0.34, 0, Math.PI * 2);
+    this.ctx.stroke();
+
+    // Eventos de Terreno en el minimapa (si quedan fuera del radio, se fijan en el borde)
+    for (const node of this.terrainEvents.nodes) {
+      if (!node.active) continue;
+      const dx = (node.x - this.player.x) * scale;
+      const dy = (node.y - this.player.y) * scale;
+      const maxR = size * 0.43;
+      const d = Math.hypot(dx, dy);
+      const px = d > maxR ? cx + (dx / d) * maxR : cx + dx;
+      const py = d > maxR ? cy + (dy / d) * maxR : cy + dy;
+
+      this.ctx.fillStyle = this.terrainEvents.getColorForType(node.type);
+      this.ctx.beginPath();
+      this.ctx.arc(px, py, node.type === 'DATA_STORM' ? 4.2 : 3.6, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+
+    // Enemigos, Cajas, Mineros y Jefes
+    let regularCount = 0;
+    for (const enemy of this.enemies) {
+      if (!enemy.active) continue;
+      const dx = (enemy.x - this.player.x) * scale;
+      const dy = (enemy.y - this.player.y) * scale;
+      const maxR = size * 0.44;
+      const d = Math.hypot(dx, dy);
+
+      const isBoss = enemy.malwareType === 'RANSOMWARE' || enemy.malwareType === 'FINAL_BOSS';
+      const isMiner = enemy.malwareType === 'CRYPTO_MINER';
+      const isBox = enemy.malwareType === 'HARDWARE_BOX';
+
+      if (d > maxR && !isBoss && !isMiner) continue;
+      const mx = d > maxR ? cx + (dx / d) * maxR : cx + dx;
+      const my = d > maxR ? cy + (dy / d) * maxR : cy + dy;
+
+      if (isBoss) {
+        this.ctx.fillStyle = '#ff1e42';
+        this.ctx.fillRect(mx - 4, my - 4, 8, 8);
+      } else if (isMiner) {
+        this.ctx.fillStyle = '#fbbf24';
+        this.ctx.fillRect(mx - 3, my - 3, 6, 6);
+      } else if (isBox) {
+        this.ctx.fillStyle = '#38bdf8';
+        this.ctx.fillRect(mx - 2, my - 2, 4, 4);
+      } else if (regularCount < 85) {
+        regularCount++;
+        this.ctx.fillStyle = 'rgba(248, 113, 113, 0.72)';
+        this.ctx.fillRect(mx - 1.2, my - 1.2, 2.4, 2.4);
+      }
+    }
+
+    // Jugador en el centro
+    this.ctx.fillStyle = '#10b981';
+    this.ctx.beginPath();
+    this.ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.strokeStyle = '#ffffff';
+    this.ctx.lineWidth = 1.2;
+    this.ctx.stroke();
+
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = '#fda4af';
+    this.ctx.font = `bold 9.5px ${FONT_MONO}`;
+    this.ctx.fillText('RADAR // PESADILLA', x + 8, y + 14);
+    this.ctx.restore();
+  }
+
+  private drawTouchJoystick(): void {
+    if (this.gameState !== 'PLAYING' || this.isPaused || this.upgradeSystem.isChoosingUpgrade()) {
+      return;
+    }
+    const joy = this.input.getJoystickState();
+    if (!joy.active) {
+      if (this.input.hasUsedTouch && this.elapsedTime < 8) {
+        this.ctx.save();
+        this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+        this.ctx.fillStyle = 'rgba(11, 19, 34, 0.45)';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(150, LOGICAL_HEIGHT - 165, 58, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.fillStyle = 'rgba(186, 230, 253, 0.75)';
+        this.ctx.font = `bold 11px ${FONT_MONO}`;
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(i18n.t('DESLIZA PARA MOVER', 'DRAG TO MOVE'), 150, LOGICAL_HEIGHT - 161);
+        this.ctx.restore();
+      }
+      return;
+    }
+
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(11, 19, 34, 0.48)';
+    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.72)';
+    this.ctx.lineWidth = 2.4;
+    this.ctx.beginPath();
+    this.ctx.arc(joy.originX, joy.originY, joy.maxRadius, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.stroke();
+
+    this.ctx.fillStyle = 'rgba(56, 189, 248, 0.85)';
+    this.ctx.strokeStyle = '#ffffff';
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+    this.ctx.arc(joy.thumbX, joy.thumbY, 26, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.stroke();
     this.ctx.restore();
   }
 
@@ -5549,12 +6400,12 @@ export class Game {
   }
 
   private drawSystemFailureOverlay(): void {
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(7, 10, 18, 0.9)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const boxW = 880;
     const boxH = 580;

@@ -139,15 +139,17 @@ class PinballKineticProjectile {
     dt: number,
     enemies: Adware[],
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    viewOriginX: number = 0,
+    viewOriginY: number = 0
   ): { enemy: Adware; dmg: number }[] {
     this.lifeTime -= dt;
     if (
       this.lifeTime <= 0 ||
-      this.x < -40 ||
-      this.x > canvasWidth + 40 ||
-      this.y < -40 ||
-      this.y > canvasHeight + 40
+      this.x < viewOriginX - 40 ||
+      this.x > viewOriginX + canvasWidth + 40 ||
+      this.y < viewOriginY - 40 ||
+      this.y > viewOriginY + canvasHeight + 40
     ) {
       this.active = false;
       return [];
@@ -458,7 +460,9 @@ export class CompanionPet {
     playerLevel: number,
     enemies: Adware[],
     canvasWidth: number = 1920,
-    canvasHeight: number = 1080
+    canvasHeight: number = 1080,
+    viewOriginX: number = 0,
+    viewOriginY: number = 0
   ): CompanionUpdateOutput {
     const damagedEnemies: { x: number; y: number; damage: number; color: string; isCrit?: boolean }[] = [];
     const killedEnemies: Adware[] = [];
@@ -586,22 +590,22 @@ export class CompanionPet {
         let bouncedX = 0; // -1 izq, 1 der
         let bouncedY = 0; // -1 arriba, 1 abajo
 
-        if (unit.x <= half) {
-          unit.x = half;
+        if (unit.x <= viewOriginX + half) {
+          unit.x = viewOriginX + half;
           unit.vx = Math.abs(unit.vx);
           bouncedX = -1;
-        } else if (unit.x >= canvasWidth - half) {
-          unit.x = canvasWidth - half;
+        } else if (unit.x >= viewOriginX + canvasWidth - half) {
+          unit.x = viewOriginX + canvasWidth - half;
           unit.vx = -Math.abs(unit.vx);
           bouncedX = 1;
         }
 
-        if (unit.y <= half) {
-          unit.y = half;
+        if (unit.y <= viewOriginY + half) {
+          unit.y = viewOriginY + half;
           unit.vy = Math.abs(unit.vy);
           bouncedY = -1;
-        } else if (unit.y >= canvasHeight - half) {
-          unit.y = canvasHeight - half;
+        } else if (unit.y >= viewOriginY + canvasHeight - half) {
+          unit.y = viewOriginY + canvasHeight - half;
           unit.vy = -Math.abs(unit.vy);
           bouncedY = 1;
         }
@@ -816,7 +820,7 @@ export class CompanionPet {
     // Actualizar Proyectiles de Explosión Cinética (Pinball Lvl 10)
     for (const proj of this.pinballProjectiles) {
       if (!proj.active) continue;
-      const hits = proj.update(dt, enemies, canvasWidth, canvasHeight);
+      const hits = proj.update(dt, enemies, canvasWidth, canvasHeight, viewOriginX, viewOriginY);
       for (const h of hits) {
         applyDamageToEnemy(h.enemy, h.dmg, 0, 0, '#00f0ff', false, false);
       }

@@ -39,7 +39,9 @@ export class Evasor extends Adware {
   public tryDodgeIncomingProjectiles(
     projectiles: { x: number; y: number; vx: number; vy: number }[],
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    viewOriginX: number = 0,
+    viewOriginY: number = 0
   ): boolean {
     if (!this.active || this.dodgeCooldown > 0) {
       return false;
@@ -66,16 +68,15 @@ export class Evasor extends Adware {
         let sideX = dot1 >= 0 ? perp1X : perp2X;
         let sideY = dot1 >= 0 ? perp1Y : perp2Y;
 
-        // Evitar salirse de los bordes de la pantalla al esquivar
+        // Evitar salirse de los bordes del área visible al esquivar
         const margin = 36;
+        const minX = viewOriginX + margin;
+        const maxX = viewOriginX + canvasWidth - margin;
+        const minY = viewOriginY + margin;
+        const maxY = viewOriginY + canvasHeight - margin;
         const testX = this.x + sideX * 72;
         const testY = this.y + sideY * 72;
-        if (
-          testX < margin ||
-          testX > canvasWidth - margin ||
-          testY < margin ||
-          testY > canvasHeight - margin
-        ) {
+        if (testX < minX || testX > maxX || testY < minY || testY > maxY) {
           sideX = -sideX;
           sideY = -sideY;
         }
@@ -88,8 +89,8 @@ export class Evasor extends Adware {
         ];
 
         // Desplazamiento lateral instantáneo + impulso corto
-        this.x = Math.max(margin, Math.min(canvasWidth - margin, this.x + sideX * 68));
-        this.y = Math.max(margin, Math.min(canvasHeight - margin, this.y + sideY * 68));
+        this.x = Math.max(minX, Math.min(maxX, this.x + sideX * 68));
+        this.y = Math.max(minY, Math.min(maxY, this.y + sideY * 68));
         this.dashVx = sideX * 420;
         this.dashVy = sideY * 420;
         this.dashTimer = 0.12;

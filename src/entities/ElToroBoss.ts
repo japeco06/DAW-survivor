@@ -16,6 +16,7 @@ export type ElToroState = 'CHASE' | 'TELEGRAPH' | 'DASH';
 export class ElToroBoss extends Adware {
   public readonly bossName: string = 'JEFE FINAL: EL TORO';
   public totalDamageTaken: number = 0;
+  public unbounded: boolean = false;
   public speedTier: number = 0;
   public state: ElToroState = 'CHASE';
 
@@ -95,11 +96,13 @@ export class ElToroBoss extends Adware {
       this.x += Math.cos(this.dashAngle) * this.dashSpeed * dt;
       this.y += Math.sin(this.dashAngle) * this.dashSpeed * dt;
 
-      const margin = this.size * 0.45;
-      const maxW = 1920;
-      const maxH = 1080;
-      this.x = Math.max(margin, Math.min(maxW - margin, this.x));
-      this.y = Math.max(margin, Math.min(maxH - margin, this.y));
+      if (!this.unbounded) {
+        const margin = this.size * 0.45;
+        const maxW = 1920;
+        const maxH = 1080;
+        this.x = Math.max(margin, Math.min(maxW - margin, this.x));
+        this.y = Math.max(margin, Math.min(maxH - margin, this.y));
+      }
 
       this.stateTimer -= dt;
       if (this.stateTimer <= 0) {

@@ -8,6 +8,9 @@ export class Projectile extends Entity {
   public vx: number;
   public vy: number;
   public damage: number;
+  public pierceLeft: number;
+  public isEvolved: boolean;
+  private hitIds: Set<object> = new Set();
   private lifeTime: number = 2.2; // Segundos máximos de vida útil
 
   constructor(
@@ -16,27 +19,50 @@ export class Projectile extends Entity {
     dirX: number,
     dirY: number,
     speed: number = 540,
-    damage: number = 25
+    damage: number = 25,
+    pierceCount: number = 0,
+    isEvolved: boolean = false
   ) {
-    super(x, y, 8, speed, '#00f0ff');
+    super(x, y, isEvolved ? 11 : 8, speed, isEvolved ? '#fde047' : '#00f0ff');
     this.vx = dirX * speed;
     this.vy = dirY * speed;
     this.damage = damage;
+    this.pierceLeft = pierceCount;
+    this.isEvolved = isEvolved;
   }
 
-  public update(dt: number, canvasWidth: number, canvasHeight: number): void {
+  public hasHit(enemy: object): boolean {
+    return this.hitIds.has(enemy);
+  }
+
+  public markHit(enemy: object): void {
+    this.hitIds.add(enemy);
+    if (this.pierceLeft > 0) {
+      this.pierceLeft--;
+    } else {
+      this.active = false;
+    }
+  }
+
+  public update(
+    dt: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    viewOriginX: number = 0,
+    viewOriginY: number = 0
+  ): void {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.lifeTime -= dt;
 
-    // Desactivar si expira su tiempo o sale ampliamente de la pantalla
-    const margin = 60;
+    // Desactivar si expira su tiempo o sale ampliamente del área visible
+    const margin = 80;
     if (
       this.lifeTime <= 0 ||
-      this.x < -margin ||
-      this.x > canvasWidth + margin ||
-      this.y < -margin ||
-      this.y > canvasHeight + margin
+      this.x < viewOriginX - margin ||
+      this.x > viewOriginX + canvasWidth + margin ||
+      this.y < viewOriginY - margin ||
+      this.y > viewOriginY + canvasHeight + margin
     ) {
       this.active = false;
     }
@@ -48,7 +74,14 @@ export class Projectile extends Entity {
     ctx.translate(this.x, this.y);
     ctx.rotate(angle);
 
-    // Estela de energía cian afilada
+    if (this.isEvolved) {
+      ctx.fillStyle = 'rgba(250, 204, 21, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, this.size * 1.35, this.size * 0.65, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Estela de energía cian afilada (o dorada si está evolucionado)
     ctx.fillStyle = this.color;
     ctx.beginPath();
     ctx.moveTo(this.size * 1.15, 0);
