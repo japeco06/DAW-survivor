@@ -196,9 +196,7 @@ export class SqlInjectionBeam {
     this.damage = damage;
     this.thickness = thickness;
     this.isEvolved = isEvolved;
-    if (isEvolved) {
-      this.length = 86;
-    }
+    this.length = isEvolved ? 114 : 84;
   }
 
   public update(
@@ -252,40 +250,51 @@ export class SqlInjectionBeam {
     ctx.rotate(this.angle);
 
     const halfL = this.length * 0.5;
-    const halfT = this.thickness * 0.55;
+    const halfT = this.thickness * 0.65;
 
+    // Aura exterior ionizada del rayo railgun
     ctx.fillStyle = this.isEvolved
-      ? 'rgba(251, 191, 36, 0.34)'
+      ? 'rgba(251, 191, 36, 0.32)'
       : 'rgba(217, 70, 239, 0.28)';
     ctx.beginPath();
-    ctx.moveTo(halfL + 9, 0);
-    ctx.lineTo(halfL * 0.4, -(halfT + 3));
-    ctx.lineTo(-halfL - 3, -(halfT + 2) * 0.65);
-    ctx.lineTo(-halfL * 0.72, 0);
-    ctx.lineTo(-halfL - 3, (halfT + 2) * 0.65);
-    ctx.lineTo(halfL * 0.4, halfT + 3);
-    ctx.closePath();
+    ctx.ellipse(-4, 0, halfL + 16, halfT + 7, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = this.isEvolved ? '#f43f5e' : '#a855f7';
+    // Estelas laterales paralelas de aceleración electromagnética
+    ctx.strokeStyle = this.isEvolved ? '#fde047' : '#e879f9';
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.moveTo(halfL + 6, 0);
-    ctx.lineTo(halfL * 0.4, -halfT);
-    ctx.lineTo(-halfL, -halfT * 0.65);
-    ctx.lineTo(-halfL * 0.72, 0);
-    ctx.lineTo(-halfL, halfT * 0.65);
-    ctx.lineTo(halfL * 0.4, halfT);
+    ctx.moveTo(halfL * 0.15, -(halfT + 4.5));
+    ctx.lineTo(-halfL * 0.85, -(halfT + 2.5));
+    ctx.moveTo(halfL * 0.15, halfT + 4.5);
+    ctx.lineTo(-halfL * 0.85, halfT + 2.5);
+    ctx.stroke();
+
+    // Haz principal grueso en lanza balística de plasma
+    ctx.fillStyle = this.isEvolved ? '#f43f5e' : '#a855f7';
+    ctx.strokeStyle = this.isEvolved ? '#fef08a' : '#f5d0fe';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(halfL + 10, 0);
+    ctx.lineTo(halfL * 0.35, -halfT * 1.12);
+    ctx.lineTo(-halfL * 0.95, -halfT * 0.72);
+    ctx.lineTo(-halfL * 0.65, 0);
+    ctx.lineTo(-halfL * 0.95, halfT * 0.72);
+    ctx.lineTo(halfL * 0.35, halfT * 1.12);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
 
-    // Núcleo energético incandescente blanco
+    // Núcleo energético incandescente y arco eléctrico axial
     ctx.fillStyle = this.isEvolved ? '#fef08a' : '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(halfL + 1, 0);
-    ctx.lineTo(-halfL * 0.55, -halfT * 0.36);
-    ctx.lineTo(-halfL * 0.55, halfT * 0.36);
+    ctx.moveTo(halfL + 4, 0);
+    ctx.lineTo(halfL * 0.1, -halfT * 0.48);
+    ctx.lineTo(-halfL * 0.65, 0);
+    ctx.lineTo(halfL * 0.1, halfT * 0.48);
     ctx.closePath();
     ctx.fill();
+
     ctx.restore();
   }
 }
@@ -313,6 +322,7 @@ export class CryoShardProjectile extends Entity {
   public aoeRadius: number;
   public isEvolved: boolean;
   private lifeTime: number = 2.0;
+  private trail: { x: number; y: number }[] = [];
 
   constructor(
     x: number,
@@ -323,7 +333,7 @@ export class CryoShardProjectile extends Entity {
     aoeRadius: number,
     isEvolved: boolean
   ) {
-    super(x, y, isEvolved ? 13 : 10, speed, isEvolved ? '#67e8f9' : '#38bdf8');
+    super(x, y, isEvolved ? 15 : 12, speed, isEvolved ? '#67e8f9' : '#38bdf8');
     this.vx = Math.cos(angle) * speed;
     this.vy = Math.sin(angle) * speed;
     this.damage = damage;
@@ -338,6 +348,11 @@ export class CryoShardProjectile extends Entity {
     viewOriginX: number = 0,
     viewOriginY: number = 0
   ): void {
+    this.trail.push({ x: this.x, y: this.y });
+    if (this.trail.length > 5) {
+      this.trail.shift();
+    }
+
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.lifeTime -= dt;
@@ -355,21 +370,86 @@ export class CryoShardProjectile extends Entity {
   }
 
   public override draw(ctx: CanvasRenderingContext2D): void {
+    const angle = Math.atan2(this.vy, this.vx);
+    const s = this.size * 0.92;
+
     ctx.save();
+
+    // Estela helada cristalina
+    if (this.trail.length > 0) {
+      ctx.lineCap = 'round';
+      for (let i = 0; i < this.trail.length; i++) {
+        const p0 = this.trail[i];
+        const p1 = i === this.trail.length - 1 ? { x: this.x, y: this.y } : this.trail[i + 1];
+        const ratio = (i + 1) / (this.trail.length + 1);
+        ctx.strokeStyle = this.isEvolved
+          ? `rgba(165, 243, 252, ${0.46 * ratio})`
+          : `rgba(56, 189, 248, ${0.38 * ratio})`;
+        ctx.lineWidth = s * 0.85 * ratio;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+    }
+
     ctx.translate(this.x, this.y);
-    ctx.rotate(Math.atan2(this.vy, this.vx));
-    ctx.fillStyle = this.isEvolved ? '#cffafe' : '#38bdf8';
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.4;
-    const s = this.size * 0.7;
+    ctx.rotate(angle);
+
+    // Aura criogénica envolvente
+    ctx.fillStyle = this.isEvolved ? 'rgba(103, 232, 249, 0.28)' : 'rgba(56, 189, 248, 0.24)';
     ctx.beginPath();
-    ctx.moveTo(s * 1.4, 0);
-    ctx.lineTo(0, -s * 0.55);
+    ctx.ellipse(0, 0, s * 1.55, s * 1.05, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Espolones laterales de cristal de nitrógeno
+    ctx.fillStyle = '#0284c7';
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 0.3);
+    ctx.lineTo(-s * 0.55, -s * 1.05);
+    ctx.lineTo(-s * 0.72, -s * 0.2);
+    ctx.moveTo(0, s * 0.3);
+    ctx.lineTo(-s * 0.55, s * 1.05);
+    ctx.lineTo(-s * 0.72, s * 0.2);
+    ctx.fill();
+
+    // Cristal prismático principal en dos tonos (facetado 3D)
+    ctx.fillStyle = this.isEvolved ? '#a5f3fc' : '#38bdf8';
+    ctx.beginPath();
+    ctx.moveTo(s * 1.55, 0);
+    ctx.lineTo(-s * 0.1, -s * 0.72);
     ctx.lineTo(-s * 1.1, 0);
-    ctx.lineTo(0, s * 0.55);
     ctx.closePath();
     ctx.fill();
+
+    ctx.fillStyle = '#0ea5e9';
+    ctx.beginPath();
+    ctx.moveTo(s * 1.55, 0);
+    ctx.lineTo(-s * 0.1, s * 0.72);
+    ctx.lineTo(-s * 1.1, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Arista cristalina y núcleo glacial brillante
+    ctx.strokeStyle = this.isEvolved ? '#fef08a' : '#e0f2fe';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(s * 1.55, 0);
+    ctx.lineTo(-s * 0.1, -s * 0.72);
+    ctx.lineTo(-s * 1.1, 0);
+    ctx.lineTo(-s * 0.1, s * 0.72);
+    ctx.closePath();
     ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(s * 0.95, 0);
+    ctx.lineTo(0, -s * 0.28);
+    ctx.lineTo(-s * 0.55, 0);
+    ctx.lineTo(0, s * 0.28);
+    ctx.closePath();
+    ctx.fill();
+
     ctx.restore();
   }
 }
@@ -447,30 +527,74 @@ export class SawDiscProjectile extends Entity {
   public override draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
     ctx.translate(this.x, this.y);
+
+    const r = this.size * 0.58;
+
+    // Aura de giro plasma (desenfoque de velocidad)
+    ctx.strokeStyle = this.isEvolved ? 'rgba(251, 191, 36, 0.45)' : 'rgba(251, 146, 60, 0.38)';
+    ctx.lineWidth = 3.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.18, this.spinAngle, this.spinAngle + Math.PI * 0.75);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.18, this.spinAngle + Math.PI, this.spinAngle + Math.PI * 1.75);
+    ctx.stroke();
+
     ctx.rotate(this.spinAngle);
 
-    const r = this.size * 0.5;
-    ctx.fillStyle = this.isEvolved ? '#f59e0b' : '#f97316';
-    ctx.strokeStyle = this.isEvolved ? '#fef08a' : '#fed7aa';
-    ctx.lineWidth = 1.6;
+    // 10 dientes curvos afilados tipo sierra cibernética de titanio
+    ctx.fillStyle = this.isEvolved ? '#fef08a' : '#e2e8f0';
+    ctx.strokeStyle = this.isEvolved ? '#f59e0b' : '#f97316';
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    const teeth = 8;
-    for (let i = 0; i < teeth * 2; i++) {
-      const a = (i * Math.PI) / teeth;
-      const rad = i % 2 === 0 ? r : r * 0.62;
-      const px = Math.cos(a) * rad;
-      const py = Math.sin(a) * rad;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+    const teeth = 10;
+    for (let i = 0; i < teeth; i++) {
+      const a0 = (i * Math.PI * 2) / teeth;
+      const aTip = a0 + 0.24;
+      const aRoot = ((i + 1) * Math.PI * 2) / teeth;
+      const x0 = Math.cos(a0) * (r * 0.68);
+      const y0 = Math.sin(a0) * (r * 0.68);
+      const xTip = Math.cos(aTip) * (r * 1.06);
+      const yTip = Math.sin(aTip) * (r * 1.06);
+      const xRoot = Math.cos(aRoot) * (r * 0.68);
+      const yRoot = Math.sin(aRoot) * (r * 0.68);
+      if (i === 0) ctx.moveTo(x0, y0);
+      else ctx.lineTo(x0, y0);
+      ctx.lineTo(xTip, yTip);
+      ctx.lineTo(xRoot, yRoot);
     }
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
+    // Disco blindado interior con 3 radios giratorios
     ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = this.isEvolved ? '#fbbf24' : '#fb923c';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(0, 0, r * 0.28, 0, Math.PI * 2);
+    ctx.arc(0, 0, r * 0.56, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    for (let k = 0; k < 3; k++) {
+      const sa = (k * Math.PI * 2) / 3;
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(sa) * (r * 0.52), Math.sin(sa) * (r * 0.52));
+    }
+    ctx.stroke();
+
+    // Núcleo reactor incandescente
+    ctx.fillStyle = this.isEvolved ? '#fbbf24' : '#fb923c';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.11, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.restore();
   }
 }
@@ -1585,9 +1709,8 @@ export class CombatSystem {
     for (const arc of this.teslaArcs) {
       const alpha = Math.max(0, arc.life / arc.maxLife);
       ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = arc.color;
-      ctx.lineWidth = 3.0;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
       ctx.beginPath();
       for (let i = 0; i < arc.points.length; i++) {
         const pt = arc.points[i];
@@ -1601,10 +1724,27 @@ export class CombatSystem {
           ctx.lineTo(pt.x, pt.y);
         }
       }
+      ctx.globalAlpha = alpha * 0.34;
+      ctx.strokeStyle = arc.color;
+      ctx.lineWidth = 8.0;
       ctx.stroke();
+
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = arc.color;
+      ctx.lineWidth = 3.2;
+      ctx.stroke();
+
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.4;
       ctx.stroke();
+
+      for (let i = 1; i < arc.points.length; i++) {
+        const pt = arc.points[i];
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 3.5 * alpha, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
 

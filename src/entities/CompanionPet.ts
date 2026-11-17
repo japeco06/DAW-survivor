@@ -174,21 +174,37 @@ class PinballKineticProjectile {
   }
 
   public draw(ctx: CanvasRenderingContext2D): void {
+    const angle = Math.atan2(this.vy, this.vx);
     ctx.save();
     ctx.translate(this.x, this.y);
-    ctx.fillStyle = '#00f0ff';
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.5;
-    ctx.shadowColor = '#00f0ff';
-    ctx.shadowBlur = 12;
+    ctx.rotate(angle);
+
+    // Aura cian + estela direccional de dardo cinético Pinball
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.28)';
     ctx.beginPath();
-    ctx.moveTo(0, -this.size * 0.7);
-    ctx.lineTo(this.size * 0.7, 0);
-    ctx.lineTo(0, this.size * 0.7);
-    ctx.lineTo(-this.size * 0.7, 0);
+    ctx.ellipse(-2, 0, this.size * 1.45, this.size * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#06b6d4';
+    ctx.strokeStyle = '#e0f2fe';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(this.size * 1.3, 0);
+    ctx.lineTo(-this.size * 0.2, -this.size * 0.72);
+    ctx.lineTo(-this.size * 1.15, 0);
+    ctx.lineTo(-this.size * 0.2, this.size * 0.72);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(this.size * 0.85, 0);
+    ctx.lineTo(-this.size * 0.1, -this.size * 0.34);
+    ctx.lineTo(-this.size * 0.55, 0);
+    ctx.lineTo(-this.size * 0.1, this.size * 0.34);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
   }
 }

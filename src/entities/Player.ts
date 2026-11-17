@@ -330,7 +330,8 @@ export class Player extends Entity {
       now,
       this.facingAngle,
       this.isMoving,
-      this.equippedHat?.id ?? null
+      this.equippedHat?.id ?? null,
+      this.characterId
     );
 
     this.drawHealthBar(ctx);
@@ -339,7 +340,173 @@ export class Player extends Entity {
   }
 
   /**
-   * Dibuja la silueta táctica informática del Agente Antivirus (compartida con el Hangar del menú).
+   * Dibuja los módulos de hardware exclusivos de cada clase detrás/flanqueando el chasis.
+   */
+  private static drawClassHardwareModules(
+    ctx: CanvasRenderingContext2D,
+    characterId: CharacterId,
+    half: number,
+    size: number,
+    color: string,
+    borderColor: string,
+    timeMs: number
+  ): void {
+    const pulse = 0.72 + Math.sin(timeMs * 0.008) * 0.28;
+    const lw = Math.max(1.1, size * 0.04);
+
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.scale(side, 1);
+
+      if (characterId === 'STANDARD') {
+        // Estabilizadores laterales tipo servidor con líneas de bus cian/verde
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(half * 0.78, -half * 0.56);
+        ctx.lineTo(half * 1.32, -half * 0.34);
+        ctx.lineTo(half * 1.24, half * 0.38);
+        ctx.lineTo(half * 0.78, half * 0.54);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = borderColor;
+        ctx.globalAlpha = 0.85 * pulse;
+        ctx.fillRect(half * 0.94, -half * 0.2, half * 0.22, half * 0.4);
+      } else if (characterId === 'ROOT') {
+        // Alerones aerodinámicos overclock inclinados hacia arriba
+        ctx.fillStyle = '#0c1938';
+        ctx.strokeStyle = '#60a5fa';
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(half * 0.72, -half * 0.25);
+        ctx.lineTo(half * 1.48, -half * 0.78);
+        ctx.lineTo(half * 1.32, half * 0.18);
+        ctx.lineTo(half * 0.75, half * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.moveTo(half * 0.95, -half * 0.3);
+        ctx.lineTo(half * 1.28, -half * 0.54);
+        ctx.stroke();
+      } else if (characterId === 'PROXY') {
+        // Hombreras pesadas Aegis de blindaje hexagonal + ribete escudo
+        ctx.fillStyle = '#1e1035';
+        ctx.strokeStyle = '#c084fc';
+        ctx.lineWidth = lw * 1.15;
+        ctx.beginPath();
+        ctx.moveTo(half * 0.65, -half * 0.86);
+        ctx.lineTo(half * 1.38, -half * 0.48);
+        ctx.lineTo(half * 1.44, half * 0.36);
+        ctx.lineTo(half * 0.92, half * 0.72);
+        ctx.lineTo(half * 0.65, half * 0.55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#38bdf8';
+        ctx.globalAlpha = 0.75 * pulse;
+        ctx.fillRect(half * 1.04, -half * 0.22, half * 0.2, half * 0.48);
+      } else if (characterId === 'MORCILLITA') {
+        // Antenas/aletas de enlace simbiótico en los hombros
+        ctx.fillStyle = '#2d0b22';
+        ctx.strokeStyle = '#f472b6';
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(half * 0.74, -half * 0.45);
+        ctx.lineTo(half * 1.28, -half * 0.65);
+        ctx.lineTo(half * 1.18, half * 0.32);
+        ctx.lineTo(half * 0.74, half * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.arc(half * 1.22, -half * 0.58, Math.max(1.4, size * 0.065), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (characterId === 'CRYPTO') {
+        // Cápsulas radar ASIC doradas de recolección
+        ctx.fillStyle = '#291704';
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(half * 0.75, -half * 0.62);
+        ctx.lineTo(half * 1.38, -half * 0.32);
+        ctx.lineTo(half * 1.38, half * 0.32);
+        ctx.lineTo(half * 0.75, half * 0.62);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(half * 1.1, 0, Math.max(1.5, size * 0.065), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (characterId === 'SPECTRE') {
+        // Alas furtivas delta afiladas tipo Ghost Script
+        ctx.fillStyle = '#041f2b';
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(half * 0.68, -half * 0.45);
+        ctx.lineTo(half * 1.54, -half * 0.12);
+        ctx.lineTo(half * 1.25, half * 0.62);
+        ctx.lineTo(half * 0.72, half * 0.38);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (characterId === 'OVERCLOCK') {
+        // Turbinas laterales disipadoras con núcleos incandescentes
+        ctx.fillStyle = '#241005';
+        ctx.strokeStyle = '#fb923c';
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(half * 0.76, -half * 0.56);
+        ctx.lineTo(half * 1.36, -half * 0.48);
+        ctx.lineTo(half * 1.44, 0);
+        ctx.lineTo(half * 1.36, half * 0.48);
+        ctx.lineTo(half * 0.76, half * 0.56);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#fde047';
+        ctx.globalAlpha = pulse;
+        ctx.fillRect(half * 0.96, -half * 0.28, half * 0.26, half * 0.16);
+        ctx.fillRect(half * 0.96, half * 0.12, half * 0.26, half * 0.16);
+      } else if (characterId === 'KERNEL_X') {
+        // Cañones railgun pesados en hombros estilo Titán
+        ctx.fillStyle = '#18181b';
+        ctx.strokeStyle = '#fca5a5';
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(half * 0.7, -half * 0.82);
+        ctx.lineTo(half * 1.36, -half * 0.82);
+        ctx.lineTo(half * 1.42, half * 0.48);
+        ctx.lineTo(half * 0.75, half * 0.62);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.fillRect(half * 0.9, -half * 0.72, half * 0.32, half * 0.48);
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(half * 0.96, -half * 0.66, half * 0.2, half * 0.14);
+      }
+
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Dibuja la silueta táctica cibernética detallada del Agente Antivirus
+   * (compartida entre el combate y las vistas del Hangar en el menú).
    */
   public static drawCyberChassis(
     ctx: CanvasRenderingContext2D,
@@ -351,159 +518,231 @@ export class Player extends Entity {
     timeMs: number,
     facingAngle: number = 0,
     isMoving: boolean = false,
-    hatId: string | null = null
+    hatId: string | null = null,
+    characterId: CharacterId = 'STANDARD'
   ): void {
     const half = size / 2;
-    const cut = half * 0.38;
+    const cut = half * 0.36;
     const lookX = Math.cos(facingAngle) * (half * 0.16);
-    const lookY = Math.sin(facingAngle) * (half * 0.12);
+    const lookY = Math.sin(facingAngle) * (half * 0.11);
+    const pulse = 0.78 + Math.sin(timeMs * 0.008) * 0.22;
 
     ctx.save();
     ctx.translate(x, y);
 
-    // Propulsor de plasma en dirección contraria al movimiento
+    // 1. Halo energético sutil tras el chasis (reemplaza shadowBlur para máx. nitidez y FPS)
+    ctx.fillStyle = borderColor;
+    ctx.globalAlpha = 0.11;
+    ctx.beginPath();
+    ctx.arc(0, 0, half * 1.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // 2. Propulsor dual de plasma al desplazarse
     if (isMoving) {
-      const thrust = half * (0.95 + Math.sin(timeMs * 0.032) * 0.22);
+      const thrust = half * (1.05 + Math.sin(timeMs * 0.036) * 0.25);
       const backAngle = facingAngle + Math.PI;
       ctx.save();
       ctx.rotate(backAngle);
       ctx.fillStyle = borderColor;
-      ctx.globalAlpha = 0.78;
+      ctx.globalAlpha = 0.68;
       ctx.beginPath();
-      ctx.moveTo(half * 0.42, -half * 0.26);
-      ctx.lineTo(half * 0.42 + thrust, 0);
-      ctx.lineTo(half * 0.42, half * 0.26);
+      ctx.moveTo(half * 0.44, -half * 0.32);
+      ctx.lineTo(half * 0.44 + thrust, 0);
+      ctx.lineTo(half * 0.44, half * 0.32);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(half * 0.46, -half * 0.15);
+      ctx.lineTo(half * 0.46 + thrust * 0.62, 0);
+      ctx.lineTo(half * 0.46, half * 0.15);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
     }
 
-    // Disipadores / hombreras metálicas tácticas (Hardware Heatsink)
-    const finSpread = half + Math.max(3, size * 0.14);
-    ctx.fillStyle = '#1e293b';
-    ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = Math.max(1.2, size * 0.045);
+    // 3. Estabilizadores / hombreras hardware exclusivos por personaje
+    Player.drawClassHardwareModules(ctx, characterId, half, size, color, borderColor, timeMs);
 
+    // 4. Faldón inferior metálico con toberas traseras
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#020617';
+    ctx.lineWidth = Math.max(1.1, size * 0.045);
     for (const side of [-1, 1]) {
       ctx.beginPath();
-      ctx.moveTo(side * finSpread, -half * 0.28);
-      ctx.lineTo(side * (half - 1), -half * 0.56);
-      ctx.lineTo(side * (half - 1), half * 0.56);
-      ctx.lineTo(side * finSpread, half * 0.28);
+      ctx.moveTo(side * half * 0.22, half * 0.72);
+      ctx.lineTo(side * half * 0.62, half * 0.72);
+      ctx.lineTo(side * half * 0.54, half * 1.06);
+      ctx.lineTo(side * half * 0.26, half * 1.06);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
-      // Pines de circuito en los laterales
+      // Punta luminosa de estabilizador
       ctx.fillStyle = borderColor;
-      ctx.fillRect(side * (finSpread - 2.5) - (side < 0 ? 1 : 0), -half * 0.12, 2, half * 0.24);
-      ctx.fillStyle = '#1e293b';
+      ctx.globalAlpha = 0.8;
+      ctx.fillRect(side * half * 0.32 - (side < 0 ? half * 0.18 : 0), half * 0.94, half * 0.18, Math.max(1.2, size * 0.045));
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#0f172a';
     }
 
-    // Carcasa principal octogonal con sombreado 2.5D limpio
+    // 5. Blindaje principal en casco poligonal cyber-mecha
+    const traceArmorHex = () => {
+      ctx.beginPath();
+      ctx.moveTo(-half + cut * 1.1, -half * 0.98);
+      ctx.lineTo(half - cut * 1.1, -half * 0.98);
+      ctx.lineTo(half * 1.02, -half * 0.45);
+      ctx.lineTo(half * 0.96, half * 0.48);
+      ctx.lineTo(half - cut * 0.8, half * 0.92);
+      ctx.lineTo(-half + cut * 0.8, half * 0.92);
+      ctx.lineTo(-half * 0.96, half * 0.48);
+      ctx.lineTo(-half * 1.02, -half * 0.45);
+      ctx.closePath();
+    };
+
     ctx.fillStyle = color;
-    ctx.shadowColor = borderColor;
-    ctx.shadowBlur = 12;
+    traceArmorHex();
+    ctx.fill();
 
+    // Sombreado tectónico en dos planos (inferior + laterales)
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.34)';
     ctx.beginPath();
-    ctx.moveTo(-half + cut, -half);
-    ctx.lineTo(half - cut, -half);
-    ctx.lineTo(half, -half + cut);
-    ctx.lineTo(half, half - cut);
-    ctx.lineTo(half - cut, half);
-    ctx.lineTo(-half + cut, half);
-    ctx.lineTo(-half, half - cut);
-    ctx.lineTo(-half, -half + cut);
+    ctx.moveTo(-half * 0.96, half * 0.2);
+    ctx.lineTo(-half * 0.4, half * 0.42);
+    ctx.lineTo(half * 0.4, half * 0.42);
+    ctx.lineTo(half * 0.96, half * 0.2);
+    ctx.lineTo(half * 0.96, half * 0.48);
+    ctx.lineTo(half - cut * 0.8, half * 0.92);
+    ctx.lineTo(-half + cut * 0.8, half * 0.92);
+    ctx.lineTo(-half * 0.96, half * 0.48);
     ctx.closePath();
     ctx.fill();
 
-    // Bisel inferior sutil para sensación de volumen sólido
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.24)';
+    // Placa metálica dorsal del pecho + líneas de circuito PCB
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.56)';
     ctx.beginPath();
-    ctx.moveTo(-half, half * 0.1);
-    ctx.lineTo(half, half * 0.1);
-    ctx.lineTo(half, half - cut);
-    ctx.lineTo(half - cut, half);
-    ctx.lineTo(-half + cut, half);
-    ctx.lineTo(-half, half - cut);
+    ctx.moveTo(-half * 0.62, half * 0.24);
+    ctx.lineTo(half * 0.62, half * 0.24);
+    ctx.lineTo(half * 0.46, half * 0.84);
+    ctx.lineTo(-half * 0.46, half * 0.84);
     ctx.closePath();
     ctx.fill();
 
-    // Brillo superior especular
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-    ctx.fillRect(-half + cut + 1, -half + 2, size - cut * 2 - 2, Math.max(2, size * 0.08));
-
-    // Contorno táctico limpio
-    ctx.strokeStyle = '#090d16';
-    ctx.lineWidth = Math.max(1.5, size * 0.06);
+    // Brillo especular en arista superior de la cabeza
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.34)';
     ctx.beginPath();
-    ctx.moveTo(-half + cut, -half);
-    ctx.lineTo(half - cut, -half);
-    ctx.lineTo(half, -half + cut);
-    ctx.lineTo(half, half - cut);
-    ctx.lineTo(half - cut, half);
-    ctx.lineTo(-half + cut, half);
-    ctx.lineTo(-half, half - cut);
-    ctx.lineTo(-half, -half + cut);
+    ctx.moveTo(-half + cut * 1.15, -half * 0.94);
+    ctx.lineTo(half - cut * 1.15, -half * 0.94);
+    ctx.lineTo(half * 0.72, -half * 0.72);
+    ctx.lineTo(-half * 0.72, -half * 0.72);
     ctx.closePath();
+    ctx.fill();
+
+    // Contorno doble oscuro + neón
+    ctx.strokeStyle = '#060a14';
+    ctx.lineWidth = Math.max(1.6, size * 0.065);
+    traceArmorHex();
     ctx.stroke();
 
     ctx.strokeStyle = borderColor;
-    ctx.lineWidth = Math.max(1.1, size * 0.04);
+    ctx.lineWidth = Math.max(1.0, size * 0.038);
+    traceArmorHex();
     ctx.stroke();
 
-    // Pantalla / Visor táctico recesado (esquinas suaves, sin boca inferior)
-    const visorW = size * 0.66;
-    const visorH = size * 0.44;
-    const visorX = -visorW / 2;
-    const visorY = -half * 0.44;
-    const visorR = Math.max(3, size * 0.14);
-
-    ctx.fillStyle = '#060d18';
+    // 6. Núcleo energético pectoral (Micro-CPU / Reactor)
+    const coreY = half * 0.54;
+    const coreR = Math.max(2.2, size * 0.11);
+    ctx.fillStyle = '#040a16';
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = Math.max(0.9, size * 0.03);
     ctx.beginPath();
-    ctx.moveTo(visorX + visorR, visorY);
-    ctx.lineTo(visorX + visorW - visorR, visorY);
-    ctx.quadraticCurveTo(visorX + visorW, visorY, visorX + visorW, visorY + visorR);
-    ctx.lineTo(visorX + visorW, visorY + visorH - visorR);
-    ctx.quadraticCurveTo(visorX + visorW, visorY + visorH, visorX + visorW - visorR, visorY + visorH);
-    ctx.lineTo(visorX + visorR, visorY + visorH);
-    ctx.quadraticCurveTo(visorX, visorY + visorH, visorX, visorY + visorH - visorR);
-    ctx.lineTo(visorX, visorY + visorR);
-    ctx.quadraticCurveTo(visorX, visorY, visorX + visorR, visorY);
+    ctx.moveTo(0, coreY - coreR);
+    ctx.lineTo(coreR * 1.15, coreY);
+    ctx.lineTo(0, coreY + coreR);
+    ctx.lineTo(-coreR * 1.15, coreY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = borderColor;
+    ctx.globalAlpha = pulse;
+    ctx.beginPath();
+    ctx.arc(0, coreY, coreR * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(0, coreY, coreR * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // 7. Visor táctico biselado con ojos cibernéticos simples (sin boca)
+    const visorW = size * 0.72;
+    const visorH = size * 0.37;
+    const visorX = -visorW / 2;
+    const visorY = -half * 0.56;
+    const visorCut = Math.max(2.2, size * 0.09);
+
+    ctx.fillStyle = '#040914';
+    ctx.beginPath();
+    ctx.moveTo(visorX + visorCut, visorY);
+    ctx.lineTo(visorX + visorW - visorCut, visorY);
+    ctx.lineTo(visorX + visorW, visorY + visorCut);
+    ctx.lineTo(visorX + visorW, visorY + visorH - visorCut);
+    ctx.lineTo(visorX + visorW - visorCut, visorY + visorH);
+    ctx.lineTo(visorX + visorCut, visorY + visorH);
+    ctx.lineTo(visorX, visorY + visorH - visorCut);
+    ctx.lineTo(visorX, visorY + visorCut);
     ctx.closePath();
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
-    ctx.lineWidth = Math.max(1, size * 0.035);
+    // Marco interior iluminado del visor
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+    ctx.lineWidth = Math.max(0.9, size * 0.032);
     ctx.stroke();
 
-    // Ojos simples redondeados (óvalo vertical limpio, sin boca)
+    // Brillo diagonal cristalino en el visor
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.beginPath();
+    ctx.moveTo(visorX + visorCut, visorY + 1);
+    ctx.lineTo(visorX + visorW * 0.45, visorY + 1);
+    ctx.lineTo(visorX + visorW * 0.25, visorY + visorH - 1);
+    ctx.lineTo(visorX + visorCut, visorY + visorH - 1);
+    ctx.closePath();
+    ctx.fill();
+
+    // Ojos simples redondeados con parpadeo y seguimiento sutil (sin boca)
     const blinkCycle = timeMs % 4200;
     const isBlinking = blinkCycle > 4060 && blinkCycle < 4160;
-    const eyeRx = Math.max(1.8, size * 0.082);
-    const eyeRy = isBlinking ? Math.max(0.8, size * 0.025) : Math.max(2.6, size * 0.125);
+    const eyeRx = Math.max(1.7, size * 0.078);
+    const eyeRy = isBlinking ? Math.max(0.8, size * 0.025) : Math.max(2.4, size * 0.115);
     const eyeOffsetX = half * 0.27;
-    const eyeCenterY = visorY + visorH * 0.5 + lookY * 0.85;
+    const eyeCenterY = visorY + visorH * 0.52 + lookY * 0.85;
+
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+    for (const side of [-1, 1]) {
+      const ex = side * eyeOffsetX + lookX * 0.9;
+      ctx.beginPath();
+      ctx.ellipse(ex, eyeCenterY, eyeRx * 1.35, eyeRy * 1.35, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.fillStyle = '#f0f9ff';
-    ctx.shadowColor = '#38bdf8';
-    ctx.shadowBlur = Math.max(3, size * 0.14);
     for (const side of [-1, 1]) {
       const ex = side * eyeOffsetX + lookX * 0.9;
       ctx.beginPath();
       ctx.ellipse(ex, eyeCenterY, eyeRx, eyeRy, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.shadowBlur = 0;
 
-    // Micro-destello superior en cada ojo cuando no parpadea
-    if (!isBlinking && size >= 24) {
+    if (!isBlinking && size >= 22) {
       ctx.fillStyle = '#ffffff';
       for (const side of [-1, 1]) {
         const ex = side * eyeOffsetX + lookX * 0.9 - eyeRx * 0.22;
         ctx.beginPath();
-        ctx.arc(ex, eyeCenterY - eyeRy * 0.35, Math.max(0.8, size * 0.025), 0, Math.PI * 2);
+        ctx.arc(ex, eyeCenterY - eyeRy * 0.32, Math.max(0.75, size * 0.024), 0, Math.PI * 2);
         ctx.fill();
       }
     }

@@ -76,7 +76,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.3.0';
+const GAME_VERSION = 'v1.3.1';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'cyber_survivor_light_gfx_v1';
@@ -3456,7 +3456,8 @@ export class Game {
       now,
       Math.sin(now * 0.0015) * 0.45,
       true,
-      shownHat?.id ?? null
+      shownHat?.id ?? null,
+      profile.id
     );
 
     if (profile.id === 'MORCILLITA') {
@@ -3860,7 +3861,8 @@ export class Game {
           now,
           0,
           selected || hovered,
-          selected && equippedHat ? equippedHat.id : null
+          selected && equippedHat ? equippedHat.id : null,
+          profile.id
         );
 
         if (rect.id === 'MORCILLITA') {

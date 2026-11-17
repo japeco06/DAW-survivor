@@ -11,6 +11,7 @@ export class PingProjectile extends Entity {
   public damage: number;
   private lifeTime: number = 3.2;
   private turnSpeed: number = 7.5; // Capacidad de giro para perseguir objetivos
+  private trail: { x: number; y: number }[] = [];
 
   public isEvolved: boolean;
 
@@ -63,6 +64,11 @@ export class PingProjectile extends Entity {
       this.vy = (this.vy / currentSpeed) * this.speed;
     }
 
+    this.trail.push({ x: this.x, y: this.y });
+    if (this.trail.length > 6) {
+      this.trail.shift();
+    }
+
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 
@@ -94,22 +100,57 @@ export class PingProjectile extends Entity {
   }
 
   public override draw(ctx: CanvasRenderingContext2D): void {
-    ctx.save();
     const angle = Math.atan2(this.vy, this.vx);
+    const tipX = this.size * (this.isEvolved ? 1.45 : 1.25);
+    const tailX = -this.size * (this.isEvolved ? 1.05 : 0.92);
+    const notchX = -this.size * 0.45;
+    const wingY = this.size * (this.isEvolved ? 0.95 : 0.82);
+
+    ctx.save();
+
+    // Estela aerodinámica curva del misil teledirigido
+    if (this.trail.length > 0) {
+      ctx.lineCap = 'round';
+      for (let i = 0; i < this.trail.length; i++) {
+        const p0 = this.trail[i];
+        const p1 = i === this.trail.length - 1 ? { x: this.x, y: this.y } : this.trail[i + 1];
+        const ratio = (i + 1) / (this.trail.length + 1);
+        ctx.strokeStyle = this.isEvolved
+          ? `rgba(250, 204, 21, ${0.42 * ratio})`
+          : `rgba(56, 189, 248, ${0.38 * ratio})`;
+        ctx.lineWidth = this.size * 0.9 * ratio;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+    }
+
     ctx.translate(this.x, this.y);
     ctx.rotate(angle);
 
-    const tipX = this.size * 0.95;
-    const tailX = -this.size * 0.75;
-    const notchX = -this.size * 0.35;
-    const wingY = this.size * 0.65;
+    // Aura envolvente del misil seeker
+    ctx.fillStyle = this.isEvolved
+      ? 'rgba(250, 204, 21, 0.25)'
+      : 'rgba(14, 165, 233, 0.24)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, tipX * 1.15, wingY * 1.15, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Silueta exterior triangular / punta de flecha direccionada hacia el vector de movimiento
-    ctx.fillStyle = '#0088ff';
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 1.5;
-    ctx.shadowBlur = 0;
+    // Llama de propulsión trasera pulsante
+    const flameLen = this.size * (0.85 + Math.sin(performance.now() * 0.04 + this.x) * 0.25);
+    ctx.fillStyle = this.isEvolved ? '#fde047' : '#38bdf8';
+    ctx.beginPath();
+    ctx.moveTo(notchX, -wingY * 0.34);
+    ctx.lineTo(notchX - flameLen, 0);
+    ctx.lineTo(notchX, wingY * 0.34);
+    ctx.closePath();
+    ctx.fill();
 
+    // Alas delta metálicas de misil táctico
+    ctx.fillStyle = this.isEvolved ? '#ca8a04' : '#0369a1';
+    ctx.strokeStyle = this.isEvolved ? '#fef08a' : '#38bdf8';
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(tipX, 0);
     ctx.lineTo(tailX, -wingY);
@@ -119,15 +160,19 @@ export class PingProjectile extends Entity {
     ctx.fill();
     ctx.stroke();
 
-    // Núcleo interior brillante en forma de flecha
-    ctx.fillStyle = '#e0f2fe';
-    ctx.shadowBlur = 0;
+    // Ojiva central blindada y núcleo de radar
+    ctx.fillStyle = this.isEvolved ? '#fef08a' : '#7dd3fc';
     ctx.beginPath();
-    ctx.moveTo(tipX * 0.6, 0);
-    ctx.lineTo(tailX * 0.5, -wingY * 0.45);
-    ctx.lineTo(notchX * 0.4, 0);
-    ctx.lineTo(tailX * 0.5, wingY * 0.45);
+    ctx.moveTo(tipX * 0.86, 0);
+    ctx.lineTo(-this.size * 0.15, -wingY * 0.42);
+    ctx.lineTo(-this.size * 0.38, 0);
+    ctx.lineTo(-this.size * 0.15, wingY * 0.42);
     ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(tipX * 0.32, 0, this.size * 0.18, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
