@@ -23,14 +23,11 @@ export interface WaveBossScalingContext {
 function computeScaledBossHp(baseHp: number, ctx: WaveBossScalingContext): number {
   const bossIdx = Math.max(1, ctx.bossLevel ?? 1);
   const hpMult = Math.max(1, ctx.hpMultiplier ?? 1);
-  const timeMin = Math.max(0, (ctx.elapsedTime ?? 0) / 60);
-  const pLvl = Math.max(1, ctx.playerLevel ?? 1);
 
-  const waveFactor = 1 + (bossIdx - 1) * 0.72 + Math.pow(Math.max(0, bossIdx - 1), 1.42) * 0.35;
-  const globalFactor = hpMult * 0.65 + 0.35;
-  const levelTimeFactor = (1 + Math.max(0, pLvl - 1) * 0.065 + timeMin * 0.14) * 0.6 + 0.4;
+  const waveFactor = 1 + (bossIdx - 1) * 0.85 + Math.pow(Math.max(0, bossIdx - 1), 1.25) * 0.32;
+  const globalFactor = 0.75 + hpMult * 0.45;
 
-  return Math.round(baseHp * waveFactor * globalFactor * levelTimeFactor);
+  return Math.round(baseHp * waveFactor * globalFactor);
 }
 
 export abstract class WaveBoss extends Adware {

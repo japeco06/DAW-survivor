@@ -493,12 +493,12 @@ export class CompanionPet {
 
     const baseContactDamage = Math.round(
       (this.branch === 'BRUTE'
-        ? 52
+        ? 64
         : this.branch === 'BOTNET'
-        ? 28
+        ? 30
         : this.branch === 'PINBALL'
-        ? 38
-        : 34) *
+        ? 48
+        : 36) *
         player.damageMultiplier +
         this.bonusDamageStat
     );
@@ -584,6 +584,76 @@ export class CompanionPet {
       return nearest;
     };
 
+    const estimateTargetVelocity = (target: Adware): { vx: number; vy: number } => {
+      if (!target.active || target.speed <= 0) {
+        return { vx: 0, vy: 0 };
+      }
+      let slowFactor = target.networkFreezeTimer > 0 ? 0.2 : 1.0;
+      if (target.cryoSlowTimer > 0) {
+        slowFactor = Math.min(slowFactor, target.cryoSlowFactor);
+      }
+      const effSpeed = target.speed * slowFactor;
+      if (target.malwareType === 'CRYPTO_MINER') {
+        const dx = target.x - player.x;
+        const dy = target.y - player.y;
+        const d = Math.hypot(dx, dy) || 1;
+        return { vx: (dx / d) * effSpeed, vy: (dy / d) * effSpeed };
+      }
+      if (target.malwareType === 'ARMORED_WORM' && target.facingAngle !== 0) {
+        return {
+          vx: Math.cos(target.facingAngle) * target.speed,
+          vy: Math.sin(target.facingAngle) * target.speed,
+        };
+      }
+      if (target.malwareType === 'TROJAN_SHOOTER') {
+        const dx = player.x - target.x;
+        const dy = player.y - target.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (d > 330) return { vx: (dx / d) * effSpeed, vy: (dy / d) * effSpeed };
+        if (d < 230) return { vx: (-dx / d) * effSpeed * 0.5, vy: (-dy / d) * effSpeed * 0.5 };
+        return { vx: 0, vy: 0 };
+      }
+      const dx = player.x - target.x;
+      const dy = player.y - target.y;
+      const d = Math.hypot(dx, dy) || 1;
+      return { vx: (dx / d) * effSpeed, vy: (dy / d) * effSpeed };
+    };
+
+    const predictInterceptAngle = (fromX: number, fromY: number, projSpeed: number, target: Adware): number => {
+      const rx = target.x - fromX;
+      const ry = target.y - fromY;
+      const { vx, vy } = estimateTargetVelocity(target);
+      const s = Math.max(1, projSpeed);
+
+      const a = vx * vx + vy * vy - s * s;
+      const b = 2 * (rx * vx + ry * vy);
+      const c = rx * rx + ry * ry;
+
+      let tHit = Math.hypot(rx, ry) / s;
+      if (Math.abs(a) < 1e-4) {
+        if (Math.abs(b) > 1e-4) {
+          const tLin = -c / b;
+          if (tLin > 0) tHit = tLin;
+        }
+      } else {
+        const disc = b * b - 4 * a * c;
+        if (disc >= 0) {
+          const sqrtD = Math.sqrt(disc);
+          const t1 = (-b - sqrtD) / (2 * a);
+          const t2 = (-b + sqrtD) / (2 * a);
+          const positive = [t1, t2].filter((t) => t > 0);
+          if (positive.length > 0) {
+            tHit = Math.min(...positive);
+          }
+        }
+      }
+
+      tHit = Math.min(1.35, Math.max(0, tHit));
+      const predX = target.x + vx * tHit;
+      const predY = target.y + vy * tHit;
+      return Math.atan2(predY - fromY, predX - fromX);
+    };
+
     // Regla de apuntado para La Botnet:
     // - Enemigos estándar: máximo 1 mascota por objetivo.
     // - Mini-jefes (RANSOMWARE): hasta 3 mascotas pueden apuntar al mismo mini-jefe simultáneamente.
@@ -628,10 +698,10 @@ export class CompanionPet {
 
         const bouncedEdge = bouncedX !== 0 || bouncedY !== 0;
         if (bouncedEdge) {
-          // 100% auto-aim: apuntar directamente al enemigo más cercano en pantalla en cada rebote
+          // 100% auto-aim predictivo: calcula dónde estará el enemigo al llegar la mascota
           const nearest = findNearestEnemy(unit.x, unit.y);
           const baseAngle = nearest
-            ? Math.atan2(nearest.y - unit.y, nearest.x - unit.x)
+            ? predictInterceptAngle(unit.x, unit.y, unit.speed, nearest)
             : Math.atan2(unit.vy, unit.vx);
           let nextVx = Math.cos(baseAngle) * unit.speed;
           let nextVy = Math.sin(baseAngle) * unit.speed;
@@ -763,11 +833,11 @@ export class CompanionPet {
             this.branch === 'BOTNET'
           );
 
-          // Pinball: al rebotar contra un enemigo, 100% auto-aim directo hacia el enemigo más cercano en pantalla
+          // Pinball: al rebotar contra un enemigo, predice dónde estará el siguiente objetivo al llegar
           if (this.branch === 'PINBALL') {
             const nearestTarget = findNearestEnemy(unit.x, unit.y, enemy);
             if (nearestTarget) {
-              const targetAngle = Math.atan2(nearestTarget.y - unit.y, nearestTarget.x - unit.x);
+              const targetAngle = predictInterceptAngle(unit.x, unit.y, unit.speed, nearestTarget);
               unit.vx = Math.cos(targetAngle) * unit.speed;
               unit.vy = Math.sin(targetAngle) * unit.speed;
             }

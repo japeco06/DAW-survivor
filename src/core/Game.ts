@@ -828,6 +828,7 @@ export class Game {
     this.spawner = new Spawner();
     this.spawner.isNightmareMode = this.isNightmareRun;
     this.spawner.isInfiniteMap = this.isMovingMap();
+    this.spawner.coopPlayerCount = Math.max(1, room.players.length);
     this.worldEnv.reset(room.worldSeed || 1337, this.isMovingMap());
     this.particleSystem.clear();
     this.elapsedTime = 0;
@@ -2672,6 +2673,7 @@ export class Game {
       }
     }
 
+    this.spawner.coopPlayerCount = this.isCoopMode ? Math.max(1, 1 + this.coopPeers.size) : 1;
     this.spawner.update(
       dt,
       this.elapsedTime,
@@ -2768,8 +2770,8 @@ export class Game {
         this.enemies,
         LOGICAL_WIDTH,
         LOGICAL_HEIGHT,
-        cam.x,
-        cam.y
+        activeCam.x,
+        activeCam.y
       );
       combatEvents.enemiesKilled += compEvents.killedEnemies.length;
       combatEvents.damagedEnemies.push(...compEvents.damagedEnemies);
@@ -2850,6 +2852,8 @@ export class Game {
         combatEvents.damagedEnemies.push(...pCombat.damagedEnemies);
 
         if (peer.player.companion && peer.player.active) {
+          const pCompCamX = this.isMovingMap() ? peer.player.x - LOGICAL_WIDTH / 2 : 0;
+          const pCompCamY = this.isMovingMap() ? peer.player.y - LOGICAL_HEIGHT / 2 : 0;
           const pComp = peer.player.companion.update(
             dt,
             peer.player,
@@ -2857,8 +2861,8 @@ export class Game {
             this.enemies,
             LOGICAL_WIDTH,
             LOGICAL_HEIGHT,
-            cam.x,
-            cam.y
+            pCompCamX,
+            pCompCamY
           );
           combatEvents.enemiesKilled += pComp.killedEnemies.length;
           combatEvents.damagedEnemies.push(...pComp.damagedEnemies);
@@ -2961,10 +2965,10 @@ export class Game {
     this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
     this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
 
-    // Mecánica de Vampirismo / Robo de Ancho de Banda: 5% de probabilidad de activar curación al cumplir la condición de bajas
+    // Mecánica de Vampirismo / Robo de Ancho de Banda: solo se activa tras equipar la pasiva
     const prevVampirismTier = Math.floor(prevKillCount / 20);
     const currentVampirismTier = Math.floor(this.killCount / 20);
-    if (currentVampirismTier > prevVampirismTier && this.player.active) {
+    if (this.player.vampirismChance > 0 && currentVampirismTier > prevVampirismTier && this.player.active) {
       const tiersCrossed = currentVampirismTier - prevVampirismTier;
       let triggeredTiers = 0;
       for (let t = 0; t < tiersCrossed; t++) {

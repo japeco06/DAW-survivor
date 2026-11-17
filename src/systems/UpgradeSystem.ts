@@ -177,17 +177,17 @@ export class UpgradeSystem {
         categoryEn: 'WEAPON // SHOCKWAVE',
         description: 'Emite pulsos radiales periódicos que dañan y repelen malware.',
         descriptionEn: 'Emits periodic radial waves pushing back and damaging malware.',
-        statBadge: '▲ +8 Daño  |  ▲ +28px Radio  |  ▼ -14% CD',
-        statBadgeEn: '▲ +8 Damage  |  ▲ +28px Radius  |  ▼ -14% CD',
+        statBadge: '▲ +14 Daño  |  ▲ +28px Radio  |  ▼ -14% CD',
+        statBadgeEn: '▲ +14 Damage  |  ▲ +28px Radius  |  ▼ -14% CD',
         color: '#ff8800',
         level: 0,
         maxLevel: 5,
         isWeapon: true,
         apply: (_player, combat) => {
           combat.firewallPulseLevel += 1;
-          combat.firewallPulseDamage += 8;
+          combat.firewallPulseDamage += 14;
           combat.firewallPulseMaxRadius += 28;
-          combat.firewallPulseCooldown = Math.max(1.8, combat.firewallPulseCooldown * 0.86);
+          combat.firewallPulseCooldown = Math.max(1.45, combat.firewallPulseCooldown * 0.86);
         },
       },
       {
@@ -198,17 +198,17 @@ export class UpgradeSystem {
         categoryEn: 'WEAPON // PIERCING LASER',
         description: 'Dispara un haz láser perforante que atraviesa toda la hilera enemiga.',
         descriptionEn: 'Fires a piercing laser beam cleaving through enemy lines.',
-        statBadge: '▲ +12 Daño  |  ▲ +5px Ancho  |  ▼ -15% CD',
-        statBadgeEn: '▲ +12 Damage  |  ▲ +5px Width  |  ▼ -15% CD',
+        statBadge: '▲ +16 Daño  |  ▲ +5px Ancho  |  ▼ -15% CD',
+        statBadgeEn: '▲ +16 Damage  |  ▲ +5px Width  |  ▼ -15% CD',
         color: '#d946ef',
         level: 0,
         maxLevel: 5,
         isWeapon: true,
         apply: (_player, combat) => {
           combat.sqlBeamLevel += 1;
-          combat.sqlBeamDamage += 12;
+          combat.sqlBeamDamage += 16;
           combat.sqlBeamThickness += 5;
-          combat.sqlBeamCooldown = Math.max(1.0, combat.sqlBeamCooldown * 0.85);
+          combat.sqlBeamCooldown = Math.max(0.9, combat.sqlBeamCooldown * 0.85);
         },
       },
       {
@@ -256,14 +256,14 @@ export class UpgradeSystem {
         categoryEn: 'PASSIVE // POWER & SCAN',
         description: 'Incrementa el daño del disparo básico y amplía el radio de escáner.',
         descriptionEn: 'Increases primary fire damage and expands radar scanner range.',
-        statBadge: '▲ +10 Daño  |  ▲ +60px Rango',
-        statBadgeEn: '▲ +10 Damage  |  ▲ +60px Range',
+        statBadge: '▲ +6 Daño  |  ▲ +60px Rango',
+        statBadgeEn: '▲ +6 Damage  |  ▲ +60px Range',
         color: '#facc15',
         level: 0,
         maxLevel: 5,
         isBasicShotOnly: true,
         apply: (_player, combat) => {
-          combat.projectileDamage += 10;
+          combat.projectileDamage += 6;
           combat.attackRange += 60;
         },
       },
@@ -392,10 +392,10 @@ export class UpgradeSystem {
         nameEn: 'HEX-CORE QUANTUM CANNON',
         category: '★ EVOLUCIÓN // ARMA BASE',
         categoryEn: '★ EVOLUTION // PRIMARY',
-        description: 'Ráfaga Firewall evoluciona: 5+ disparos perforantes oro-cian de alta velocidad.',
-        descriptionEn: 'Evolves Firewall Burst into 5+ high-speed piercing golden-cyan bolts.',
-        statBadge: '◆ +40% Daño  |  ▲ Perfora 3x  |  5+ Balas',
-        statBadgeEn: '◆ +40% Dmg  |  ▲ 3x Pierce  |  5+ Bolts',
+        description: 'Ráfaga Firewall evoluciona: 4-5 disparos perforantes oro-cian de alta velocidad.',
+        descriptionEn: 'Evolves Firewall Burst into 4-5 high-speed piercing golden-cyan bolts.',
+        statBadge: '◆ +25% Daño  |  ▲ Perfora 2x  |  4-5 Balas',
+        statBadgeEn: '◆ +25% Dmg  |  ▲ 2x Pierce  |  4-5 Bolts',
         color: '#fbbf24',
         level: 0,
         maxLevel: 1,
@@ -469,10 +469,10 @@ export class UpgradeSystem {
         nameEn: 'SOLAR FIREWALL STORM',
         category: '★ EVOLUCIÓN // CORTAFUEGOS + FIBRA',
         categoryEn: '★ EVOLUTION // PULSE + FIBER',
-        description: 'Emite enormes tormentas solares rápidas de gran alcance (+95px) y +60% daño.',
-        descriptionEn: 'Unleashes rapid massive solar waves (+95px radius) & +60% damage.',
-        statBadge: '◆ +60% Daño  |  ▲ +95px Radio  |  ▼ -35% CD',
-        statBadgeEn: '◆ +60% Dmg  |  ▲ +95px AoE  |  ▼ -35% CD',
+        description: 'Emite enormes tormentas solares rápidas de gran alcance (+95px) y +75% daño.',
+        descriptionEn: 'Unleashes rapid massive solar waves (+95px radius) & +75% damage.',
+        statBadge: '◆ +75% Daño  |  ▲ +95px Radio  |  ▼ -35% CD',
+        statBadgeEn: '◆ +75% Dmg  |  ▲ +95px AoE  |  ▼ -35% CD',
         color: '#fbbf24',
         level: 0,
         maxLevel: 1,
@@ -488,10 +488,10 @@ export class UpgradeSystem {
         nameEn: 'ZERO-DAY ANNIHILATOR',
         category: '★ EVOLUCIÓN // SQL + OVERCLOCK MEM',
         categoryEn: '★ EVOLUTION // SQL + MEMORY OC',
-        description: 'Dispara 3 haces láser masivos en abanico que desintegran oleadas completas.',
-        descriptionEn: 'Fires 3 massive wide fan beams obliterating entire enemy lines.',
-        statBadge: '◆ 3 Haces Anchos  |  ▲ +45% Daño  |  ▼ -28% CD',
-        statBadgeEn: '◆ 3 Wide Beams  |  ▲ +45% Dmg  |  ▼ -28% CD',
+        description: 'Dispara 3 haces láser masivos en abanico concentrado que desintegran oleadas.',
+        descriptionEn: 'Fires 3 massive focused fan beams obliterating entire enemy lines.',
+        statBadge: '◆ 3 Haces Anchos  |  ▲ +55% Daño  |  ▼ -28% CD',
+        statBadgeEn: '◆ 3 Wide Beams  |  ▲ +55% Dmg  |  ▼ -28% CD',
         color: '#fbbf24',
         level: 0,
         maxLevel: 1,
@@ -613,10 +613,10 @@ export class UpgradeSystem {
         nameEn: 'PINBALL PROTOCOL',
         category: 'EVOLUCIÓN NV.2 // RAMA 3',
         categoryEn: 'EVOLUTION LV.2 // BRANCH 3',
-        description: 'Mascota perforante a velocidad extrema rebotando por el mapa.',
-        descriptionEn: 'High-speed piercing companion bouncing off screen edges.',
-        statBadge: '▲ Rebote Veloz  |  Perforación Enemiga',
-        statBadgeEn: '▲ Fast Bounce  |  Enemy Piercing',
+        description: 'Mascota perforante veloz con rebote predictivo anticipando enemigos en movimiento.',
+        descriptionEn: 'High-speed piercing companion with predictive trajectory-leading bounces.',
+        statBadge: '▲ Rebote Predictivo  |  Perforación Enemiga',
+        statBadgeEn: '▲ Predictive Bounce  |  Enemy Piercing',
         color: '#ec4899',
         level: 0,
         maxLevel: 1,
@@ -687,6 +687,66 @@ export class UpgradeSystem {
       if (weaponSlotsFull && u.isWeapon && u.level === 0) return false;
       return true;
     });
+
+    if (available.length === 0) {
+      this.currentChoices = [
+        {
+          id: 'limit_break_damage',
+          name: 'KERNEL LIMIT BREAK',
+          nameEn: 'KERNEL LIMIT BREAK',
+          category: '∞ OVERCLOCK INFINITO // DAÑO',
+          categoryEn: '∞ ENDLESS OVERCLOCK // DAMAGE',
+          description: 'Sobrepasa el límite de potencia del núcleo una vez maxeado tu arsenal.',
+          descriptionEn: 'Pushes core firepower beyond max hardware limits.',
+          statBadge: '▲ +10% Daño Global  |  ▲ +2% Crítico',
+          statBadgeEn: '▲ +10% Global Dmg  |  ▲ +2% Crit',
+          color: '#fbbf24',
+          level: 0,
+          maxLevel: 999,
+          apply: (p) => {
+            p.damageMultiplier = Number((p.damageMultiplier + 0.1).toFixed(2));
+            p.critChance = Number((p.critChance + 0.02).toFixed(3));
+          },
+        },
+        {
+          id: 'limit_break_rof',
+          name: 'TURBO HILO INFINITO',
+          nameEn: 'ENDLESS THREAD TURBO',
+          category: '∞ OVERCLOCK INFINITO // CADENCIA',
+          categoryEn: '∞ ENDLESS OVERCLOCK // FIRE RATE',
+          description: 'Acelera de forma ilimitada la frecuencia de reloj de todas tus armas.',
+          descriptionEn: 'Continuously accelerates weapon clock cycles and movement.',
+          statBadge: '▲ +6% Cadencia  |  ▲ +3% Velocidad',
+          statBadgeEn: '▲ +6% Fire Rate  |  ▲ +3% Move Speed',
+          color: '#38bdf8',
+          level: 0,
+          maxLevel: 999,
+          apply: (p) => {
+            p.fireRateMultiplier = Number((p.fireRateMultiplier + 0.06).toFixed(2));
+            p.speed = Math.round(p.speed * 1.03);
+          },
+        },
+        {
+          id: 'limit_break_vital',
+          name: 'RESERVA CRÍTICA DE KERNEL',
+          nameEn: 'KERNEL VITAL RESERVE',
+          category: '∞ OVERCLOCK INFINITO // INTEGRIDAD',
+          categoryEn: '∞ ENDLESS OVERCLOCK // INTEGRITY',
+          description: 'Refuerza el blindaje máximo y repara la integridad ante oleadas extremas.',
+          descriptionEn: 'Reinforces max integrity and restores health during extreme waves.',
+          statBadge: '▲ +20 HP Máx  |  ▲ +35 HP Curación',
+          statBadgeEn: '▲ +20 Max HP  |  ▲ +35 HP Heal',
+          color: '#10b981',
+          level: 0,
+          maxLevel: 999,
+          apply: (p) => {
+            p.maxHp += 20;
+            p.heal(35);
+          },
+        },
+      ];
+      return this.currentChoices;
+    }
 
     if (excludedIds && excludedIds.size > 0) {
       const freshPool = available.filter((u) => !excludedIds.has(u.id));

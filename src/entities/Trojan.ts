@@ -16,7 +16,7 @@ export class Trojan extends Adware {
       18,
       205, // Mucho más rápido que el Adware estándar
       '#facc15',
-      Math.round(18 * hpMultiplier),
+      Math.round(16 * Math.min(4.2, hpMultiplier)),
       15,
       30
     );

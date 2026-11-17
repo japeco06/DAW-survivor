@@ -649,8 +649,8 @@ export class CombatSystem {
   // 5. Arma: Cortafuegos (-> Tormenta Solar Firewall)
   public firewallPulseLevel: number = 0;
   private firewallPulseTimer: number = 0;
-  public firewallPulseCooldown: number = 3.2;
-  public firewallPulseDamage: number = 32;
+  public firewallPulseCooldown: number = 3.0;
+  public firewallPulseDamage: number = 44;
   public firewallPulseMaxRadius: number = 175;
   public firewallPulses: FirewallPulseRing[] = [];
   public evolvedFirewallPulse: boolean = false;
@@ -658,8 +658,8 @@ export class CombatSystem {
   // 6. Arma: Rayo SQL Injection (-> Láser Zero-Day)
   public sqlBeamLevel: number = 0;
   private sqlBeamTimer: number = 0;
-  public sqlBeamCooldown: number = 2.5;
-  public sqlBeamDamage: number = 38;
+  public sqlBeamCooldown: number = 2.2;
+  public sqlBeamDamage: number = 48;
   public sqlBeamThickness: number = 18;
   public sqlBeamSpeed: number = 720;
   public sqlBeams: SqlInjectionBeam[] = [];
@@ -834,12 +834,18 @@ export class CombatSystem {
     };
 
     const effectiveRof = Math.max(0.5, player.getEffectiveFireRateMultiplier());
-    const effectiveFireCooldown = (this.evolvedBasic ? this.fireCooldown * 0.78 : this.fireCooldown) / effectiveRof;
-    const effectivePingCooldown = (this.evolvedPing ? this.pingCooldown * 0.72 : this.pingCooldown) / effectiveRof;
+    const effectiveFireCooldown = Math.max(
+      0.085,
+      (this.evolvedBasic ? this.fireCooldown * 0.86 : this.fireCooldown) / effectiveRof
+    );
+    const effectivePingCooldown = Math.max(
+      0.16,
+      (this.evolvedPing ? this.pingCooldown * 0.72 : this.pingCooldown) / effectiveRof
+    );
 
     // --- ARMA 1: Ráfaga de Firewall (-> Cañón Hex-Core) ---
     if (!player.isSummoner && player.active && this.fireTimer >= effectiveFireCooldown) {
-      const shotCount = this.evolvedBasic ? Math.max(5, this.multiShotCount + 1) : this.multiShotCount;
+      const shotCount = this.evolvedBasic ? Math.max(4, this.multiShotCount + 1) : this.multiShotCount;
       const targets = this.findNearestEnemies(player, enemies, shotCount);
       if (targets.length > 0) {
         this.fireTimer = 0;
@@ -859,7 +865,7 @@ export class CombatSystem {
 
           const finalAngle = baseAngle + spreadOffset;
           const baseDmg = computeBaseScaledDamage(
-            this.evolvedBasic ? Math.round(this.projectileDamage * 1.4) : this.projectileDamage
+            this.evolvedBasic ? Math.round(this.projectileDamage * 1.25) : this.projectileDamage
           );
 
           projectiles.push(
@@ -870,7 +876,7 @@ export class CombatSystem {
               Math.sin(finalAngle),
               this.evolvedBasic ? this.projectileSpeed * 1.35 : this.projectileSpeed,
               baseDmg,
-              this.evolvedBasic ? 3 : 0,
+              this.evolvedBasic ? 2 : 0,
               this.evolvedBasic
             )
           );
@@ -935,9 +941,11 @@ export class CombatSystem {
     }
 
     // --- ARMA 4: Cortafuegos (-> Tormenta Solar) ---
-    const effectivePulseCooldown =
+    const effectivePulseCooldown = Math.max(
+      0.55,
       (this.evolvedFirewallPulse ? this.firewallPulseCooldown * 0.65 : this.firewallPulseCooldown) /
-      effectiveRof;
+        effectiveRof
+    );
     if (
       player.active &&
       this.firewallPulseLevel > 0 &&
@@ -945,7 +953,7 @@ export class CombatSystem {
     ) {
       this.firewallPulseTimer = 0;
       const baseDmg = computeBaseScaledDamage(
-        this.evolvedFirewallPulse ? Math.round(this.firewallPulseDamage * 1.6) : this.firewallPulseDamage
+        this.evolvedFirewallPulse ? Math.round(this.firewallPulseDamage * 1.75) : this.firewallPulseDamage
       );
       this.firewallPulses.push(
         new FirewallPulseRing(
@@ -959,8 +967,10 @@ export class CombatSystem {
     }
 
     // --- ARMA 5: Rayo SQL Injection (-> Zero-Day Annihilator) ---
-    const effectiveSqlCooldown =
-      (this.evolvedSqlBeam ? this.sqlBeamCooldown * 0.72 : this.sqlBeamCooldown) / effectiveRof;
+    const effectiveSqlCooldown = Math.max(
+      0.45,
+      (this.evolvedSqlBeam ? this.sqlBeamCooldown * 0.72 : this.sqlBeamCooldown) / effectiveRof
+    );
     if (player.active && this.sqlBeamLevel > 0 && this.sqlBeamTimer >= effectiveSqlCooldown) {
       const nearest = this.findNearestEnemies(player, enemies, 1)[0];
       const angle = nearest
@@ -969,9 +979,9 @@ export class CombatSystem {
       this.sqlBeamTimer = 0;
       shotsFired++;
       const baseDmg = computeBaseScaledDamage(
-        this.evolvedSqlBeam ? Math.round(this.sqlBeamDamage * 1.45) : this.sqlBeamDamage
+        this.evolvedSqlBeam ? Math.round(this.sqlBeamDamage * 1.55) : this.sqlBeamDamage
       );
-      const beamAngles = this.evolvedSqlBeam ? [angle - 0.17, angle, angle + 0.17] : [angle];
+      const beamAngles = this.evolvedSqlBeam ? [angle - 0.11, angle, angle + 0.11] : [angle];
       const beamThick = this.evolvedSqlBeam ? Math.round(this.sqlBeamThickness * 1.4) : this.sqlBeamThickness;
       for (const bAng of beamAngles) {
         this.sqlBeams.push(
@@ -989,8 +999,10 @@ export class CombatSystem {
     }
 
     // --- ARMA 6: Bobina Tesla EMP (-> Tormenta de Arco Voltaico) ---
-    const effectiveTeslaCd =
-      (this.evolvedTesla ? this.teslaCooldown * 0.65 : this.teslaCooldown) / effectiveRof;
+    const effectiveTeslaCd = Math.max(
+      0.35,
+      (this.evolvedTesla ? this.teslaCooldown * 0.65 : this.teslaCooldown) / effectiveRof
+    );
     if (player.active && this.teslaLevel > 0 && this.teslaTimer >= effectiveTeslaCd) {
       const chainCount = this.evolvedTesla ? 9 : 2 + Math.floor(this.teslaLevel / 2);
       const firstTarget = this.findNearestEnemies(player, enemies, 1)[0];
@@ -1050,8 +1062,10 @@ export class CombatSystem {
     }
 
     // --- ARMA 7: Fragmento Criogénico (-> Cero Absoluto) ---
-    const effectiveCryoCd =
-      (this.evolvedCryo ? this.cryoCooldown * 0.72 : this.cryoCooldown) / effectiveRof;
+    const effectiveCryoCd = Math.max(
+      0.32,
+      (this.evolvedCryo ? this.cryoCooldown * 0.72 : this.cryoCooldown) / effectiveRof
+    );
     if (player.active && this.cryoLevel > 0 && this.cryoTimer >= effectiveCryoCd) {
       const shardCount = this.evolvedCryo ? 4 : 1 + Math.floor(this.cryoLevel / 3);
       const targets = this.findNearestEnemies(player, enemies, shardCount);
@@ -1082,8 +1096,10 @@ export class CombatSystem {
     }
 
     // --- ARMA 8: Disco Kernel Rotativo (-> Sierras Phantom) ---
-    const effectiveSawCd =
-      (this.evolvedSaw ? this.sawCooldown * 0.7 : this.sawCooldown) / effectiveRof;
+    const effectiveSawCd = Math.max(
+      0.38,
+      (this.evolvedSaw ? this.sawCooldown * 0.7 : this.sawCooldown) / effectiveRof
+    );
     if (player.active && this.sawLevel > 0 && this.sawTimer >= effectiveSawCd) {
       this.sawTimer = 0;
       const discCount = this.evolvedSaw ? 5 : 1 + Math.floor(this.sawLevel / 2);
@@ -1424,17 +1440,17 @@ export class CombatSystem {
     // --- COLISIONES: Drones Antivirus (Escudo Reactivo -> Centinelas Omega) vs Enemigos ---
     const targetDroneCount = this.evolvedDrones ? Math.max(6, this.firewallCount) : this.firewallCount;
     while (this.droneSlots.length < targetDroneCount) {
-      this.droneSlots.push({ durability: 3, respawnTimer: 0 });
+      this.droneSlots.push({ durability: 4, respawnTimer: 0 });
     }
 
     for (const slot of this.droneSlots) {
       if (this.evolvedDrones) {
-        slot.durability = 3;
+        slot.durability = 4;
         slot.respawnTimer = 0;
       } else if (slot.durability <= 0) {
         slot.respawnTimer -= dt;
         if (slot.respawnTimer <= 0) {
-          slot.durability = 3;
+          slot.durability = 4;
           slot.respawnTimer = 0;
         }
       }
@@ -1457,11 +1473,11 @@ export class CombatSystem {
         slot.durability -= 1;
         if (slot.durability <= 0) {
           slot.durability = 0;
-          slot.respawnTimer = 10.0;
+          slot.respawnTimer = 6.5;
           droneExploded = true;
           this.droneExplosions.push(new DroneExplosionWave(nodeX, nodeY));
           const aoeRadius = 115;
-          const baseAoeDamage = Math.round(this.firewallDamage * 2.5 * player.damageMultiplier);
+          const baseAoeDamage = Math.round(this.firewallDamage * 3.0 * player.damageMultiplier);
 
           for (const target of enemies) {
             if (!target.active) continue;
@@ -1522,7 +1538,7 @@ export class CombatSystem {
               damage: critRoll.dmg,
               color: this.evolvedDrones
                 ? '#fbbf24'
-                : slot.durability === 3
+                : slot.durability >= 3
                 ? '#00ff66'
                 : slot.durability === 2
                 ? '#facc15'
@@ -1798,7 +1814,7 @@ export class CombatSystem {
       const node = nodes[i];
       const droneColor = this.evolvedDrones
         ? '#fbbf24'
-        : slot.durability === 3
+        : slot.durability >= 3
         ? '#00ff66'
         : slot.durability === 2
         ? '#facc15'

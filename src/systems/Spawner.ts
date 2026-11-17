@@ -80,6 +80,7 @@ export class Spawner {
   public finalBossMode: boolean = false;
   public isNightmareMode: boolean = false;
   public isInfiniteMap: boolean = false;
+  public coopPlayerCount: number = 1;
 
   public enableFinalBossMode(): void {
     this.finalBossMode = true;
@@ -134,8 +135,11 @@ export class Spawner {
     const lateLevelBonus = Math.max(0, playerLevel - 6) * 0.07;
     const timeBonus = (elapsedTime / 60) * 0.075;
     const nightmareMult = this.isNightmareMode ? 1.45 : 1.0;
+    const coopMult = 1 + Math.max(0, this.coopPlayerCount - 1) * 0.5;
 
-    return Number(((1 + earlyLevelBonus + lateLevelBonus + timeBonus) * nightmareMult).toFixed(2));
+    return Number(
+      ((1 + earlyLevelBonus + lateLevelBonus + timeBonus) * nightmareMult * coopMult).toFixed(2)
+    );
   }
 
   public getGlobalDamageMultiplier(elapsedTime: number): number {
@@ -448,8 +452,8 @@ export class Spawner {
     const timeMinutes = elapsedTime / 60;
     // Escalado moderado y equilibrado en mid-to-late game
     const progressiveHpMult = Math.min(
-      3.2,
-      Math.min(2.5, hpMultiplier) * (1 + timeMinutes * 0.05)
+      4.4,
+      Math.min(3.2, hpMultiplier) * (1 + timeMinutes * 0.05)
     );
     adware.maxHp = Math.round(25 * progressiveHpMult);
     adware.hp = adware.maxHp;
