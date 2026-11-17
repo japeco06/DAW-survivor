@@ -166,8 +166,6 @@ export class Evasor extends Adware {
 
     ctx.fillStyle = bodyColor;
     ctx.strokeStyle = isFlashing ? '#ffffff' : canDodge ? '#cffafe' : '#94a3b8';
-    ctx.shadowColor = canDodge ? '#00f0ff' : '#475569';
-    ctx.shadowBlur = isFlashing ? 18 : 8;
     ctx.lineWidth = 1.6;
 
     // Nave furtiva Ghost Script (silueta sigilo en punta)
@@ -183,7 +181,6 @@ export class Evasor extends Adware {
     ctx.stroke();
 
     if (!isFlashing) {
-      ctx.shadowBlur = 0;
       ctx.fillStyle = '#082f49';
       ctx.beginPath();
       ctx.moveTo(half * 0.55, 0);

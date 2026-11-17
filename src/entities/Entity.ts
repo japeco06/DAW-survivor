@@ -43,8 +43,6 @@ export abstract class Entity {
   public draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
     ctx.fillStyle = this.color;
-    ctx.shadowColor = this.color;
-    ctx.shadowBlur = 12;
     ctx.fillRect(
       this.x - this.size / 2,
       this.y - this.size / 2,

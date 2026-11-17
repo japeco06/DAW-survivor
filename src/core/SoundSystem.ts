@@ -35,6 +35,8 @@ export class SoundSystem {
 
   private lastShootSoundTime: number = 0;
   private lastStaticSoundTime: number = 0;
+  private lastCoinSoundTime: number = 0;
+  private noiseBuffer: AudioBuffer | null = null;
 
   constructor() {
     this.loadSettings();
@@ -160,17 +162,41 @@ export class SoundSystem {
 
   private scheduleMusic(): void {
     if (!this.ctx || !this.musicGain || this.currentTrack === 'NONE') return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (this.ctx.state !== 'running') return;
 
     const tempoBpm =
       this.currentTrack === 'FINAL_BOSS' ? 146 : this.currentTrack === 'BOSS' ? 138 : 124;
     const stepDuration = 60 / tempoBpm / 4; // Duración de una semicorchea (1/16 de compás)
     const scheduleAheadTime = 0.15; // Adelanto de 150ms
 
-    while (this.nextNoteTime < this.ctx.currentTime + scheduleAheadTime) {
+    // Evitar avalanchas de nodos si el temporizador se retrasó (ej. cambio de pestaña o tirón de CPU)
+    if (this.nextNoteTime < this.ctx.currentTime - 0.12) {
+      this.nextNoteTime = this.ctx.currentTime + 0.04;
+    }
+
+    let guard = 0;
+    while (this.nextNoteTime < this.ctx.currentTime + scheduleAheadTime && guard < 8) {
       this.playMusicStep(this.musicStep, this.nextNoteTime, this.currentTrack);
       this.nextNoteTime += stepDuration;
       this.musicStep = (this.musicStep + 1) % 64; // Bucle de 4 compases (64 steps)
+      guard++;
     }
+  }
+
+  private getNoiseBuffer(ctx: AudioContext): AudioBuffer {
+    if (this.noiseBuffer && this.noiseBuffer.sampleRate === ctx.sampleRate) {
+      return this.noiseBuffer;
+    }
+    const sampleRate = ctx.sampleRate;
+    const length = Math.max(1, Math.floor(sampleRate * 0.5));
+    const buffer = ctx.createBuffer(1, length, sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    this.noiseBuffer = buffer;
+    return buffer;
   }
 
   private playMusicStep(step: number, time: number, track: MusicTrack): void {
@@ -282,16 +308,8 @@ export class SoundSystem {
 
   private synthSnare(time: number, dur: number, vol: number): void {
     if (!this.ctx || !this.musicGain) return;
-    const sampleRate = this.ctx.sampleRate;
-    const bufferSize = Math.floor(sampleRate * dur);
-    const buffer = this.ctx.createBuffer(1, bufferSize, sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
-    }
-
     const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
+    noise.buffer = this.getNoiseBuffer(this.ctx);
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'highpass';
@@ -311,16 +329,8 @@ export class SoundSystem {
 
   private synthHiHat(time: number, dur: number, vol: number): void {
     if (!this.ctx || !this.musicGain) return;
-    const sampleRate = this.ctx.sampleRate;
-    const bufferSize = Math.floor(sampleRate * dur);
-    const buffer = this.ctx.createBuffer(1, bufferSize, sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
-    }
-
     const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
+    noise.buffer = this.getNoiseBuffer(this.ctx);
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'highpass';
@@ -433,18 +443,8 @@ export class SoundSystem {
     if (!ctx || !this.sfxGain || this.muted) return;
 
     const duration = isBoss ? 0.32 : 0.09;
-    const sampleRate = ctx.sampleRate;
-    const bufferSize = Math.floor(sampleRate * duration);
-    const buffer = ctx.createBuffer(1, bufferSize, sampleRate);
-    const data = buffer.getChannelData(0);
-
-    for (let i = 0; i < bufferSize; i++) {
-      const decay = 1 - i / bufferSize;
-      data[i] = (Math.random() * 2 - 1) * decay;
-    }
-
     const noise = ctx.createBufferSource();
-    noise.buffer = buffer;
+    noise.buffer = this.getNoiseBuffer(ctx);
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
@@ -464,6 +464,10 @@ export class SoundSystem {
   }
 
   public playCoinPickup(): void {
+    const now = performance.now();
+    if (now - this.lastCoinSoundTime < 35) return;
+    this.lastCoinSoundTime = now;
+
     const ctx = this.ensureContext();
     if (!ctx || !this.sfxGain || this.muted) return;
 

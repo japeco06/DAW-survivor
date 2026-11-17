@@ -45,8 +45,6 @@ export class Trojan extends Adware {
     ctx.rotate(this.angle);
 
     ctx.fillStyle = drawColor;
-    ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 14 : 6;
 
     // Estela de propulsión de paquete veloz
     if (!isFlashing) {

@@ -96,8 +96,6 @@ export class ArmoredWorm extends Adware {
     ctx.fillStyle = drawColor;
     ctx.strokeStyle = isFlashing ? '#ffffff' : '#042f2e';
     ctx.lineWidth = 1.8;
-    ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 16 : 6;
 
     const cut = half * 0.38;
     ctx.beginPath();
@@ -115,7 +113,6 @@ export class ArmoredWorm extends Adware {
 
     // Carcasa superior oscura + núcleo débil trasero pulsante
     if (!isFlashing) {
-      ctx.shadowBlur = 0;
       ctx.fillStyle = '#062c2b';
       ctx.fillRect(-half * 0.25, -half * 0.52, half * 0.8, this.size * 0.52);
 
@@ -128,19 +125,14 @@ export class ArmoredWorm extends Adware {
     // Punto débil trasero expuesto (reactor térmico carmesí)
     const weakPulse = 4.8 + Math.sin(t) * 1.1;
     ctx.fillStyle = isFlashing ? '#ffffff' : '#f43f5e';
-    ctx.shadowColor = '#f43f5e';
-    ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.arc(-half * 0.48, 0, weakPulse, 0, Math.PI * 2);
     ctx.fill();
-    ctx.shadowBlur = 0;
 
     // Escudo direccional frontal
     const shieldFlashing = this.shieldBlockFlashTimer > 0;
     const shieldRadius = half + 8;
     ctx.strokeStyle = shieldFlashing ? '#ffffff' : '#38bdf8';
-    ctx.shadowColor = '#00f0ff';
-    ctx.shadowBlur = shieldFlashing ? 18 : 6;
     ctx.lineWidth = shieldFlashing ? 7 : 5;
     ctx.beginPath();
     ctx.arc(0, 0, shieldRadius, -this.shieldHalfArc, this.shieldHalfArc);

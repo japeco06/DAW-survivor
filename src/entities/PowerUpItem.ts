@@ -41,9 +41,9 @@ export class PowerUpItem extends Entity {
     if (this.type === 'NUKE') {
       // Bomba Lógica (Logic Bomb): Rombo rojo carmesí brillante con núcleo dorado
       ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.28)';
+      ctx.fillRect(-half - 3, -half - 3, (half + 3) * 2, (half + 3) * 2);
       ctx.fillStyle = '#ff1e42';
-      ctx.shadowColor = '#f43f5e';
-      ctx.shadowBlur = 18;
       ctx.fillRect(-half, -half, half * 2, half * 2);
 
       ctx.fillStyle = '#fef08a';
@@ -53,9 +53,9 @@ export class PowerUpItem extends Entity {
     } else if (this.type === 'FREEZE') {
       // Congelación del Sistema (System Freeze): Diamante de cristal de hielo cian/blanco
       ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.28)';
+      ctx.fillRect(-half - 3, -half - 3, (half + 3) * 2, (half + 3) * 2);
       ctx.fillStyle = '#00f0ff';
-      ctx.shadowColor = '#38bdf8';
-      ctx.shadowBlur = 18;
       ctx.fillRect(-half, -half, half * 2, half * 2);
 
       ctx.strokeStyle = '#ffffff';
@@ -63,9 +63,11 @@ export class PowerUpItem extends Entity {
       ctx.strokeRect(-half * 0.5, -half * 0.5, half, half);
     } else {
       // Overclock Térmico (Thermal Overclock / Frenzy): Icono de núcleo de plasma naranja con destello ámbar
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.28)';
+      ctx.beginPath();
+      ctx.arc(0, 0, half + 3.5, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = '#f97316';
-      ctx.shadowColor = '#fbbf24';
-      ctx.shadowBlur = 18;
       ctx.beginPath();
       ctx.arc(0, 0, half, 0, Math.PI * 2);
       ctx.fill();

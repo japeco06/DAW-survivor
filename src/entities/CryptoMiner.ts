@@ -121,11 +121,9 @@ export class CryptoMiner extends Adware {
 
     ctx.fillStyle = isFlashing ? '#ffffff' : '#f59e0b';
     ctx.strokeStyle = '#fef08a';
-    ctx.lineWidth = 2;
-    ctx.shadowColor = '#fbbf24';
-    ctx.shadowBlur = isFlashing ? 22 : 14;
+    ctx.lineWidth = 2.2;
 
-    // Octágono ASIC dorado estilizado
+    // Octágono ASIC dorado estilizado (sin shadowBlur bloqueante)
     const cut = 5;
     ctx.beginPath();
     ctx.moveTo(-half + cut, -half);
@@ -140,7 +138,6 @@ export class CryptoMiner extends Adware {
     ctx.fill();
     ctx.stroke();
 
-    ctx.shadowBlur = 0;
     ctx.fillStyle = '#0f172a';
     ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
     ctx.textAlign = 'center';

@@ -69,6 +69,8 @@ export class MetaSystem {
   public highScore: number = 0;
   public bestTimeSeconds: number = 0;
   public maxDamageToToro: number = 0;
+  private dirty: boolean = false;
+  private lastSaveTime: number = 0;
 
   public readonly characterOrder: CharacterId[] = ['STANDARD', 'ROOT', 'PROXY', 'MORCILLITA'];
 
@@ -140,8 +142,9 @@ export class MetaSystem {
   }
 
   public addCoins(amount: number): void {
+    if (amount === 0) return;
     this.coins += amount;
-    this.save();
+    this.saveThrottled();
   }
 
   public updateHighScore(
@@ -165,7 +168,7 @@ export class MetaSystem {
       changed = true;
     }
     if (changed) {
-      this.save();
+      this.saveThrottled();
     }
   }
 
@@ -602,8 +605,24 @@ export class MetaSystem {
   public save(): void {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.getStatePayload()));
+      this.dirty = false;
+      this.lastSaveTime = performance.now();
     } catch {
       // Ignorar errores de almacenamiento restringido
+    }
+  }
+
+  public saveThrottled(intervalMs: number = 4000): void {
+    this.dirty = true;
+    const now = performance.now();
+    if (now - this.lastSaveTime >= intervalMs) {
+      this.save();
+    }
+  }
+
+  public flushPendingSave(): void {
+    if (this.dirty) {
+      this.save();
     }
   }
 }

@@ -158,8 +158,6 @@ export class TrojanShooter extends Adware {
     ctx.fillStyle = drawColor;
     ctx.strokeStyle = isFlashing ? '#ffffff' : '#271204';
     ctx.lineWidth = 1.6;
-    ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 16 : 6;
 
     ctx.beginPath();
     ctx.moveTo(half + 2, -half * 0.38);
@@ -174,7 +172,6 @@ export class TrojanShooter extends Adware {
 
     if (!isFlashing) {
       // Núcleo capacitor dorsal + lente mira
-      ctx.shadowBlur = 0;
       ctx.fillStyle = '#1f0d02';
       ctx.fillRect(-half * 0.58, -half * 0.42, half * 0.95, half * 0.84);
 

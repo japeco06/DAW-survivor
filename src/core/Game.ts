@@ -72,7 +72,7 @@ interface PauseButtonRect {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.2.1';
+const GAME_VERSION = 'v1.2.2';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
@@ -80,6 +80,8 @@ export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 
 export class Game {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  private bgCacheCanvas: HTMLCanvasElement | null = null;
+  private scanLineCache: HTMLCanvasElement | null = null;
   private input: Input;
   private sound: SoundSystem;
   private metaSystem: MetaSystem;
@@ -165,7 +167,8 @@ export class Game {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    const context = canvas.getContext('2d');
+    const context =
+      canvas.getContext('2d', { alpha: false }) || canvas.getContext('2d');
     if (!context) {
       throw new Error('No se pudo inicializar el contexto 2D del Canvas.');
     }
@@ -289,6 +292,10 @@ export class Game {
       }
     };
     window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('pagehide', () => {
+      this.achievementSystem.flushPendingSave(true);
+      this.metaSystem.flushPendingSave();
+    });
 
     window.addEventListener('keydown', (e) => {
       unlockAudio();
@@ -993,7 +1000,10 @@ export class Game {
   private togglePause(): void {
     this.isPaused = !this.isPaused;
     this.hoveredPauseAction = null;
-    if (!this.isPaused) {
+    if (this.isPaused) {
+      this.achievementSystem.flushPendingSave(true);
+      this.metaSystem.flushPendingSave();
+    } else {
       this.lastTime = performance.now();
     }
   }
@@ -1003,6 +1013,8 @@ export class Game {
       this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
     }
     this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
+    this.achievementSystem.flushPendingSave(true);
+    this.metaSystem.flushPendingSave();
     this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
     void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
     this.isPaused = false;
@@ -1045,6 +1057,7 @@ export class Game {
   private resize(): void {
     this.canvas.width = LOGICAL_WIDTH;
     this.canvas.height = LOGICAL_HEIGHT;
+    this.bgCacheCanvas = null;
   }
 
   private startNewRun(): void {
@@ -1589,6 +1602,8 @@ export class Game {
           character: this.metaSystem.getSelectedProfile().name,
         });
         this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
+        this.achievementSystem.flushPendingSave(true);
+        this.metaSystem.flushPendingSave();
         this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
         void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
         this.sound.playExplosion(true);
@@ -1679,6 +1694,7 @@ export class Game {
     this.codeFragments = this.codeFragments.filter((f) => f.active);
     this.cryptoCoins = this.cryptoCoins.filter((c) => c.active);
     this.powerUps = this.powerUps.filter((p) => p.active);
+    this.achievementSystem.flushPendingSave(false);
   }
 
   private spawnCodeFragment(x: number, y: number, xpValue: number): void {
@@ -1779,7 +1795,7 @@ export class Game {
   }
 
   private render(): void {
-    this.ctx.fillStyle = '#070c16';
+    this.ctx.fillStyle = '#060a13';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     const shake = this.sound.screenShakeEnabled
@@ -1995,8 +2011,6 @@ export class Game {
     this.ctx.save();
     this.ctx.textAlign = 'right';
     this.ctx.fillStyle = 'rgba(125, 211, 252, 0.78)';
-    this.ctx.shadowColor = '#0284c7';
-    this.ctx.shadowBlur = 6;
     this.ctx.font = `bold 12px ${FONT_MONO}`;
     this.ctx.fillText(GAME_VERSION, this.canvas.width - 18, this.canvas.height - 14);
     this.ctx.restore();
@@ -2013,8 +2027,6 @@ export class Game {
     const blink = Math.floor(performance.now() / 280) % 2 === 0;
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = blink ? '#ff1e42' : '#fde047';
-    this.ctx.shadowColor = '#ff0044';
-    this.ctx.shadowBlur = 16;
     this.ctx.font = `bold 18px ${FONT_DISPLAY}`;
     this.ctx.fillText(
       i18n.t(
@@ -2113,9 +2125,7 @@ export class Game {
 
       this.ctx.fillStyle = fillColor;
       this.ctx.strokeStyle = strokeColor;
-      this.ctx.shadowColor = isMiner ? '#f59e0b' : '#ff1e42';
-      this.ctx.shadowBlur = 12;
-      this.ctx.lineWidth = 1.5;
+      this.ctx.lineWidth = 1.6;
 
       this.ctx.beginPath();
       this.ctx.moveTo(14, 0);
@@ -2147,8 +2157,6 @@ export class Game {
 
     this.ctx.font = 'bold 15px "JetBrains Mono", Consolas, monospace';
     this.ctx.fillStyle = '#38bdf8';
-    this.ctx.shadowColor = '#00f0ff';
-    this.ctx.shadowBlur = 10;
     this.ctx.textAlign = 'center';
     this.ctx.fillText(
       `❄ SISTEMA CONGELADO: ${this.systemFreezeTimer.toFixed(1)}s`,
@@ -2162,8 +2170,6 @@ export class Game {
     this.ctx.save();
     this.ctx.font = `bold 15px ${FONT_MONO}`;
     this.ctx.fillStyle = '#f97316';
-    this.ctx.shadowColor = '#fbbf24';
-    this.ctx.shadowBlur = 12;
     this.ctx.textAlign = 'center';
     this.ctx.fillText(
       i18n.t(
@@ -4682,102 +4688,138 @@ export class Game {
     this.ctx.restore();
   }
 
+  private ensureBgCache(): HTMLCanvasElement {
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    if (
+      this.bgCacheCanvas &&
+      this.bgCacheCanvas.width === w &&
+      this.bgCacheCanvas.height === h
+    ) {
+      return this.bgCacheCanvas;
+    }
+
+    const cache = document.createElement('canvas');
+    cache.width = w;
+    cache.height = h;
+    const bgCtx = cache.getContext('2d', { alpha: false }) || cache.getContext('2d');
+    if (bgCtx) {
+      const gridSize = 64;
+      const majorSize = gridSize * 4;
+
+      // Suelo de silicio / placa base industrial azul pizarra oscuro
+      const bgGrad = bgCtx.createRadialGradient(
+        w * 0.5,
+        h * 0.5,
+        80,
+        w * 0.5,
+        h * 0.5,
+        Math.max(w, h) * 0.72
+      );
+      bgGrad.addColorStop(0, '#0d1729');
+      bgGrad.addColorStop(1, '#060a13');
+      bgCtx.fillStyle = bgGrad;
+      bgCtx.fillRect(0, 0, w, h);
+
+      // Rejilla secundaria de placa base
+      bgCtx.strokeStyle = 'rgba(56, 189, 248, 0.045)';
+      bgCtx.lineWidth = 1;
+      bgCtx.beginPath();
+      for (let x = 0; x <= w; x += gridSize) {
+        bgCtx.moveTo(x, 0);
+        bgCtx.lineTo(x, h);
+      }
+      for (let y = 0; y <= h; y += gridSize) {
+        bgCtx.moveTo(0, y);
+        bgCtx.lineTo(w, y);
+      }
+      bgCtx.stroke();
+
+      // Líneas maestras de bus PCB
+      bgCtx.strokeStyle = 'rgba(56, 189, 248, 0.11)';
+      bgCtx.beginPath();
+      for (let x = majorSize; x < w; x += majorSize) {
+        bgCtx.moveTo(x, 0);
+        bgCtx.lineTo(x, h);
+      }
+      for (let y = majorSize; y < h; y += majorSize) {
+        bgCtx.moveTo(0, y);
+        bgCtx.lineTo(w, y);
+      }
+      bgCtx.stroke();
+
+      // Trazas de circuito impreso (PCB 45° traces + pads de soldadura) deterministas
+      bgCtx.strokeStyle = 'rgba(16, 185, 129, 0.10)';
+      bgCtx.lineWidth = 1.6;
+      bgCtx.beginPath();
+      for (let gx = majorSize; gx < w; gx += majorSize) {
+        for (let gy = majorSize; gy < h; gy += majorSize) {
+          const dir = (gx / majorSize + gy / majorSize) % 2 === 0 ? 1 : -1;
+          bgCtx.moveTo(gx - 42, gy);
+          bgCtx.lineTo(gx - 18, gy);
+          bgCtx.lineTo(gx, gy + 18 * dir);
+          bgCtx.lineTo(gx + 34, gy + 18 * dir);
+        }
+      }
+      bgCtx.stroke();
+
+      // Vías / nodos de soldadura y cruces de sector
+      bgCtx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+      bgCtx.lineWidth = 1.2;
+      bgCtx.beginPath();
+      for (let x = majorSize; x < w; x += majorSize) {
+        for (let y = majorSize; y < h; y += majorSize) {
+          bgCtx.moveTo(x - 5, y);
+          bgCtx.lineTo(x + 5, y);
+          bgCtx.moveTo(x, y - 5);
+          bgCtx.lineTo(x, y + 5);
+        }
+      }
+      bgCtx.stroke();
+
+      bgCtx.fillStyle = 'rgba(251, 191, 36, 0.22)';
+      for (let gx = majorSize; gx < w; gx += majorSize) {
+        for (let gy = majorSize; gy < h; gy += majorSize) {
+          bgCtx.beginPath();
+          bgCtx.arc(gx - 42, gy, 2.2, 0, Math.PI * 2);
+          bgCtx.fill();
+        }
+      }
+    }
+
+    this.bgCacheCanvas = cache;
+    return cache;
+  }
+
+  private ensureScanLineCache(): HTMLCanvasElement {
+    if (this.scanLineCache) return this.scanLineCache;
+    const strip = document.createElement('canvas');
+    strip.width = 4;
+    strip.height = 80;
+    const sCtx = strip.getContext('2d');
+    if (sCtx) {
+      const scanGrad = sCtx.createLinearGradient(0, 0, 0, 80);
+      scanGrad.addColorStop(0, 'rgba(56, 189, 248, 0)');
+      scanGrad.addColorStop(0.5, 'rgba(56, 189, 248, 0.055)');
+      scanGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+      sCtx.fillStyle = scanGrad;
+      sCtx.fillRect(0, 0, 4, 80);
+    }
+    this.scanLineCache = strip;
+    return strip;
+  }
+
   private drawCyberGrid(): void {
     const w = this.canvas.width;
     const h = this.canvas.height;
-    const gridSize = 64;
-    const majorSize = gridSize * 4;
     const tSec = performance.now() * 0.001;
 
     this.ctx.save();
+    this.ctx.drawImage(this.ensureBgCache(), 0, 0);
 
-    // Suelo de silicio / placa base industrial azul pizarra oscuro
-    const bgGrad = this.ctx.createRadialGradient(
-      w * 0.5,
-      h * 0.5,
-      80,
-      w * 0.5,
-      h * 0.5,
-      Math.max(w, h) * 0.72
-    );
-    bgGrad.addColorStop(0, '#0d1729');
-    bgGrad.addColorStop(1, '#060a13');
-    this.ctx.fillStyle = bgGrad;
-    this.ctx.fillRect(-24, -24, w + 48, h + 48);
-
-    // Rejilla secundaria de placa base
-    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.045)';
-    this.ctx.lineWidth = 1;
-    this.ctx.beginPath();
-    for (let x = 0; x <= w; x += gridSize) {
-      this.ctx.moveTo(x, 0);
-      this.ctx.lineTo(x, h);
-    }
-    for (let y = 0; y <= h; y += gridSize) {
-      this.ctx.moveTo(0, y);
-      this.ctx.lineTo(w, y);
-    }
-    this.ctx.stroke();
-
-    // Líneas maestras de bus PCB
-    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.11)';
-    this.ctx.beginPath();
-    for (let x = majorSize; x < w; x += majorSize) {
-      this.ctx.moveTo(x, 0);
-      this.ctx.lineTo(x, h);
-    }
-    for (let y = majorSize; y < h; y += majorSize) {
-      this.ctx.moveTo(0, y);
-      this.ctx.lineTo(w, y);
-    }
-    this.ctx.stroke();
-
-    // Trazas de circuito impreso (PCB 45° traces + pads de soldadura) deterministas
-    this.ctx.strokeStyle = 'rgba(16, 185, 129, 0.10)';
-    this.ctx.lineWidth = 1.6;
-    this.ctx.beginPath();
-    for (let gx = majorSize; gx < w; gx += majorSize) {
-      for (let gy = majorSize; gy < h; gy += majorSize) {
-        const dir = ((gx / majorSize + gy / majorSize) % 2 === 0) ? 1 : -1;
-        this.ctx.moveTo(gx - 42, gy);
-        this.ctx.lineTo(gx - 18, gy);
-        this.ctx.lineTo(gx, gy + 18 * dir);
-        this.ctx.lineTo(gx + 34, gy + 18 * dir);
-      }
-    }
-    this.ctx.stroke();
-
-    // Vías / nodos de soldadura y cruces de sector
-    this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
-    this.ctx.lineWidth = 1.2;
-    this.ctx.beginPath();
-    for (let x = majorSize; x < w; x += majorSize) {
-      for (let y = majorSize; y < h; y += majorSize) {
-        this.ctx.moveTo(x - 5, y);
-        this.ctx.lineTo(x + 5, y);
-        this.ctx.moveTo(x, y - 5);
-        this.ctx.lineTo(x, y + 5);
-      }
-    }
-    this.ctx.stroke();
-
-    this.ctx.fillStyle = 'rgba(251, 191, 36, 0.22)';
-    for (let gx = majorSize; gx < w; gx += majorSize) {
-      for (let gy = majorSize; gy < h; gy += majorSize) {
-        this.ctx.beginPath();
-        this.ctx.arc(gx - 42, gy, 2.2, 0, Math.PI * 2);
-        this.ctx.fill();
-      }
-    }
-
-    // Pulso horizontal suave de escaneo de bus
+    // Pulso horizontal suave de escaneo de bus (sin recrear gradientes cada frame)
     const scanY = ((tSec * 82) % (h + 160)) - 80;
-    const scanGrad = this.ctx.createLinearGradient(0, scanY - 40, 0, scanY + 40);
-    scanGrad.addColorStop(0, 'rgba(56, 189, 248, 0)');
-    scanGrad.addColorStop(0.5, 'rgba(56, 189, 248, 0.055)');
-    scanGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
-    this.ctx.fillStyle = scanGrad;
-    this.ctx.fillRect(-24, scanY - 40, w + 48, 80);
+    this.ctx.drawImage(this.ensureScanLineCache(), 0, scanY - 40, w, 80);
 
     // Paquetes ambientales discretos circulando por el silicio
     for (let i = 0; i < this.ambientNodes.length; i++) {
@@ -4812,16 +4854,12 @@ export class Game {
       xpGrad.addColorStop(0.65, '#38bdf8');
       xpGrad.addColorStop(1, '#10b981');
       this.ctx.fillStyle = xpGrad;
-      this.ctx.shadowColor = '#38bdf8';
-      this.ctx.shadowBlur = 8;
       this.ctx.fillRect(0, 0, fillW, barHeight);
 
-      this.ctx.shadowBlur = 0;
       this.ctx.fillStyle = '#ffffff';
       this.ctx.fillRect(Math.max(0, fillW - 3), 0, Math.min(3, fillW), barHeight);
     }
 
-    this.ctx.shadowBlur = 0;
     this.ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
     this.ctx.fillRect(w * 0.25, 0, 1, barHeight);
     this.ctx.fillRect(w * 0.5, 0, 1, barHeight);
@@ -4909,15 +4947,12 @@ export class Game {
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#ffffff';
-    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-    this.ctx.shadowBlur = 3;
     this.ctx.font = `bold 11px ${FONT_MONO}`;
     this.ctx.fillText(
       `HP ${Math.max(0, Math.ceil(this.player.hp))} / ${this.player.maxHp}`,
       hpBarX + hpBarW / 2,
       hpBarY + 12.5
     );
-    this.ctx.shadowBlur = 0;
 
     // Armas activas con auto-fit
     const weaponsStatus = this.combatSystem.getActiveWeaponsList(this.player).join(' • ');
@@ -5045,8 +5080,6 @@ export class Game {
       );
 
       this.ctx.fillStyle = '#fbbf24';
-      this.ctx.shadowColor = '#f59e0b';
-      this.ctx.shadowBlur = 10;
       this.ctx.font = `bold 19px ${FONT_MONO}`;
       this.ctx.fillText(
         `${i18n.t('DAÑO TOTAL ACUMULADO', 'TOTAL DAMAGE DEALT')}: ${Math.round(this.finalBoss.totalDamageTaken).toLocaleString('en-US')}`,
@@ -5067,8 +5100,6 @@ export class Game {
       if (pulse) {
         const alertColor = this.spawner.lastBossSpawnedColor || '#f43f5e';
         this.ctx.fillStyle = alertColor;
-        this.ctx.shadowColor = alertColor;
-        this.ctx.shadowBlur = 16;
         this.ctx.font = `bold 20px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           `ALERTA // ${this.spawner.lastBossSpawnedName} DETECTED`,
@@ -5086,7 +5117,6 @@ export class Game {
       const ratio = Math.max(0, activeBoss.hp / Math.max(1, activeBoss.maxHp));
       const bossColor = activeBoss.bossColor || '#f43f5e';
 
-      this.ctx.shadowBlur = 0;
       this.ctx.fillStyle = '#f8fafc';
       this.ctx.font = `bold 13px ${FONT_MONO}`;
       this.ctx.fillText(
@@ -5102,8 +5132,6 @@ export class Game {
         this.traceChamferRect(x + 1, y + 1, barWidth - 2, barHeight - 2, 3);
         this.ctx.clip();
         this.ctx.fillStyle = bossColor;
-        this.ctx.shadowColor = bossColor;
-        this.ctx.shadowBlur = 10;
         this.ctx.fillRect(x, y, barWidth * ratio, barHeight);
         this.ctx.restore();
       }

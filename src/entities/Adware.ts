@@ -106,11 +106,6 @@ export class Adware extends Entity {
     ctx.translate(this.x, this.y);
     ctx.rotate(this.facingAngle);
 
-    if (isFlashing) {
-      ctx.shadowColor = '#ffffff';
-      ctx.shadowBlur = 12;
-    }
-
     // Patas / pinzas cibernéticas animadas (3 pares)
     ctx.strokeStyle = drawColor;
     ctx.lineWidth = 1.8;

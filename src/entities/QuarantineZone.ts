@@ -77,11 +77,9 @@ export class QuarantineZone extends Entity {
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fill();
 
-    // 2. Anillo perimetral de contención biológica/digital
-    ctx.strokeStyle = `rgba(52, 211, 153, ${0.75 * fadeAlpha})`;
-    ctx.shadowColor = '#10b981';
-    ctx.shadowBlur = 10;
-    ctx.lineWidth = 2;
+    // 2. Anillo perimetral de contención biológica/digital (sin shadowBlur para 60 FPS fluidos)
+    ctx.strokeStyle = `rgba(52, 211, 153, ${0.82 * fadeAlpha})`;
+    ctx.lineWidth = 2.4;
     ctx.setLineDash([10, 6]);
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, this.pulseTime * 0.25, Math.PI * 2 + this.pulseTime * 0.25);

@@ -63,13 +63,14 @@ export class DroneExplosionWave {
     const alpha = Math.max(0.1, 1 - this.radius / this.maxRadius);
     ctx.save();
     ctx.fillStyle = `rgba(255, 30, 66, ${alpha * 0.22})`;
-    ctx.strokeStyle = `rgba(250, 204, 21, ${alpha})`;
-    ctx.shadowColor = '#ff1e42';
-    ctx.shadowBlur = 16;
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = `rgba(255, 30, 66, ${alpha * 0.35})`;
+    ctx.lineWidth = 8;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(250, 204, 21, ${alpha})`;
+    ctx.lineWidth = 3.5;
     ctx.stroke();
     ctx.restore();
   }
@@ -124,13 +125,15 @@ export class FirewallPulseRing {
 
     ctx.save();
     ctx.fillStyle = `rgba(255, 115, 0, ${alpha * 0.16})`;
-    ctx.strokeStyle = `rgba(255, 136, 0, ${alpha})`;
-    ctx.shadowColor = '#ff6600';
-    ctx.shadowBlur = 18;
-    ctx.lineWidth = 5;
+    ctx.strokeStyle = `rgba(255, 102, 0, ${alpha * 0.35})`;
+    ctx.lineWidth = 9;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(255, 136, 0, ${alpha})`;
+    ctx.lineWidth = 4.5;
     ctx.stroke();
 
     ctx.strokeStyle = `rgba(254, 240, 138, ${alpha})`;
@@ -223,10 +226,19 @@ export class SqlInjectionBeam {
     const halfL = this.length * 0.5;
     const halfT = this.thickness * 0.55;
 
-    // Haz de plasma afilado tipo lanza SQL
+    // Halo exterior barato + haz de plasma afilado tipo lanza SQL
+    ctx.fillStyle = 'rgba(217, 70, 239, 0.28)';
+    ctx.beginPath();
+    ctx.moveTo(halfL + 9, 0);
+    ctx.lineTo(halfL * 0.4, -(halfT + 3));
+    ctx.lineTo(-halfL - 3, -(halfT + 2) * 0.65);
+    ctx.lineTo(-halfL * 0.72, 0);
+    ctx.lineTo(-halfL - 3, (halfT + 2) * 0.65);
+    ctx.lineTo(halfL * 0.4, halfT + 3);
+    ctx.closePath();
+    ctx.fill();
+
     ctx.fillStyle = '#a855f7';
-    ctx.shadowColor = '#d946ef';
-    ctx.shadowBlur = 18;
     ctx.beginPath();
     ctx.moveTo(halfL + 6, 0);
     ctx.lineTo(halfL * 0.4, -halfT);
@@ -1020,9 +1032,7 @@ export class CombatSystem {
 
       ctx.fillStyle = '#06131a';
       ctx.strokeStyle = droneColor;
-      ctx.lineWidth = 2.2;
-      ctx.shadowColor = droneColor;
-      ctx.shadowBlur = 14;
+      ctx.lineWidth = 2.4;
 
       // Dron hexagonal táctico con núcleo brillante
       ctx.beginPath();

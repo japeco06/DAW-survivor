@@ -64,8 +64,6 @@ export class Worm extends Adware {
     ctx.fillStyle = drawColor;
     ctx.strokeStyle = isFlashing ? '#ffffff' : '#1e0b36';
     ctx.lineWidth = 1.6;
-    ctx.shadowColor = drawColor;
-    ctx.shadowBlur = isFlashing ? 14 : 6;
 
     const cut = half * 0.42;
     ctx.beginPath();
@@ -82,7 +80,6 @@ export class Worm extends Adware {
     ctx.stroke();
 
     if (!isFlashing) {
-      ctx.shadowBlur = 0;
       // Núcleo de chip oscuro + líneas de datos + sensores frontales
       ctx.fillStyle = '#1b0734';
       ctx.fillRect(-half * 0.52, -half * 0.48, this.size * 0.5, this.size * 0.48);

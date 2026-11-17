@@ -35,11 +35,17 @@ const ACHIEVEMENTS_STORAGE_KEY = 'cyber_survivor_achievements_v1';
 
 export class AchievementSystem {
   public achievements: Achievement[] = [];
+  private achievementMap: Map<string, Achievement> = new Map();
   public activeToasts: AchievementToast[] = [];
   public onUnlockCallback: ((achievement: Achievement) => void) | null = null;
+  private dirty: boolean = false;
+  private lastSaveTime: number = 0;
 
   constructor() {
     this.initAchievements();
+    for (const ach of this.achievements) {
+      this.achievementMap.set(ach.id, ach);
+    }
     this.loadState();
   }
 
@@ -375,8 +381,18 @@ export class AchievementSystem {
         };
       }
       localStorage.setItem(ACHIEVEMENTS_STORAGE_KEY, JSON.stringify(data));
+      this.dirty = false;
+      this.lastSaveTime = performance.now();
     } catch {
       // Ignorar errores
+    }
+  }
+
+  public flushPendingSave(force: boolean = false): void {
+    if (!this.dirty) return;
+    const now = performance.now();
+    if (force || now - this.lastSaveTime >= 4000) {
+      this.saveState();
     }
   }
 
@@ -401,12 +417,15 @@ export class AchievementSystem {
   }
 
   public reportProgress(id: string, value: number, isAbsolute: boolean = false): void {
-    const ach = this.achievements.find((a) => a.id === id);
+    const ach = this.achievementMap.get(id);
     if (!ach || ach.unlocked) return;
 
+    const prevCurrent = ach.current;
     if (isAbsolute) {
-      ach.current = Math.max(ach.current, value);
+      if (value <= prevCurrent) return;
+      ach.current = value;
     } else {
+      if (value <= 0) return;
       ach.current += value;
     }
 
@@ -431,7 +450,7 @@ export class AchievementSystem {
         this.onUnlockCallback(ach);
       }
     } else {
-      this.saveState();
+      this.dirty = true;
     }
   }
 

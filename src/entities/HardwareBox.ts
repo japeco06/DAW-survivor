@@ -37,9 +37,7 @@ export class HardwareBox extends Adware {
     // Cápsula de suministro octogonal biselada
     ctx.fillStyle = isFlashing ? '#ffffff' : '#0b1526';
     ctx.strokeStyle = isFlashing ? '#ffffff' : '#38bdf8';
-    ctx.lineWidth = 2.2;
-    ctx.shadowColor = '#0ea5e9';
-    ctx.shadowBlur = isFlashing ? 18 : 10;
+    ctx.lineWidth = 2.4;
 
     ctx.beginPath();
     ctx.moveTo(-half + cut, -half);
@@ -55,7 +53,6 @@ export class HardwareBox extends Adware {
     ctx.stroke();
 
     // Bandas metálicas de refuerzo y pestillos cian
-    ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
     ctx.lineWidth = 1.4;
     ctx.beginPath();
