@@ -289,22 +289,77 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │       ├── Nueva subcaja visual de estadísticas (`statBadge`) mostrando incrementos (▲) y reducciones de enfriamiento (▼)
 │       └── Dimensiones ampliadas a 350x270px garantizando que ningún texto desborde ni tape los bordes de la tarjeta
 │
-└── v1.1.0 — Segunda Página de Logros Difíciles, Selector de Idioma (ES/EN) y Badge Actualizado (ACTUAL)
-    ├── [Segunda Página de Logros Épicos (`AchievementSystem.ts`, `Game.ts`)]
-    │   ├── Expansión del sistema a 24 logros en total repartidos en 2 fases con selector de pestañas [1] y [2]
-    │   ├── Fase I (1 a 12): Protocolos del Kernel estándar
-    │   └── Fase II (13 a 24): Desafíos Épicos de alta dificultad (hasta 15 min, 1200 kills, 250k daño a El Toro, cosméticos míticos) con recompensas masivas (150 a 500 Criptomonedas)
-    ├── [Sistema de Internacionalización Reactivo (`i18n.ts`, `Game.ts`)]
-    │   ├── Apartado en Ajustes [O] para conmutar idioma entre Español [ES] e Inglés [EN]
-    │   ├── Persistencia automática en `localStorage` (`cyber_survivor_lang`)
-    │   └── Traducción reactiva en tiempo real de menús, botones, HUD, logros, ajustes, pausa y pantalla final
-    └── [Versionado y Visibilidad]
-        └── Identificador `v1.1.0` renderizado con badge de brillo en la esquina inferior derecha y sincronizado en git
+├── v1.1.0 — Segunda Página de Logros Difíciles, Selector de Idioma (ES/EN) y Badge Actualizado
+│   ├── [Segunda Página de Logros Épicos (`AchievementSystem.ts`, `Game.ts`)]
+│   │   ├── Expansión del sistema a 24 logros en total repartidos en 2 fases con selector de pestañas [1] y [2]
+│   │   ├── Fase I (1 a 12): Protocolos del Kernel estándar
+│   │   └── Fase II (13 a 24): Desafíos Épicos de alta dificultad (hasta 15 min, 1200 kills, 250k daño a El Toro, cosméticos míticos) con recompensas masivas (150 a 500 Criptomonedas)
+│   ├── [Sistema de Internacionalización Reactivo (`i18n.ts`, `Game.ts`)]
+│   │   ├── Apartado en Ajustes [O] para conmutar idioma entre Español [ES] e Inglés [EN]
+│   │   ├── Persistencia automática en `localStorage` (`cyber_survivor_lang`)
+│   │   └── Traducción reactiva en tiempo real de menús, botones, HUD, logros, ajustes, pausa y pantalla final
+│   └── [Versionado y Visibilidad]
+│       └── Identificador `v1.1.0` renderizado con badge de brillo en la esquina inferior derecha y sincronizado en git
+│
+├── v1.2.0 / v1.2.1 / v1.2.2 — Rediseño IT Táctico, Sombreros Vectoriales, Escalado y Optimización 60 FPS
+│   ├── UI táctica de silicio oscuro/cobre-cian (`Hardware Hangar`), 50 sombreros/máscaras vectoriales (`HatRenderer.ts`), caras limpias sin boca
+│   ├── Oleada inicial ampliada, escalado mejorado de jefes/enemigos y eliminación de bloqueos de `localStorage`/`shadowBlur`/audio
+│
+├── v1.3.0 / v1.3.1 — Evoluciones de Armas, Modo Pesadilla Infinito, JoyStick Táctil, Misiones Diarias y Rediseño Pro
+│   ├── 3 nuevas armas (`Bobina Tesla`, `Fragmento Criogénico`, `Disco Kernel`), 9 evoluciones de armas, 8 agentes con pasivas únicas y 3 rerolls
+│   ├── Modo Pesadilla de mapa infinito (15 CR entrada, x2 CryptoCoins) con eventos de terreno y Minimapa radar
+│   ├── Controles táctiles optimizados (joystick analógico), Misiones Diarias, gráficos ligeros y rediseño cyber-mecha/proyectiles pro
+│
+├── v1.4.0 — Multijugador Co-op Online 4 Jugadores (Node.js + Socket.io + Render)
+│   ├── Servidor de salas con código de 4 letras, salas públicas/privadas, listo/personaje/sombrero sincronizado, reanimación en equipo y upgrades grupales
+│
+├── v1.5.0 — Identidad `DAW-survivor`, Mapa Co-op Móvil, Obstáculos, Líquido Lento, Oasis y HUD Limpio
+│   ├── Cámara individual móvil por jugador en Co-op, minimapa `RADAR // CO-OP`, flechas direccionales en bordes y servidor Render por defecto
+│   ├── Obstáculos sólidos, charcos morados de líquido viscoso (`-VEL`) y Oasis esmeralda (`+HP +CR +XP +Turbo`)
+│   ├── Botón `CO-OP ONLINE 4P [K]` destacado junto a `JUGAR SOLO`, y `Gráficos Ligeros` + `Cómo Jugar` integrados dentro de Ajustes
+│
+└── v1.5.1 — Balance Integral de Armas/Jefes/Co-op, Limit Break Infinito y Rebote Predictivo en Pinball (ACTUAL)
+    ├── Reequilibrio de curva cúbica de `WaveBoss`, escalado Co-op (+50% HP/jugador), bufos a `Cortafuegos`/`Rayo SQL`/`Drones` y suelo de cooldowns
+    ├── Tarjetas infinitas (`Limit Break`) al maxear arsenal y predicción de trayectoria en `Protocolo Pinball` (ajustado a 440–550 px/s)
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.5.1] - 2026-11-17
+- **Rebalanceo General de Combate, Jefes y Co-op (`WaveBoss.ts`, `Spawner.ts`, `CombatSystem.ts`, `UpgradeSystem.ts`, `Game.ts`)**:
+  - Eliminada la triple multiplicación en `computeScaledBossHp`: la vida de jefes de oleada progresa de forma limpia (`~1,522 HP` en `#1` a `~41,246 HP` en `#9` Clásico / `~55,002 HP` Pesadilla) en lugar de dispararse a `172k–270k HP`.
+  - Añadido escalado de vida por nº de jugadores en Co-op (`+50% HP` por compañero adicional en `Spawner.ts`).
+  - Reequilibrio de arsenal: refuerzo a `Cortafuegos -> Tormenta Solar` (`44` base, `+14/nv`, `x1.75` evo), `Rayo SQL -> Zero-Day` (`48` base, `+16/nv`, abanico `±0.11 rad`, `x1.55` evo) y `Drones Antivirus` (`4` golpes, `6.5s` respawn, `3.0x` explosión); moderación de `Cañón Hex-Core` (`+6/nv` en `deepscan`, `4–5` balas, `2x` perf., `x1.25`) y suelo mínimo de cooldown efectivo bajo buffs acumulados.
+  - Cartas infinitas de late-game (`KERNEL LIMIT BREAK`, `TURBO HILO INFINITO`, `RESERVA CRÍTICA DE KERNEL`) al maxear el arsenal.
+  - Normalizado el escalado de `Trojan` frente a `Adware` (`110 HP` máx. Adware vs `16` base `Trojan`).
+- **Morcillita — Predicción y Ajuste de Velocidad en `Protocolo Pinball` (`CompanionPet.ts`)**:
+  - Añadida predicción cuadrática de interceptación (`predictInterceptAngle` + `estimateTargetVelocity`) en rebotes contra paredes y enemigos para anticipar objetivos en movimiento.
+  - Ajustada la velocidad de `Protocolo Pinball` a `440 px/s` base y `550 px/s` (`+25%`) en Nv. 5+ para mantener precisión sin romper el ritmo.
+- **Sincronización de Versión (`v1.5.1`)**:
+  - Actualizados `GAME_VERSION` en `src/core/Game.ts`, `package.json`, `server/package.json` y `server/index.js` a `1.5.1`.
+
+### [v1.5.0] - 2026-11-17
+- **Identidad `DAW-survivor` y UI Reorganizada (`Game.ts`, `index.html`, `package.json`, `server/`, `render.yaml`)**:
+  - Cambio completo de marca de `Cyber Survivor` a `DAW-survivor` manteniendo compatibilidad de lectura con claves previas de `localStorage`.
+  - Movidos `Gráficos Ligeros` (`[V]`) y `Cómo Jugar` (`[H]`) dentro de `Ajustes` (`[O]`) y reubicado `CO-OP ONLINE 4P [K]` en la fila inferior principal junto a `JUGAR EN SOLITARIO [ENTER]`.
+- **Mapa Co-op Infinito, Cámara Individual, Minimapa, Flechas y Entorno (`WorldEnvironment.ts`, `Spawner.ts`, `Player.ts`, `Game.ts`)**:
+  - Mapa infinito determinista sincronizado por `worldSeed` en Co-op con cámara individual siguiendo a cada jugador.
+  - Añadidos obstáculos sólidos biselados, charcos de líquido viscoso morado (`-42%` vel.) y Oasis esmeralda con recompensa (`+HP`, `+Crypto`, `+XP`, `+Turbo`).
+  - Activado minimapa `RADAR // CO-OP` y flechas direccionales en borde de pantalla hacia compañeros fuera de vista, más conexión automática al servidor Render (`https://daw-survivor-coop.onrender.com`).
+
+### [v1.4.0] - 2026-11-17
+- **Multijugador Online hasta 4 Jugadores (`server/index.js`, `MultiplayerClient.ts`, `CoopLobbyUI.ts`, `CoopRenderer.ts`, `render.yaml`)**:
+  - Backend Express + Socket.io preparado para Render con salas de 4 dígitos, sincronización host-authoritative a 20 Hz, upgrades coordinados en grupo y sistema de derribo/reanimación en arena.
+
+### [v1.3.0 / v1.3.1] - 2026-11-17
+- **Evoluciones de Armas, Modo Pesadilla, Móvil, Misiones Diarias y Rediseño Cyber-Mecha**:
+  - 3 armas nuevas (`Bobina Tesla EMP`, `Fragmento Criogénico`, `Disco Kernel`), 9 evoluciones de armas, 8 agentes con pasivas únicas, 3 rerolls, modo Pesadilla infinito con eventos de terreno y minimapa, joystick táctil móvil, botón de gráficos ligeros, misiones diarias y rediseño visual pro de personajes y proyectiles.
+
+### [v1.2.0 / v1.2.1 / v1.2.2] - 2026-11-17
+- **Rediseño IT Táctico, Sombreros Vectoriales, Balance Inicial y Rendimiento (`HatRenderer.ts`, `Spawner.ts`, `MetaSystem.ts`, `SoundSystem.ts`)**:
+  - Estética Hardware Hangar IT, 50 sombreros dibujados vectorialmente, caras limpias sin boca, aumento de oleada inicial y optimizaciones de FPS/latencia (eliminación de lecturas/escrituras frecuentes en `localStorage`, reducción de `shadowBlur` y caché de audio).
 
 ### [v1.1.0] - 2026-11-05
 - **Segunda Página de Logros y Desafíos Épicos (`src/systems/AchievementSystem.ts`, `src/core/Game.ts`)**:
