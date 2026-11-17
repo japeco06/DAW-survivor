@@ -1,9 +1,9 @@
 {
-  "name": "cyber-survivor-coop-server",
-  "version": "1.4.0",
+  "name": "daw-survivor-coop-server",
+  "version": "1.5.0",
   "private": true,
   "type": "module",
-  "description": "4-Player Online Co-op Socket.io Relay & Room Server for Cyber Survivor",
+  "description": "4-Player Online Co-op Socket.io Relay & Room Server for DAW-survivor",
   "main": "index.js",
   "engines": {
     "node": ">=18.0.0"

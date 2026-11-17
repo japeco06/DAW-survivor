@@ -67,6 +67,7 @@ function serializeRoom(room) {
     mode: room.mode,
     isPublic: room.isPublic,
     maxPlayers: MAX_PLAYERS,
+    worldSeed: room.worldSeed,
     players: room.players.map((p) => ({
       id: p.id,
       slot: p.slot,
@@ -138,8 +139,8 @@ function removePlayerFromRoom(socketId) {
 app.get('/', (_req, res) => {
   res.json({
     ok: true,
-    service: 'cyber-survivor-coop',
-    version: '1.4.0',
+    service: 'daw-survivor-coop',
+    version: '1.5.0',
     activeRooms: rooms.size,
     connectedPlayers: io.engine.clientsCount,
   });
@@ -148,8 +149,8 @@ app.get('/', (_req, res) => {
 app.get('/health', (_req, res) => {
   res.json({
     ok: true,
-    service: 'cyber-survivor-coop',
-    version: '1.4.0',
+    service: 'daw-survivor-coop',
+    version: '1.5.0',
     activeRooms: rooms.size,
     connectedPlayers: io.engine.clientsCount,
     uptimeSec: Math.round(process.uptime()),
@@ -187,6 +188,7 @@ io.on('connection', (socket) => {
       status: 'LOBBY',
       mode,
       isPublic,
+      worldSeed: Math.floor(Math.random() * 0xffffffff) >>> 0,
       updatedAt: Date.now(),
       players: [
         {
@@ -326,6 +328,7 @@ io.on('connection', (socket) => {
     }
 
     room.status = 'IN_GAME';
+    room.worldSeed = Math.floor(Math.random() * 0xffffffff) >>> 0;
     room.updatedAt = Date.now();
 
     const dto = serializeRoom(room);
@@ -444,5 +447,5 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 httpServer.listen(PORT, () => {
-  console.log(`[Cyber Survivor Co-op] Socket.io server listening on port ${PORT}`);
+  console.log(`[DAW-survivor Co-op] Socket.io server listening on port ${PORT}`);
 });

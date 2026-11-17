@@ -48,7 +48,7 @@ interface MissionTemplate {
   isCumulative: boolean;
 }
 
-const DAILY_STORAGE_KEY = 'cyber_survivor_daily_missions_v1';
+const DAILY_STORAGE_KEY = 'daw_survivor_daily_missions_v1';
 
 const MISSION_POOL: MissionTemplate[] = [
   {
@@ -187,7 +187,9 @@ export class DailyMissionSystem {
     }));
 
     try {
-      const raw = localStorage.getItem(DAILY_STORAGE_KEY);
+      const raw =
+        localStorage.getItem(DAILY_STORAGE_KEY) ||
+        localStorage.getItem('cyber_survivor_daily_missions_v1');
       if (raw) {
         const parsed = JSON.parse(raw) as {
           dateKey?: string;

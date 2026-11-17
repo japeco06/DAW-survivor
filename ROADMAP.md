@@ -1,9 +1,9 @@
-# CYBER SURVIVOR // ROADMAP & CHANGELOG
+# DAW-SURVIVOR // ROADMAP & CHANGELOG
 
 Esquema visual de la evolución del proyecto. Este archivo se actualiza automáticamente en cada iteración de desarrollo.
 
 ```text
-CYBER SURVIVOR ( Kernel Defense Protocol )
+DAW-SURVIVOR ( Kernel Defense Protocol )
 ├── v0.1.0 — Lanzamiento Base (Fases 1 a 5 completadas)
 │   ├── [Fase 1] Setup Base y Core Loop (Vite + TS + Canvas, WASD, Spawner de Adware)
 │   ├── [Fase 2] Sistema de Combate (Auto-disparo, Hitboxes AABB, HP e invulnerabilidad)

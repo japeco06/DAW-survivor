@@ -45,6 +45,9 @@ export class Player extends Entity {
   public isSummoner: boolean = false;
   public companion: CompanionPet | null = null;
 
+  public speedBonusMultiplier: number = 1.0; // Turbo temporal de Oasis / eventos
+  public externalSpeedMultiplier: number = 1.0; // Ralentización por líquido viscoso
+  public speedBoostTimer: number = 0;
   public invulnerabilityTimer: number = 0;
   private readonly invulnerabilityDuration: number = 0.45;
   public facingAngle: number = 0;
@@ -159,11 +162,21 @@ export class Player extends Entity {
       }
     }
 
+    if (this.speedBoostTimer > 0) {
+      this.speedBoostTimer = Math.max(0, this.speedBoostTimer - dt);
+      if (this.speedBoostTimer === 0) {
+        this.speedBonusMultiplier = 1.0;
+      }
+    }
+
     const len = Math.hypot(dirX, dirY);
     const nx = len > 1 ? dirX / len : dirX;
     const ny = len > 1 ? dirY / len : dirY;
     const adrenalineSpeedMult = this.adrenalineTimer > 0 ? 1.25 : 1.0;
-    const effectiveSpeed = Math.min(540, this.speed * adrenalineSpeedMult);
+    const effectiveSpeed = Math.min(
+      620,
+      this.speed * adrenalineSpeedMult * this.speedBonusMultiplier * this.externalSpeedMultiplier
+    );
     this.isMoving = nx !== 0 || ny !== 0;
 
     if (this.isMoving) {
@@ -333,6 +346,22 @@ export class Player extends Entity {
       ctx.arc(this.x, this.y, this.size * 0.74 + Math.sin(now * 0.006) * 1.4, 0, Math.PI * 2);
       ctx.stroke();
       ctx.globalAlpha = 1;
+    }
+
+    if (this.externalSpeedMultiplier < 0.9) {
+      ctx.strokeStyle = 'rgba(192, 132, 252, 0.85)';
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size * 0.82, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (this.speedBoostTimer > 0) {
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.85)';
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size * 0.84, 0, Math.PI * 2);
+      ctx.stroke();
     }
 
     Player.drawCyberChassis(

@@ -19,6 +19,7 @@ export interface RoomStateDTO {
   mode: GameMode;
   isPublic: boolean;
   maxPlayers: number;
+  worldSeed: number;
   players: RoomPlayerDTO[];
 }
 
@@ -118,6 +119,7 @@ export interface CoopWorldSnapshot {
   zones: SnapshotZoneTuple[];
   arcs: [number, number][][];
   pulses: SnapshotPulseTuple[];
+  oasis?: [string, number, number][];
 }
 
 export interface CoopLevelUpPayload {

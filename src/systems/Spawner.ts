@@ -79,6 +79,7 @@ export class Spawner {
   private nextFlankWaveInterval: number = 17;
   public finalBossMode: boolean = false;
   public isNightmareMode: boolean = false;
+  public isInfiniteMap: boolean = false;
 
   public enableFinalBossMode(): void {
     this.finalBossMode = true;
@@ -157,7 +158,8 @@ export class Spawner {
     canvasWidth: number,
     canvasHeight: number,
     originX: number = 0,
-    originY: number = 0
+    originY: number = 0,
+    extraOrigins?: { x: number; y: number }[]
   ): void {
     this.swarmTriggeredJustNow = false;
     this.minerSpawnedJustNow = false;
@@ -166,18 +168,33 @@ export class Spawner {
       this.activeBossAlertTimer = Math.max(0, this.activeBossAlertTimer - dt);
     }
 
-    // En mapa infinito (Pesadilla), limpiar enemigos comunes que quedaron muy atrás para no saturar
-    if (this.isNightmareMode) {
-      const camCx = originX + canvasWidth / 2;
-      const camCy = originY + canvasHeight / 2;
+    const infiniteActive = this.isInfiniteMap || this.isNightmareMode;
+    const allOrigins =
+      extraOrigins && extraOrigins.length > 0
+        ? [{ x: originX, y: originY }, ...extraOrigins]
+        : [{ x: originX, y: originY }];
+    const pickOrigin = () =>
+      allOrigins[Math.floor(Math.random() * allOrigins.length)] || { x: originX, y: originY };
+
+    // En mapa infinito (Pesadilla o Co-op), limpiar enemigos comunes que quedaron muy atrás de TODOS los jugadores
+    if (infiniteActive) {
       for (const e of enemies) {
         if (!e.active) continue;
         if (e.malwareType === 'RANSOMWARE' || e.malwareType === 'FINAL_BOSS') continue;
-        if (Math.hypot(e.x - camCx, e.y - camCy) > 2350) {
+        let minDist = Infinity;
+        for (const orig of allOrigins) {
+          const d = Math.hypot(e.x - (orig.x + canvasWidth / 2), e.y - (orig.y + canvasHeight / 2));
+          if (d < minDist) minDist = d;
+        }
+        if (minDist > 2450) {
           e.active = false;
         }
       }
     }
+
+    const spawnOrig = pickOrigin();
+    const sOrigX = spawnOrig.x;
+    const sOrigY = spawnOrig.y;
 
     this.currentThreatLevel = 1 + Math.floor(elapsedTime / 20);
     const hpMultiplier = this.getGlobalHpMultiplier(elapsedTime, playerLevel);
@@ -193,7 +210,7 @@ export class Spawner {
           (e) => e.active && e.malwareType === 'ADWARE'
         ).length;
         if (activeRedAdwareCount < 15) {
-          const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight, originX, originY);
+          const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight, sOrigX, sOrigY);
           const adware = this.createScaledRedAdware(pos.x, pos.y, elapsedTime, hpMultiplier);
           enemies.push(adware);
         }
@@ -209,8 +226,8 @@ export class Spawner {
         (e) => e.active && e instanceof HardwareBox
       ).length;
       if (activeBoxes < this.maxActiveHardwareBoxes && Math.random() < 0.48) {
-        const bx = originX + 110 + Math.random() * Math.max(120, canvasWidth - 220);
-        const by = originY + 110 + Math.random() * Math.max(120, canvasHeight - 220);
+        const bx = sOrigX + 110 + Math.random() * Math.max(120, canvasWidth - 220);
+        const by = sOrigY + 110 + Math.random() * Math.max(120, canvasHeight - 220);
         enemies.push(new HardwareBox(bx, by, hpMultiplier));
       }
     }
@@ -223,10 +240,10 @@ export class Spawner {
         (e) => e.active && e instanceof CryptoMiner
       ).length;
       if (activeMiners === 0 && Math.random() < (this.isNightmareMode ? 0.22 : 0.14)) {
-        const mx = originX + 140 + Math.random() * Math.max(120, canvasWidth - 280);
-        const my = originY + 140 + Math.random() * Math.max(120, canvasHeight - 280);
+        const mx = sOrigX + 140 + Math.random() * Math.max(120, canvasWidth - 280);
+        const my = sOrigY + 140 + Math.random() * Math.max(120, canvasHeight - 280);
         const miner = new CryptoMiner(mx, my, hpMultiplier);
-        miner.unbounded = this.isNightmareMode;
+        miner.unbounded = infiniteActive;
         enemies.push(miner);
         this.minerSpawnedJustNow = true;
       }
@@ -245,7 +262,7 @@ export class Spawner {
     if (elapsedTime >= 25 && this.swarmCheckTimer >= 16.0) {
       this.swarmCheckTimer = 0;
       if (Math.random() < 0.12) {
-        this.triggerSwarmEvent(enemies, canvasWidth, canvasHeight, elapsedTime, originX, originY);
+        this.triggerSwarmEvent(enemies, canvasWidth, canvasHeight, elapsedTime, sOrigX, sOrigY);
         return;
       }
     }
@@ -256,7 +273,7 @@ export class Spawner {
       this.flankWaveTimer = 0;
       const timeMinutes = elapsedTime / 60;
       this.nextFlankWaveInterval = Math.max(8.5, (14 + Math.random() * 4) - timeMinutes * 0.65);
-      this.spawnFlankMicroWave(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight, originX, originY);
+      this.spawnFlankMicroWave(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight, sOrigX, sOrigY);
     }
 
     const baseInterval = Math.max(0.20, 0.55 * Math.pow(0.92, elapsedTime / 16));
@@ -265,14 +282,15 @@ export class Spawner {
     this.timer += dt;
     while (this.timer >= currentSpawnInterval) {
       this.timer -= currentSpawnInterval;
+      const loopOrig = pickOrigin();
       const spawned = this.spawnScaledMalware(
         elapsedTime,
         hpMultiplier,
         enemies,
         canvasWidth,
         canvasHeight,
-        originX,
-        originY
+        loopOrig.x,
+        loopOrig.y
       );
       if (spawned) {
         enemies.push(spawned);
@@ -286,8 +304,8 @@ export class Spawner {
           enemies,
           canvasWidth,
           canvasHeight,
-          originX,
-          originY
+          loopOrig.x,
+          loopOrig.y
         );
         if (extra) {
           enemies.push(extra);
@@ -298,7 +316,7 @@ export class Spawner {
     if (elapsedTime >= this.nextBossTime) {
       this.bossCount++;
       this.nextBossTime = elapsedTime + this.bossSpawnInterval;
-      const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight, originX, originY);
+      const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight, sOrigX, sOrigY);
       const boss = createWaveBoss(
         pos.x,
         pos.y,
@@ -308,7 +326,7 @@ export class Spawner {
         playerLevel
       );
       if ('unbounded' in boss) {
-        (boss as WaveBoss & { unbounded: boolean }).unbounded = this.isNightmareMode;
+        (boss as WaveBoss & { unbounded: boolean }).unbounded = infiniteActive;
       }
       enemies.push(boss);
 

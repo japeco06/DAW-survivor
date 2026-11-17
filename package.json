@@ -1,7 +1,7 @@
 {
-  "name": "cyber-survivor",
+  "name": "daw-survivor",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,7 @@
     "deploy": "npm run build && firebase deploy --only hosting",
     "deploy:itch": "npm run build && .\\butler.exe push dist japeco06/cyber-survivor:html5",
     "deploy:all": "npm run build && firebase deploy --only hosting && .\\butler.exe push dist japeco06/cyber-survivor:html5",
-    "package:itch": "npm run build && powershell -Command \"if (Test-Path cyber-survivor-itch.zip) { Remove-Item cyber-survivor-itch.zip }; Set-Location dist; tar.exe -a -c -f ../cyber-survivor-itch.zip *; Set-Location ..\""
+    "package:itch": "npm run build && powershell -Command \"if (Test-Path daw-survivor-itch.zip) { Remove-Item daw-survivor-itch.zip }; Set-Location dist; tar.exe -a -c -f ../daw-survivor-itch.zip *; Set-Location ..\""
   },
   "dependencies": {
     "firebase": "^13.2.0",

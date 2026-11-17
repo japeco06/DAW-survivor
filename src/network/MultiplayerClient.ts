@@ -10,7 +10,7 @@ import type {
   SerializedUpgradeCard,
 } from './MultiplayerTypes';
 
-const SERVER_URL_STORAGE_KEY = 'cyber_survivor_mp_server_v1';
+const SERVER_URL_STORAGE_KEY = 'daw_survivor_mp_server_v1';
 
 // URL por defecto en producción si se compila con VITE_MULTIPLAYER_URL
 const ENV_SERVER_URL: string = (import.meta as any).env?.VITE_MULTIPLAYER_URL || '';
@@ -56,7 +56,9 @@ export class MultiplayerClient {
 
   private resolveInitialServerUrl(): string {
     try {
-      const saved = localStorage.getItem(SERVER_URL_STORAGE_KEY);
+      const saved =
+        localStorage.getItem(SERVER_URL_STORAGE_KEY) ||
+        localStorage.getItem('cyber_survivor_mp_server_v1');
       if (saved && saved.trim().length > 0) {
         return this.normalizeUrl(saved);
       }

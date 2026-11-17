@@ -1,12 +1,12 @@
 /**
- * Sistema de Internacionalización (i18n) para Cyber Survivor (v1.1.2).
+ * Sistema de Internacionalización (i18n) para DAW-survivor.
  * Soporta alternancia reactiva entre Español (ES) e Inglés (EN)
  * con persistencia automática en localStorage.
  */
 
 export type Language = 'ES' | 'EN';
 
-const STORAGE_KEY = 'cyber_survivor_lang';
+const STORAGE_KEY = 'daw_survivor_lang';
 
 class I18nManager {
   private lang: Language = 'ES';
@@ -17,7 +17,8 @@ class I18nManager {
 
   private init(): void {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved =
+        localStorage.getItem(STORAGE_KEY) || localStorage.getItem('cyber_survivor_lang');
       if (saved === 'EN' || saved === 'ES') {
         this.lang = saved;
         return;

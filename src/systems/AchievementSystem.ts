@@ -31,7 +31,7 @@ export interface AchievementToast {
   maxDuration: number;
 }
 
-const ACHIEVEMENTS_STORAGE_KEY = 'cyber_survivor_achievements_v1';
+const ACHIEVEMENTS_STORAGE_KEY = 'daw_survivor_achievements_v1';
 
 export class AchievementSystem {
   public achievements: Achievement[] = [];
@@ -351,7 +351,9 @@ export class AchievementSystem {
 
   public loadState(): void {
     try {
-      const saved = localStorage.getItem(ACHIEVEMENTS_STORAGE_KEY);
+      const saved =
+        localStorage.getItem(ACHIEVEMENTS_STORAGE_KEY) ||
+        localStorage.getItem('cyber_survivor_achievements_v1');
       if (saved) {
         const parsed = JSON.parse(saved) as Record<
           string,

@@ -22,6 +22,7 @@ import { ParticleSystem } from '../systems/ParticleSystem';
 import { AchievementSystem } from '../systems/AchievementSystem';
 import { DailyMissionSystem } from '../systems/DailyMissionSystem';
 import { TerrainEventSystem } from '../systems/TerrainEventSystem';
+import { WorldEnvironment } from '../systems/WorldEnvironment';
 import { MultiplayerClient } from '../network/MultiplayerClient';
 import { CoopLobbyUI, CoopButtonAction } from '../network/CoopLobbyUI';
 import { CoopRenderer, encodeEnemyType } from '../network/CoopRenderer';
@@ -107,10 +108,10 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.4.0';
+const GAME_VERSION = 'v1.5.0';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
-const LIGHT_GFX_STORAGE_KEY = 'cyber_survivor_light_gfx_v1';
+const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v1';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -177,10 +178,8 @@ export class Game {
   private hoveredAchievementsBtn: boolean = false;
   private hoveredSettingsBtn: boolean = false;
   private hoveredFullscreenBtn: boolean = false;
-  private hoveredHelpBtn: boolean = false;
   private hoveredOverlayBackBtn: boolean = false;
   private hoveredStartBtn: boolean = false;
-  private hoveredLightGfxBtn: boolean = false;
   private hoveredDailyMissionsBtn: boolean = false;
   private showDailyMissionsOverlay: boolean = false;
   private hoveredRerollBtn: boolean = false;
@@ -190,6 +189,7 @@ export class Game {
   private lightGraphicsEnabled: boolean = false;
   private dailyMissions: DailyMissionSystem;
   private terrainEvents: TerrainEventSystem;
+  private worldEnv: WorldEnvironment;
   private lastTouchTapTime: number = 0;
   private lastOverclockTier: number = 0;
   private lastStandardHealTier: number = 0;
@@ -221,7 +221,7 @@ export class Game {
   );
   private damageVignetteAlpha: number = 0;
   private terminalLogs: string[] = [
-    `> CYBER_SURVIVOR_KERNEL ${GAME_VERSION} online...`,
+    `> DAW_SURVIVOR_KERNEL ${GAME_VERSION} online...`,
     '> Antivirus Agents & Cyber Arsenal READY.',
   ];
   private ambientNodes: { x: number; y: number; vx: number; vy: number; size: number; alpha: number }[] =
@@ -244,7 +244,10 @@ export class Game {
     this.ctx = context;
 
     try {
-      this.lightGraphicsEnabled = localStorage.getItem(LIGHT_GFX_STORAGE_KEY) === '1';
+      const savedLight =
+        localStorage.getItem(LIGHT_GFX_STORAGE_KEY) ||
+        localStorage.getItem('cyber_survivor_light_gfx_v1');
+      this.lightGraphicsEnabled = savedLight === '1';
     } catch {
       this.lightGraphicsEnabled = false;
     }
@@ -279,6 +282,7 @@ export class Game {
       this.addTerminalLog(`MISIÓN DIARIA: ${mission.title} (+${mission.rewardCoins} CR)`);
     };
     this.terrainEvents = new TerrainEventSystem();
+    this.worldEnv = new WorldEnvironment();
     this.mpClient = new MultiplayerClient();
     this.setupMultiplayerHandlers();
 
@@ -377,13 +381,26 @@ export class Game {
     return this.getCanvasClientPos(e.clientX, e.clientY);
   }
 
+  private isMovingMap(): boolean {
+    return this.isNightmareRun || this.isCoopMode;
+  }
+
   private getCameraOrigin(): { x: number; y: number } {
-    if (!this.isNightmareRun || this.gameState === 'MENU') {
+    if (!this.isMovingMap() || this.gameState === 'MENU') {
       return { x: 0, y: 0 };
     }
     return {
       x: this.player.x - LOGICAL_WIDTH / 2,
       y: this.player.y - LOGICAL_HEIGHT / 2,
+    };
+  }
+
+  private getNearestAliveCoopCameraOrigin(x: number, y: number): { x: number; y: number } {
+    if (!this.isCoopMode) return this.getCameraOrigin();
+    const p = this.getNearestAliveCoopPlayer(x, y);
+    return {
+      x: p.x - LOGICAL_WIDTH / 2,
+      y: p.y - LOGICAL_HEIGHT / 2,
     };
   }
 
@@ -431,8 +448,8 @@ export class Game {
     if (action === 'SET_URL') {
       const nextUrl = window.prompt(
         i18n.t(
-          'Pega la URL de tu servidor Render (ej: https://cyber-survivor-coop.onrender.com):',
-          'Paste your Render server URL (e.g. https://cyber-survivor-coop.onrender.com):'
+          'Pega la URL de tu servidor Render (ej: https://daw-survivor-coop.onrender.com):',
+          'Paste your Render server URL (e.g. https://daw-survivor-coop.onrender.com):'
         ),
         this.mpClient.serverUrl || 'https://'
       );
@@ -617,6 +634,9 @@ export class Game {
       this.thermalOverclockTimer = snap.oc;
       this.spawner.swarmActiveTimer = snap.sw;
       this.spawner.finalBossMode = snap.toro;
+      if (snap.oasis) {
+        this.worldEnv.applyRemoteOasisStates(snap.oasis);
+      }
 
       const me = snap.players.find((p) => p.id === this.mpClient.myId);
       if (me) {
@@ -807,6 +827,8 @@ export class Game {
     this.upgradeSystem = new UpgradeSystem();
     this.spawner = new Spawner();
     this.spawner.isNightmareMode = this.isNightmareRun;
+    this.spawner.isInfiniteMap = this.isMovingMap();
+    this.worldEnv.reset(room.worldSeed || 1337, this.isMovingMap());
     this.particleSystem.clear();
     this.elapsedTime = 0;
     this.killCount = 0;
@@ -1144,6 +1166,7 @@ export class Game {
       zones,
       arcs: arcs.slice(0, 12),
       pulses: pulses.slice(0, 8),
+      oasis: this.worldEnv.exportOasisStates(),
     });
   }
 
@@ -1345,6 +1368,14 @@ export class Game {
           return;
         }
 
+        if (this.showHelpOverlay) {
+          if (key === 'escape' || key === 'b' || key === 'h') {
+            this.showHelpOverlay = false;
+            this.sound.playShoot(false);
+          }
+          return;
+        }
+
         if (this.showSettingsOverlay) {
           if (key === 'escape' || key === 'b' || key === 'o') {
             this.showSettingsOverlay = false;
@@ -1356,14 +1387,6 @@ export class Game {
         if (this.showCoopModal) {
           if (key === 'escape' || key === 'k') {
             this.showCoopModal = false;
-            this.sound.playShoot(false);
-          }
-          return;
-        }
-
-        if (this.showHelpOverlay) {
-          if (key === 'escape' || key === 'b' || key === 'h') {
-            this.showHelpOverlay = false;
             this.sound.playShoot(false);
           }
           return;
@@ -1441,6 +1464,13 @@ export class Game {
       }
 
       if (this.isPaused) {
+        if (this.showHelpOverlay) {
+          if (key === 'escape' || key === 'b' || key === 'h') {
+            this.showHelpOverlay = false;
+            this.sound.playShoot(false);
+          }
+          return;
+        }
         if (this.showSettingsOverlay) {
           if (key === 'escape' || key === 'b' || key === 'o') {
             this.showSettingsOverlay = false;
@@ -1555,7 +1585,7 @@ export class Game {
         }
 
         if (this.showSettingsOverlay) {
-          const panelH = 520;
+          const panelH = 590;
           const py = LOGICAL_HEIGHT / 2 - panelH / 2;
           this.hoveredOverlayBackBtn = this.isPointInRect(
             mx,
@@ -1577,10 +1607,8 @@ export class Game {
           this.getDailyMissionsButtonRect()
         );
         this.hoveredAchievementsBtn = this.isPointInRect(mx, my, this.getAchievementsButtonRect());
-        this.hoveredLightGfxBtn = this.isPointInRect(mx, my, this.getMenuLightGfxButtonRect());
         this.hoveredSettingsBtn = this.isPointInRect(mx, my, this.getSettingsButtonRect());
         this.hoveredFullscreenBtn = this.isPointInRect(mx, my, this.getFullscreenButtonRect());
-        this.hoveredHelpBtn = this.isPointInRect(mx, my, this.getHelpButtonRect());
         this.hoveredStartBtn = this.isPointInRect(mx, my, this.getStartButtonRect());
 
         for (const mBtn of this.getGameModeButtonRects()) {
@@ -1651,12 +1679,6 @@ export class Game {
             !this.isPaused &&
             !this.upgradeSystem.isChoosingUpgrade()
           ) {
-            if (this.isPointInRect(pt.x, pt.y, this.getInGameLightGfxButtonRect())) {
-              this.toggleLightGraphics();
-              this.sound.playShoot(false);
-              this.lastTouchTapTime = performance.now();
-              continue;
-            }
             if (this.isPointInRect(pt.x, pt.y, this.getInGamePauseButtonRect())) {
               this.togglePause();
               this.lastTouchTapTime = performance.now();
@@ -1829,11 +1851,6 @@ export class Game {
         return;
       }
 
-      if (this.showSettingsOverlay) {
-        this.handleSettingsClick(mx, my);
-        return;
-      }
-
       if (this.showCoopModal) {
         for (const btn of CoopLobbyUI.getButtons(LOGICAL_WIDTH, LOGICAL_HEIGHT, this.mpClient)) {
           if (this.isPointInRect(mx, my, btn)) {
@@ -1853,6 +1870,11 @@ export class Game {
         return;
       }
 
+      if (this.showSettingsOverlay) {
+        this.handleSettingsClick(mx, my);
+        return;
+      }
+
       if (this.isPointInRect(mx, my, this.getCoopOnlineButtonRect())) {
         this.openCoopModal();
         this.sound.playCoinPickup();
@@ -1862,12 +1884,6 @@ export class Game {
       if (this.isPointInRect(mx, my, this.getDailyMissionsButtonRect())) {
         this.showDailyMissionsOverlay = true;
         this.sound.playCoinPickup();
-        return;
-      }
-
-      if (this.isPointInRect(mx, my, this.getMenuLightGfxButtonRect())) {
-        this.toggleLightGraphics();
-        this.sound.playShoot(false);
         return;
       }
 
@@ -1885,12 +1901,6 @@ export class Game {
 
       if (this.isPointInRect(mx, my, this.getFullscreenButtonRect())) {
         this.toggleFullscreen();
-        this.sound.playShoot(false);
-        return;
-      }
-
-      if (this.isPointInRect(mx, my, this.getHelpButtonRect())) {
-        this.showHelpOverlay = true;
         this.sound.playShoot(false);
         return;
       }
@@ -2015,11 +2025,25 @@ export class Game {
 
       if (this.isPointInRect(mx, my, this.getStartButtonRect())) {
         this.startNewRun();
+        return;
+      }
+      if (this.isPointInRect(mx, my, this.getCoopOnlineButtonRect())) {
+        this.openCoopModal();
+        this.sound.playCoinPickup();
       }
       return;
     }
 
     if (this.isPaused) {
+      if (this.showHelpOverlay) {
+        const backBtn = this.getOverlayBackButtonRect(LOGICAL_HEIGHT / 2 - 295, 590);
+        if (this.isPointInRect(mx, my, backBtn)) {
+          this.showHelpOverlay = false;
+          this.sound.playShoot(false);
+        }
+        return;
+      }
+
       if (this.showSettingsOverlay) {
         this.handleSettingsClick(mx, my);
         return;
@@ -2047,11 +2071,6 @@ export class Game {
     }
 
     if (this.gameState === 'PLAYING' && !this.upgradeSystem.isChoosingUpgrade()) {
-      if (this.isPointInRect(mx, my, this.getInGameLightGfxButtonRect())) {
-        this.toggleLightGraphics();
-        this.sound.playShoot(false);
-        return;
-      }
       if (this.isPointInRect(mx, my, this.getInGamePauseButtonRect())) {
         this.togglePause();
         return;
@@ -2205,6 +2224,8 @@ export class Game {
     this.upgradeSystem = new UpgradeSystem();
     this.spawner = new Spawner();
     this.spawner.isNightmareMode = this.isNightmareRun;
+    this.spawner.isInfiniteMap = this.isMovingMap();
+    this.worldEnv.reset(Math.floor(Math.random() * 0xffffffff) >>> 0, this.isMovingMap());
     const cam = this.getCameraOrigin();
     this.spawner.spawnOpeningWave(this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, cam.x, cam.y);
     if (this.isNightmareRun) {
@@ -2304,15 +2325,24 @@ export class Game {
     // Invitado Co-op: predice movimiento local suave y envía inputs al Host (30 Hz)
     if (this.isCoopMode && !this.isCoopHost) {
       if (!this.isPaused && !this.coopSelfDowned && !this.coopWaitingUpgrade && !this.upgradeSystem.isChoosingUpgrade()) {
+        this.player.externalSpeedMultiplier = this.worldEnv.isInSlowLiquid(this.player.x, this.player.y) ? 0.58 : 1.0;
         this.player.update(
           dt,
           this.input,
           LOGICAL_WIDTH,
           LOGICAL_HEIGHT,
-          this.isNightmareRun,
+          this.isMovingMap(),
           this.lightGraphicsEnabled
         );
+        const resolved = this.worldEnv.resolveCircleCollision(
+          this.player.x,
+          this.player.y,
+          this.player.size * 0.48
+        );
+        this.player.x = resolved.x;
+        this.player.y = resolved.y;
       }
+      this.worldEnv.updateOases(dt, [{ x: this.player.x, y: this.player.y }], false);
       this.coopInputTimer += dt;
       if (this.coopInputTimer >= 0.033) {
         this.coopInputTimer = 0;
@@ -2370,29 +2400,49 @@ export class Game {
     this.dailyMissions.reportProgress('LEVEL', this.upgradeSystem.level);
 
     if (!this.isCoopMode || (!this.coopSelfDowned && !this.isPaused)) {
+      this.player.externalSpeedMultiplier = this.worldEnv.isInSlowLiquid(this.player.x, this.player.y)
+        ? 0.58
+        : 1.0;
       this.player.update(
         dt,
         this.input,
         LOGICAL_WIDTH,
         LOGICAL_HEIGHT,
-        this.isNightmareRun,
+        this.isMovingMap(),
         this.lightGraphicsEnabled
       );
+      const resolved = this.worldEnv.resolveCircleCollision(
+        this.player.x,
+        this.player.y,
+        this.player.size * 0.48
+      );
+      this.player.x = resolved.x;
+      this.player.y = resolved.y;
     }
 
     // Actualizar aliados Co-op en Host + reanimación en cápsula
     if (this.isCoopMode && this.isCoopHost) {
       for (const peer of this.coopPeers.values()) {
         if (!peer.downed) {
+          peer.player.externalSpeedMultiplier = this.worldEnv.isInSlowLiquid(peer.player.x, peer.player.y)
+            ? 0.58
+            : 1.0;
           peer.player.updateWithVector(
             dt,
             peer.inputX,
             peer.inputY,
             LOGICAL_WIDTH,
             LOGICAL_HEIGHT,
-            this.isNightmareRun,
+            this.isMovingMap(),
             this.lightGraphicsEnabled
           );
+          const resolvedPeer = this.worldEnv.resolveCircleCollision(
+            peer.player.x,
+            peer.player.y,
+            peer.player.size * 0.48
+          );
+          peer.player.x = resolvedPeer.x;
+          peer.player.y = resolvedPeer.y;
         }
       }
 
@@ -2567,6 +2617,61 @@ export class Game {
     const prevThreat = this.spawner.currentThreatLevel;
     const prevBossAlert = this.spawner.activeBossAlertTimer;
 
+    const aliveOrigins: { x: number; y: number }[] = [];
+    const alivePosList: { x: number; y: number }[] = [];
+    if (!this.coopSelfDowned && this.player.active) {
+      alivePosList.push({ x: this.player.x, y: this.player.y });
+    }
+    if (this.isCoopMode && this.isCoopHost) {
+      for (const peer of this.coopPeers.values()) {
+        if (!peer.downed && peer.player.active) {
+          aliveOrigins.push({
+            x: peer.player.x - LOGICAL_WIDTH / 2,
+            y: peer.player.y - LOGICAL_HEIGHT / 2,
+          });
+          alivePosList.push({ x: peer.player.x, y: peer.player.y });
+        }
+      }
+    }
+
+    // Oasis con recompensas (HP, CryptoCoins, XP y Turbo)
+    const oasisRewards = this.worldEnv.updateOases(dt, alivePosList, true);
+    for (const ow of oasisRewards) {
+      this.sound.playAchievement();
+      this.particleSystem.spawnExplosion(ow.x, ow.y, '#10b981', 36, true);
+      if (!this.coopSelfDowned && this.player.active) {
+        this.player.heal(ow.heal);
+        this.player.speedBonusMultiplier = 1.25;
+        this.player.speedBoostTimer = 4.0;
+      }
+      if (this.isCoopMode && this.isCoopHost) {
+        for (const peer of this.coopPeers.values()) {
+          if (!peer.downed && peer.player.active) {
+            peer.player.heal(ow.heal);
+            peer.player.speedBonusMultiplier = 1.25;
+            peer.player.speedBoostTimer = 4.0;
+          }
+        }
+      }
+      const coinBonus = this.isNightmareRun ? ow.coins * 2 : ow.coins;
+      this.runCoinsCollected += coinBonus;
+      this.metaSystem.addCoins(coinBonus);
+      this.dailyMissions.reportProgress('COINS', coinBonus);
+      this.spawnCodeFragment(ow.x, ow.y, ow.xp);
+      this.particleSystem.spawnFloatingText(
+        ow.x,
+        ow.y - 28,
+        i18n.t(`✦ ¡OASIS: +${ow.heal} HP +${coinBonus} CR +TURBO!`, `✦ OASIS: +${ow.heal} HP +${coinBonus} CR +SPEED!`),
+        '#34d399',
+        1.35
+      );
+      const msg = `OASIS: +${ow.heal} HP, +${coinBonus} CR & +4s Speed Boost!`;
+      this.addTerminalLog(msg);
+      if (this.isCoopMode && this.isCoopHost) {
+        this.mpClient.sendGameEvent({ type: 'REVIVE', x: ow.x, y: ow.y, text: msg });
+      }
+    }
+
     this.spawner.update(
       dt,
       this.elapsedTime,
@@ -2575,7 +2680,8 @@ export class Game {
       LOGICAL_WIDTH,
       LOGICAL_HEIGHT,
       activeCam.x,
-      activeCam.y
+      activeCam.y,
+      aliveOrigins
     );
 
     if (this.spawner.currentThreatLevel > prevThreat) {
@@ -2599,10 +2705,12 @@ export class Game {
     }
 
     for (const proj of this.projectiles) {
-      proj.update(dt, LOGICAL_WIDTH, LOGICAL_HEIGHT, activeCam.x, activeCam.y);
+      const pCam = this.getNearestAliveCoopCameraOrigin(proj.x, proj.y);
+      proj.update(dt, LOGICAL_WIDTH, LOGICAL_HEIGHT, pCam.x, pCam.y);
     }
     for (const ping of this.pingProjectiles) {
-      ping.update(dt, this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, activeCam.x, activeCam.y);
+      const pCam = this.getNearestAliveCoopCameraOrigin(ping.x, ping.y);
+      ping.update(dt, this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, pCam.x, pCam.y);
     }
     for (const enemy of this.enemies) {
       if (isFrozen && !(enemy instanceof ElToroBoss)) {
@@ -2612,6 +2720,11 @@ export class Game {
           ? this.getNearestAliveCoopPlayer(enemy.x, enemy.y)
           : this.player;
         enemy.update(dt, targetPlayer);
+        if (!(enemy instanceof Evasor) && !(enemy instanceof ElToroBoss)) {
+          const eRes = this.worldEnv.resolveCircleCollision(enemy.x, enemy.y, enemy.size * 0.44);
+          enemy.x = eRes.x;
+          enemy.y = eRes.y;
+        }
       }
       if (enemy instanceof CryptoMiner && enemy.escaped) {
         this.particleSystem.spawnFloatingText(enemy.x, enemy.y, '¡MINERO ESCAPÓ!', '#94a3b8', 1.0);
@@ -3392,9 +3505,11 @@ export class Game {
         this.ctx.drawImage(tile, x, y);
       }
     }
-    // Tinte carmesí sutil en bordes para atmósfera Pesadilla
-    this.ctx.fillStyle = 'rgba(127, 29, 29, 0.08)';
-    this.ctx.fillRect(-24, -24, LOGICAL_WIDTH + 48, LOGICAL_HEIGHT + 48);
+    // Tinte carmesí sutil solo en Pesadilla; azul limpio en Co-op Clásico
+    if (this.isNightmareRun) {
+      this.ctx.fillStyle = 'rgba(127, 29, 29, 0.08)';
+      this.ctx.fillRect(-24, -24, LOGICAL_WIDTH + 48, LOGICAL_HEIGHT + 48);
+    }
     this.ctx.restore();
   }
 
@@ -3413,7 +3528,7 @@ export class Game {
     this.ctx.save();
     this.ctx.translate(shake.x, shake.y);
 
-    if (this.isNightmareRun && this.gameState !== 'MENU') {
+    if (this.isMovingMap() && this.gameState !== 'MENU') {
       this.drawInfiniteCyberGrid(cam.x, cam.y);
     } else {
       this.drawCyberGrid();
@@ -3422,6 +3537,8 @@ export class Game {
     if (this.gameState !== 'MENU') {
       this.ctx.save();
       this.ctx.translate(-cam.x, -cam.y);
+
+      this.worldEnv.draw(this.ctx, cam.x, cam.y, LOGICAL_WIDTH, LOGICAL_HEIGHT, performance.now());
 
       if (this.isCoopMode && !this.isCoopHost && this.coopSnapshot) {
         CoopRenderer.drawWorld(this.ctx, this.coopSnapshot, this.mpClient.myId, {
@@ -3562,7 +3679,6 @@ export class Game {
     this.ctx.restore();
 
     if (this.gameState === 'PLAYING') {
-      this.drawOffScreenIndicators(cam.x, cam.y);
       if (this.systemFreezeTimer > 0) {
         this.drawFreezeOverlay();
       }
@@ -3584,12 +3700,14 @@ export class Game {
     } else {
       this.drawXpBar();
       this.drawHUD();
-      this.drawInGameQuickButtons();
       if (this.isCoopMode) {
         this.drawCoopSquadHud();
       }
-      if (this.isNightmareRun) {
+      if (this.isNightmareRun || this.isCoopMode) {
         this.drawNightmareMinimap();
+      }
+      if (this.gameState === 'PLAYING') {
+        this.drawOffScreenIndicators(cam.x, cam.y);
       }
       this.drawTerminalLogBox();
       this.drawBossHUD();
@@ -3715,7 +3833,9 @@ export class Game {
       );
     }
 
-    if (this.showSettingsOverlay) {
+    if (this.showHelpOverlay) {
+      this.drawHelpOverlay();
+    } else if (this.showSettingsOverlay) {
       this.drawSettingsOverlay();
     }
 
@@ -3852,6 +3972,95 @@ export class Game {
       this.ctx.stroke();
 
       this.ctx.restore();
+    }
+
+    // Flechas direccionales en los bordes hacia los aliados Co-op fuera de cámara
+    if (this.isCoopMode) {
+      const allies = this.isCoopHost
+        ? Array.from(this.coopPeers.values()).map((p) => ({
+            slot: p.slot,
+            x: p.player.x,
+            y: p.player.y,
+            downed: p.downed,
+            color: p.slotColor,
+          }))
+        : (this.coopSnapshot?.players || [])
+            .filter((p) => p.id !== this.mpClient.myId)
+            .map((p) => ({
+              slot: p.slot,
+              x: p.x,
+              y: p.y,
+              downed: p.downed,
+              color: p.color,
+            }));
+
+      for (const ally of allies) {
+        const sx = ally.x - camX;
+        const sy = ally.y - camY;
+        const off = sx < 24 || sx > w - 24 || sy < 96 || sy > h - 24;
+        if (!off && !ally.downed) continue;
+
+        const cx = w / 2;
+        const cy = h / 2;
+        const dx = sx - cx;
+        const dy = sy - cy;
+        const angle = Math.atan2(dy, dx);
+        const minX = 52;
+        const maxX = w - 52;
+        const minY = 110;
+        const maxY = h - 52;
+        let edgeX = Math.max(minX, Math.min(maxX, sx));
+        let edgeY = Math.max(minY, Math.min(maxY, sy));
+        if (off) {
+          let t = 1;
+          if (dx > 0.001) t = Math.min(t, (maxX - cx) / dx);
+          else if (dx < -0.001) t = Math.min(t, (minX - cx) / dx);
+          if (dy > 0.001) t = Math.min(t, (maxY - cy) / dy);
+          else if (dy < -0.001) t = Math.min(t, (minY - cy) / dy);
+          edgeX = Math.max(minX, Math.min(maxX, cx + dx * t));
+          edgeY = Math.max(minY, Math.min(maxY, cy + dy * t));
+          if (edgeX < 285 && edgeY < 305) {
+            edgeY = 305;
+          } else if (edgeX > w - 210 && edgeY < 305) {
+            edgeY = 305;
+          }
+        }
+        const distM = Math.max(1, Math.round(Math.hypot(ally.x - this.player.x, ally.y - this.player.y) / 10));
+
+        this.ctx.save();
+        this.ctx.translate(edgeX, edgeY);
+
+        if (off) {
+          this.ctx.save();
+          this.ctx.rotate(angle);
+          this.ctx.fillStyle = ally.downed ? '#ff1e42' : ally.color;
+          this.ctx.strokeStyle = '#ffffff';
+          this.ctx.lineWidth = 2.0;
+          this.ctx.beginPath();
+          this.ctx.moveTo(18, 0);
+          this.ctx.lineTo(-11, -11);
+          this.ctx.lineTo(-5, 0);
+          this.ctx.lineTo(-11, 11);
+          this.ctx.closePath();
+          this.ctx.fill();
+          this.ctx.stroke();
+          this.ctx.restore();
+        }
+
+        const label = ally.downed ? `✚ J${ally.slot + 1} ${distM}m` : `J${ally.slot + 1} · ${distM}m`;
+        this.ctx.font = `bold 11.5px ${FONT_MONO}`;
+        const tw = this.ctx.measureText(label).width;
+        const labelY = edgeY > h - 75 ? -26 : 24;
+        this.ctx.fillStyle = 'rgba(8, 13, 24, 0.85)';
+        this.ctx.fillRect(-tw / 2 - 6, labelY - 12, tw + 12, 16);
+        this.ctx.strokeStyle = ally.downed ? '#f43f5e' : ally.color;
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(-tw / 2 - 6, labelY - 12, tw + 12, 16);
+        this.ctx.textAlign = 'center';
+        this.ctx.fillStyle = ally.downed ? '#fda4af' : '#f0f9ff';
+        this.ctx.fillText(label, 0, labelY);
+        this.ctx.restore();
+      }
     }
   }
 
@@ -4191,86 +4400,57 @@ export class Game {
   }
 
   private getStartButtonRect(): { x: number; y: number; width: number; height: number } {
-    const { py, leftCx } = this.getMenuLayout();
-    const width = 580;
-    const height = 48;
+    const { px, py } = this.getMenuLayout();
     return {
-      x: leftCx - width / 2,
-      y: py + 548,
-      width,
-      height,
+      x: px + 34,
+      y: py + 546,
+      width: 410,
+      height: 50,
     };
   }
 
   private getFullscreenButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 752,
+      x: 924,
       y: 26,
-      width: 174,
-      height: 44,
-    };
-  }
-
-  private getHelpButtonRect(): { x: number; y: number; width: number; height: number } {
-    return {
-      x: 936,
-      y: 26,
-      width: 126,
+      width: 196,
       height: 44,
     };
   }
 
   private getGlobalRankingsButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1072,
+      x: 1134,
       y: 26,
-      width: 130,
+      width: 152,
       height: 44,
     };
   }
 
   private getDailyMissionsButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1212,
+      x: 1300,
       y: 26,
-      width: 186,
+      width: 192,
       height: 44,
     };
   }
 
   private getAchievementsButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1408,
+      x: 1506,
       y: 26,
-      width: 186,
-      height: 44,
-    };
-  }
-
-  private getMenuLightGfxButtonRect(): { x: number; y: number; width: number; height: number } {
-    return {
-      x: 1604,
-      y: 26,
-      width: 146,
+      width: 194,
       height: 44,
     };
   }
 
   private getSettingsButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 1760,
+      x: 1714,
       y: 26,
-      width: 128,
+      width: 170,
       height: 44,
-    };
-  }
-
-  private getInGameLightGfxButtonRect(): { x: number; y: number; width: number; height: number } {
-    return {
-      x: 386,
-      y: 20,
-      width: 176,
-      height: 36,
     };
   }
 
@@ -4491,11 +4671,12 @@ export class Game {
   }
 
   private getCoopOnlineButtonRect(): { x: number; y: number; width: number; height: number } {
+    const { px, py } = this.getMenuLayout();
     return {
-      x: 484,
-      y: 26,
-      width: 256,
-      height: 44,
+      x: px + 460,
+      y: py + 546,
+      width: 324,
+      height: 50,
     };
   }
 
@@ -4519,6 +4700,8 @@ export class Game {
       | 'TOGGLE_SHAKE'
       | 'LANG_ES'
       | 'LANG_EN'
+      | 'TOGGLE_LIGHT_GFX'
+      | 'OPEN_HELP'
       | 'BACK';
     x: number;
     y: number;
@@ -4527,11 +4710,13 @@ export class Game {
   }[] {
     const cx = LOGICAL_WIDTH / 2;
     const cy = LOGICAL_HEIGHT / 2;
-    const panelH = 520;
+    const panelH = 590;
     const py = cy - panelH / 2;
     const rowStartY = py + 104;
     const rowGap = 50;
     const langY = py + 316;
+    const extraY = py + 378;
+    const backRect = this.getOverlayBackButtonRect(py, panelH);
 
     return [
       { id: 'MASTER_DOWN', x: cx + 70, y: rowStartY, width: 44, height: 32 },
@@ -4544,7 +4729,9 @@ export class Game {
       { id: 'TOGGLE_SHAKE', x: cx + 10, y: rowStartY + rowGap * 3 + 10, width: 230, height: 38 },
       { id: 'LANG_ES', x: cx - 20, y: langY, width: 120, height: 38 },
       { id: 'LANG_EN', x: cx + 120, y: langY, width: 120, height: 38 },
-      { id: 'BACK', x: cx - 160, y: py + panelH - 56, width: 320, height: 40 },
+      { id: 'TOGGLE_LIGHT_GFX', x: cx - 240, y: extraY, width: 230, height: 42 },
+      { id: 'OPEN_HELP', x: cx + 10, y: extraY, width: 230, height: 42 },
+      { id: 'BACK', ...backRect },
     ];
   }
 
@@ -4989,27 +5176,6 @@ export class Game {
     // ==========================================
     // 2. ESQUINA SUPERIOR DERECHA: CONTROLES DEL WORKSTATION
     // ==========================================
-    const coopBtn = this.getCoopOnlineButtonRect();
-    const inRoom = this.mpClient.isInRoom;
-    const coopLabel = inRoom
-      ? `🌐 [K] ${i18n.t('SALA', 'ROOM')} #${this.mpClient.room!.code} (${this.mpClient.room!.players.length}/4)`
-      : `🌐 [K] ${i18n.t('CO-OP ONLINE (4P)', 'ONLINE CO-OP (4P)')}`;
-    this.drawClippedButton(
-      coopBtn,
-      inRoom
-        ? 'rgba(6, 78, 59, 0.96)'
-        : this.hoveredCoopBtn
-        ? 'rgba(14, 62, 86, 0.96)'
-        : 'rgba(10, 26, 46, 0.94)',
-      this.hoveredCoopBtn ? '#ffffff' : inRoom ? '#10b981' : '#00f0ff',
-      this.hoveredCoopBtn ? 2.2 : 1.7,
-      this.hoveredCoopBtn ? '#ffffff' : inRoom ? '#6ee7b7' : '#a5f3fc',
-      11.5,
-      coopLabel,
-      inRoom ? '#10b981' : '#00f0ff',
-      this.hoveredCoopBtn ? 12 : 5
-    );
-
     const fsBtn = this.getFullscreenButtonRect();
     this.drawClippedButton(
       fsBtn,
@@ -5021,19 +5187,6 @@ export class Game {
       `[F] ${i18n.t('PANTALLA COMPLETA', 'FULLSCREEN')}`,
       '#38bdf8',
       this.hoveredFullscreenBtn ? 12 : 4
-    );
-
-    const helpBtn = this.getHelpButtonRect();
-    this.drawClippedButton(
-      helpBtn,
-      this.hoveredHelpBtn ? 'rgba(55, 22, 75, 0.96)' : 'rgba(20, 16, 38, 0.94)',
-      this.hoveredHelpBtn ? '#ffffff' : '#c084fc',
-      this.hoveredHelpBtn ? 2.2 : 1.5,
-      this.hoveredHelpBtn ? '#ffffff' : '#e9d5ff',
-      12,
-      `[H] ${i18n.t('CÓMO JUGAR', 'HOW TO PLAY')}`,
-      '#c084fc',
-      this.hoveredHelpBtn ? 12 : 4
     );
 
     const rankingsBtn = this.getGlobalRankingsButtonRect();
@@ -5076,23 +5229,6 @@ export class Game {
       `[A] ${i18n.t('LOGROS', 'ACHIEV.')} (${achUnlocked}/${totalAch})`,
       '#10b981',
       this.hoveredAchievementsBtn ? 12 : 4
-    );
-
-    const lightBtn = this.getMenuLightGfxButtonRect();
-    this.drawClippedButton(
-      lightBtn,
-      this.lightGraphicsEnabled
-        ? 'rgba(6, 62, 42, 0.96)'
-        : this.hoveredLightGfxBtn
-        ? 'rgba(14, 52, 82, 0.96)'
-        : 'rgba(11, 22, 40, 0.94)',
-      this.hoveredLightGfxBtn ? '#ffffff' : this.lightGraphicsEnabled ? '#10b981' : '#38bdf8',
-      this.hoveredLightGfxBtn ? 2.2 : 1.5,
-      this.lightGraphicsEnabled ? '#6ee7b7' : '#bae6fd',
-      11,
-      `[V] ${this.lightGraphicsEnabled ? i18n.t('LIGEROS: ON', 'LITE GFX: ON') : i18n.t('LIGEROS: OFF', 'LITE GFX: OFF')}`,
-      this.lightGraphicsEnabled ? '#10b981' : '#38bdf8',
-      this.hoveredLightGfxBtn ? 10 : 3
     );
 
     const setBtn = this.getSettingsButtonRect();
@@ -5138,9 +5274,9 @@ export class Game {
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#f8fafc';
     this.ctx.font = `bold 27px ${FONT_DISPLAY}`;
-    this.ctx.fillText('CYBER SURVIVOR', px + 34, py + 44);
+    this.ctx.fillText('DAW-SURVIVOR', px + 34, py + 44);
 
-    const titleW = this.ctx.measureText('CYBER SURVIVOR').width;
+    const titleW = this.ctx.measureText('DAW-SURVIVOR').width;
     this.ctx.fillStyle = '#38bdf8';
     this.ctx.font = `bold 13px ${FONT_MONO}`;
     this.ctx.fillText(`// HARDWARE HANGAR ${GAME_VERSION}`, px + 46 + titleW, py + 43);
@@ -5677,18 +5813,57 @@ export class Game {
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = this.hoveredStartBtn ? '#ffffff' : isNightmareSelected ? '#fecdd3' : '#a7f3d0';
-    let startFont = 15;
-    const maxStartW = startBtn.width - 28;
+    let startFont = 14.5;
+    const maxStartW = startBtn.width - 24;
     const startText = isNightmareSelected
-      ? `▸ ${i18n.t(`DESPLEGAR EN PESADILLA (-${NIGHTMARE_ENTRY_COST} CR)`, `DEPLOY NIGHTMARE (-${NIGHTMARE_ENTRY_COST} CR)`)}`
-      : `▸ ${i18n.t('PULSA [ENTER] O CLIC AQUÍ PARA DESPLEGAR', 'PRESS [ENTER] OR CLICK TO DEPLOY')}`;
+      ? `▸ ${i18n.t(`DESPLEGAR PESADILLA (-${NIGHTMARE_ENTRY_COST} CR)`, `DEPLOY NIGHTMARE (-${NIGHTMARE_ENTRY_COST} CR)`)}`
+      : `▸ ${i18n.t('JUGAR EN SOLITARIO [ENTER]', 'PLAY SOLO [ENTER]')}`;
     this.ctx.font = `bold ${startFont}px ${FONT_DISPLAY}`;
     const stMetrics = this.ctx.measureText(startText).width;
     if (stMetrics > maxStartW) {
-      startFont = Math.max(11, Math.floor(15 * (maxStartW / stMetrics)));
+      startFont = Math.max(10.5, Math.floor(14.5 * (maxStartW / stMetrics)));
       this.ctx.font = `bold ${startFont}px ${FONT_DISPLAY}`;
     }
-    this.ctx.fillText(startText, leftCx, startBtn.y + 30);
+    this.ctx.fillText(startText, startBtn.x + startBtn.width / 2, startBtn.y + 31);
+    this.ctx.restore();
+
+    // Botón destacado de CO-OP ONLINE 4P al lado de JUGAR SOLO
+    const coopBtn = this.getCoopOnlineButtonRect();
+    const inRoom = this.mpClient.isInRoom;
+    const coopStroke = inRoom ? '#10b981' : '#00f0ff';
+    const coopLabel = inRoom
+      ? `🌐 ${i18n.t('SALA', 'ROOM')} #${this.mpClient.room!.code} (${this.mpClient.room!.players.length}/4) [K]`
+      : `🌐 ${i18n.t('CO-OP ONLINE 4P [K]', 'ONLINE CO-OP 4P [K]')}`;
+    this.ctx.save();
+    this.drawCyberPanel(
+      coopBtn.x,
+      coopBtn.y,
+      coopBtn.width,
+      coopBtn.height,
+      12,
+      inRoom
+        ? 'rgba(6, 78, 59, 0.96)'
+        : this.hoveredCoopBtn
+        ? 'rgba(12, 72, 98, 0.98)'
+        : 'rgba(10, 34, 62, 0.96)',
+      this.hoveredCoopBtn ? '#ffffff' : coopStroke,
+      this.hoveredCoopBtn ? 2.4 : 2.0,
+      coopStroke,
+      this.hoveredCoopBtn ? 16 : 7 + Math.cos(now * 0.005) * 3
+    );
+    this.traceChamferRect(coopBtn.x + 2, coopBtn.y + 2, coopBtn.width - 4, coopBtn.height - 4, 10);
+    this.ctx.clip();
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = this.hoveredCoopBtn ? '#ffffff' : inRoom ? '#a7f3d0' : '#a5f3fc';
+    let coopFont = 14;
+    const maxCoopW = coopBtn.width - 20;
+    this.ctx.font = `bold ${coopFont}px ${FONT_DISPLAY}`;
+    const cMetrics = this.ctx.measureText(coopLabel).width;
+    if (cMetrics > maxCoopW) {
+      coopFont = Math.max(10.5, Math.floor(14 * (maxCoopW / cMetrics)));
+      this.ctx.font = `bold ${coopFont}px ${FONT_DISPLAY}`;
+    }
+    this.ctx.fillText(coopLabel, coopBtn.x + coopBtn.width / 2, coopBtn.y + 31);
     this.ctx.restore();
 
     if (this.showCoopModal) {
@@ -5707,10 +5882,10 @@ export class Game {
       this.drawDailyMissionsOverlay();
     } else if (this.showAchievementsOverlay) {
       this.drawAchievementsOverlay();
-    } else if (this.showSettingsOverlay) {
-      this.drawSettingsOverlay();
     } else if (this.showHelpOverlay) {
       this.drawHelpOverlay();
+    } else if (this.showSettingsOverlay) {
+      this.drawSettingsOverlay();
     }
 
     this.ctx.restore();
@@ -5959,6 +6134,12 @@ export class Game {
           this.sound.playShoot(false);
         } else if (ctrl.id === 'LANG_EN') {
           i18n.setLanguage('EN');
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'TOGGLE_LIGHT_GFX') {
+          this.toggleLightGraphics();
+          this.sound.playShoot(false);
+        } else if (ctrl.id === 'OPEN_HELP') {
+          this.showHelpOverlay = true;
           this.sound.playShoot(false);
         } else if (ctrl.id === 'BACK') {
           this.showSettingsOverlay = false;
@@ -6211,7 +6392,7 @@ export class Game {
     this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const panelW = 660;
-    const panelH = 520;
+    const panelH = 590;
     const px = cx - panelW / 2;
     const py = cy - panelH / 2;
 
@@ -6363,6 +6544,56 @@ export class Game {
     this.ctx.fillStyle = isEn ? '#ffffff' : '#94a3b8';
     this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
     this.ctx.fillText(isEn ? '✓ ENGLISH' : 'ENGLISH', cx + 180, langY + 24);
+
+    // Fila de Rendimiento (Gráficos Ligeros) y Guía (Cómo Jugar) dentro de Ajustes
+    const extraY = py + 378;
+    const lightOn = this.lightGraphicsEnabled;
+    this.drawCyberPanel(
+      cx - 240,
+      extraY,
+      230,
+      42,
+      8,
+      lightOn ? 'rgba(6, 62, 42, 0.95)' : 'rgba(15, 24, 42, 0.94)',
+      lightOn ? '#10b981' : '#38bdf8',
+      1.8
+    );
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = lightOn ? '#6ee7b7' : '#bae6fd';
+    this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
+    this.ctx.fillText(
+      `⚡ [V] ${lightOn ? i18n.t('GRÁF. LIGEROS: ON', 'LITE GFX: ON') : i18n.t('GRÁF. LIGEROS: OFF', 'LITE GFX: OFF')}`,
+      cx - 125,
+      extraY + 26
+    );
+
+    this.drawCyberPanel(
+      cx + 10,
+      extraY,
+      230,
+      42,
+      8,
+      'rgba(34, 20, 62, 0.95)',
+      '#c084fc',
+      1.8
+    );
+    this.ctx.fillStyle = '#e9d5ff';
+    this.ctx.fillText(
+      `📖 [H] ${i18n.t('CÓMO JUGAR', 'HOW TO PLAY')}`,
+      cx + 125,
+      extraY + 26
+    );
+
+    this.ctx.fillStyle = '#94a3b8';
+    this.ctx.font = `11px ${FONT_MONO}`;
+    this.ctx.fillText(
+      i18n.t(
+        'Gráficos ligeros reduce brillos/sombras para mejorar FPS en móviles o portátiles.',
+        'Light graphics trims glow/shadows to boost FPS on mobile or older devices.'
+      ),
+      cx,
+      py + 454
+    );
 
     const backBtn = this.getOverlayBackButtonRect(py, panelH);
     this.drawClippedButton(
@@ -7579,19 +7810,6 @@ export class Game {
     this.ctx.restore();
   }
 
-  private drawInGameQuickButtons(): void {
-    const lightBtn = this.getInGameLightGfxButtonRect();
-    this.drawClippedButton(
-      lightBtn,
-      this.lightGraphicsEnabled ? 'rgba(6, 62, 42, 0.92)' : 'rgba(11, 19, 34, 0.88)',
-      this.lightGraphicsEnabled ? '#10b981' : 'rgba(56, 189, 248, 0.6)',
-      1.5,
-      this.lightGraphicsEnabled ? '#6ee7b7' : '#bae6fd',
-      11,
-      `⚡ [V] ${this.lightGraphicsEnabled ? i18n.t('LIGEROS: ON', 'LITE: ON') : i18n.t('LIGEROS: OFF', 'LITE: OFF')}`
-    );
-  }
-
   private drawNightmareMinimap(): void {
     const size = 166;
     const x = LOGICAL_WIDTH - size - 16;
@@ -7600,6 +7818,9 @@ export class Game {
     const cy = y + size / 2;
     const radarRange = 2000;
     const scale = (size * 0.45) / radarRange;
+    const isNightmare = this.isNightmareRun;
+    const accentBorder = isNightmare ? 'rgba(244, 63, 94, 0.72)' : 'rgba(56, 189, 248, 0.76)';
+    const gridStroke = isNightmare ? 'rgba(244, 63, 94, 0.16)' : 'rgba(56, 189, 248, 0.18)';
 
     this.ctx.save();
     this.drawCyberPanel(
@@ -7609,14 +7830,14 @@ export class Game {
       size,
       10,
       'rgba(8, 13, 24, 0.88)',
-      'rgba(244, 63, 94, 0.72)',
+      accentBorder,
       1.6
     );
     this.traceChamferRect(x + 2, y + 2, size - 4, size - 4, 8);
     this.ctx.clip();
 
     // Retícula radar
-    this.ctx.strokeStyle = 'rgba(244, 63, 94, 0.16)';
+    this.ctx.strokeStyle = gridStroke;
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
     this.ctx.moveTo(cx, y);
@@ -7626,67 +7847,146 @@ export class Game {
     this.ctx.arc(cx, cy, size * 0.34, 0, Math.PI * 2);
     this.ctx.stroke();
 
-    // Eventos de Terreno en el minimapa (si quedan fuera del radio, se fijan en el borde)
-    for (const node of this.terrainEvents.nodes) {
-      if (!node.active) continue;
-      const dx = (node.x - this.player.x) * scale;
-      const dy = (node.y - this.player.y) * scale;
-      const maxR = size * 0.43;
+    // Oasis de recompensa (rombos esmeralda o gris en recarga)
+    const { oases } = this.worldEnv.queryArea(
+      this.player.x - radarRange,
+      this.player.y - radarRange,
+      this.player.x + radarRange,
+      this.player.y + radarRange
+    );
+    const maxR = size * 0.44;
+    for (const oasis of oases) {
+      const dx = (oasis.x - this.player.x) * scale;
+      const dy = (oasis.y - this.player.y) * scale;
       const d = Math.hypot(dx, dy);
-      const px = d > maxR ? cx + (dx / d) * maxR : cx + dx;
-      const py = d > maxR ? cy + (dy / d) * maxR : cy + dy;
-
-      this.ctx.fillStyle = this.terrainEvents.getColorForType(node.type);
+      const ox = d > maxR ? cx + (dx / d) * maxR : cx + dx;
+      const oy = d > maxR ? cy + (dy / d) * maxR : cy + dy;
+      const ready = oasis.cooldownTimer <= 0;
+      this.ctx.fillStyle = ready ? '#10b981' : '#64748b';
       this.ctx.beginPath();
-      this.ctx.arc(px, py, node.type === 'DATA_STORM' ? 4.2 : 3.6, 0, Math.PI * 2);
+      this.ctx.moveTo(ox, oy - 4.2);
+      this.ctx.lineTo(ox + 4.2, oy);
+      this.ctx.lineTo(ox, oy + 4.2);
+      this.ctx.lineTo(ox - 4.2, oy);
+      this.ctx.closePath();
       this.ctx.fill();
+    }
+
+    // Eventos de Terreno en el minimapa (local/host o guest desde snapshot)
+    const isGuestCoop = this.isCoopMode && !this.isCoopHost;
+    if (isGuestCoop) {
+      const zoneColors: Record<number, string> = {
+        1: '#38bdf8',
+        2: '#a855f7',
+        3: '#fbbf24',
+        4: '#ff1e42',
+      };
+      for (const z of this.coopSnapshot?.zones || []) {
+        if (z[0] < 1) continue;
+        const dx = (z[1] - this.player.x) * scale;
+        const dy = (z[2] - this.player.y) * scale;
+        const d = Math.hypot(dx, dy);
+        const px = d > maxR ? cx + (dx / d) * maxR : cx + dx;
+        const py = d > maxR ? cy + (dy / d) * maxR : cy + dy;
+        this.ctx.fillStyle = zoneColors[z[0]] || '#38bdf8';
+        this.ctx.beginPath();
+        this.ctx.arc(px, py, z[0] === 4 ? 4.2 : 3.4, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+    } else {
+      for (const node of this.terrainEvents.nodes) {
+        if (!node.active) continue;
+        const dx = (node.x - this.player.x) * scale;
+        const dy = (node.y - this.player.y) * scale;
+        const d = Math.hypot(dx, dy);
+        const px = d > maxR ? cx + (dx / d) * maxR : cx + dx;
+        const py = d > maxR ? cy + (dy / d) * maxR : cy + dy;
+
+        this.ctx.fillStyle = this.terrainEvents.getColorForType(node.type);
+        this.ctx.beginPath();
+        this.ctx.arc(px, py, node.type === 'DATA_STORM' ? 4.2 : 3.6, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
     }
 
     // Enemigos, Cajas, Mineros y Jefes
     let regularCount = 0;
-    for (const enemy of this.enemies) {
-      if (!enemy.active) continue;
-      const dx = (enemy.x - this.player.x) * scale;
-      const dy = (enemy.y - this.player.y) * scale;
-      const maxR = size * 0.44;
-      const d = Math.hypot(dx, dy);
+    if (isGuestCoop) {
+      for (const e of this.coopSnapshot?.enemies || []) {
+        const typeCode = e[0];
+        const dx = (e[1] - this.player.x) * scale;
+        const dy = (e[2] - this.player.y) * scale;
+        const d = Math.hypot(dx, dy);
+        const isBoss = typeCode === 7 || typeCode === 8 || typeCode === 9;
+        const isMiner = typeCode === 5;
+        const isBox = typeCode === 6;
+        if (d > maxR && !isBoss && !isMiner) continue;
+        const mx = d > maxR ? cx + (dx / d) * maxR : cx + dx;
+        const my = d > maxR ? cy + (dy / d) * maxR : cy + dy;
+        if (isBoss) {
+          this.ctx.fillStyle = '#ff1e42';
+          this.ctx.fillRect(mx - 4, my - 4, 8, 8);
+        } else if (isMiner) {
+          this.ctx.fillStyle = '#fbbf24';
+          this.ctx.fillRect(mx - 3, my - 3, 6, 6);
+        } else if (isBox) {
+          this.ctx.fillStyle = '#38bdf8';
+          this.ctx.fillRect(mx - 2, my - 2, 4, 4);
+        } else if (regularCount < 85) {
+          regularCount++;
+          this.ctx.fillStyle = 'rgba(248, 113, 113, 0.72)';
+          this.ctx.fillRect(mx - 1.2, my - 1.2, 2.4, 2.4);
+        }
+      }
+    } else {
+      for (const enemy of this.enemies) {
+        if (!enemy.active) continue;
+        const dx = (enemy.x - this.player.x) * scale;
+        const dy = (enemy.y - this.player.y) * scale;
+        const d = Math.hypot(dx, dy);
 
-      const isBoss = enemy.malwareType === 'RANSOMWARE' || enemy.malwareType === 'FINAL_BOSS';
-      const isMiner = enemy.malwareType === 'CRYPTO_MINER';
-      const isBox = enemy.malwareType === 'HARDWARE_BOX';
+        const isBoss = enemy.malwareType === 'RANSOMWARE' || enemy.malwareType === 'FINAL_BOSS';
+        const isMiner = enemy.malwareType === 'CRYPTO_MINER';
+        const isBox = enemy.malwareType === 'HARDWARE_BOX';
 
-      if (d > maxR && !isBoss && !isMiner) continue;
-      const mx = d > maxR ? cx + (dx / d) * maxR : cx + dx;
-      const my = d > maxR ? cy + (dy / d) * maxR : cy + dy;
+        if (d > maxR && !isBoss && !isMiner) continue;
+        const mx = d > maxR ? cx + (dx / d) * maxR : cx + dx;
+        const my = d > maxR ? cy + (dy / d) * maxR : cy + dy;
 
-      if (isBoss) {
-        this.ctx.fillStyle = '#ff1e42';
-        this.ctx.fillRect(mx - 4, my - 4, 8, 8);
-      } else if (isMiner) {
-        this.ctx.fillStyle = '#fbbf24';
-        this.ctx.fillRect(mx - 3, my - 3, 6, 6);
-      } else if (isBox) {
-        this.ctx.fillStyle = '#38bdf8';
-        this.ctx.fillRect(mx - 2, my - 2, 4, 4);
-      } else if (regularCount < 85) {
-        regularCount++;
-        this.ctx.fillStyle = 'rgba(248, 113, 113, 0.72)';
-        this.ctx.fillRect(mx - 1.2, my - 1.2, 2.4, 2.4);
+        if (isBoss) {
+          this.ctx.fillStyle = '#ff1e42';
+          this.ctx.fillRect(mx - 4, my - 4, 8, 8);
+        } else if (isMiner) {
+          this.ctx.fillStyle = '#fbbf24';
+          this.ctx.fillRect(mx - 3, my - 3, 6, 6);
+        } else if (isBox) {
+          this.ctx.fillStyle = '#38bdf8';
+          this.ctx.fillRect(mx - 2, my - 2, 4, 4);
+        } else if (regularCount < 85) {
+          regularCount++;
+          this.ctx.fillStyle = 'rgba(248, 113, 113, 0.72)';
+          this.ctx.fillRect(mx - 1.2, my - 1.2, 2.4, 2.4);
+        }
       }
     }
 
-    // Jugador en el centro + aliados Co-op en Radar Pesadilla
+    // Aliados Co-op en el minimapa (fijados al borde si están lejos)
     if (this.isCoopMode) {
       const peersPos = this.isCoopHost
         ? Array.from(this.coopPeers.values()).map((p) => ({
             x: p.player.x,
             y: p.player.y,
             color: p.downed ? '#f43f5e' : p.slotColor,
+            downed: p.downed,
           }))
         : (this.coopSnapshot?.players || [])
             .filter((p) => p.id !== this.mpClient.myId)
-            .map((p) => ({ x: p.x, y: p.y, color: p.downed ? '#f43f5e' : p.color }));
-      const maxR = size * 0.44;
+            .map((p) => ({
+              x: p.x,
+              y: p.y,
+              color: p.downed ? '#f43f5e' : p.color,
+              downed: p.downed,
+            }));
       for (const ally of peersPos) {
         const dx = (ally.x - this.player.x) * scale;
         const dy = (ally.y - this.player.y) * scale;
@@ -7695,11 +7995,15 @@ export class Game {
         const ay = d > maxR ? cy + (dy / d) * maxR : cy + dy;
         this.ctx.fillStyle = ally.color;
         this.ctx.beginPath();
-        this.ctx.arc(ax, ay, 3.6, 0, Math.PI * 2);
+        this.ctx.arc(ax, ay, ally.downed ? 4.4 : 4, 0, Math.PI * 2);
         this.ctx.fill();
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.lineWidth = 1;
+        this.ctx.stroke();
       }
     }
 
+    // Jugador local siempre en el centro
     this.ctx.fillStyle = '#10b981';
     this.ctx.beginPath();
     this.ctx.arc(cx, cy, 4, 0, Math.PI * 2);
@@ -7709,9 +8013,9 @@ export class Game {
     this.ctx.stroke();
 
     this.ctx.textAlign = 'left';
-    this.ctx.fillStyle = '#fda4af';
+    this.ctx.fillStyle = isNightmare ? '#fda4af' : '#7dd3fc';
     this.ctx.font = `bold 9.5px ${FONT_MONO}`;
-    this.ctx.fillText('RADAR // PESADILLA', x + 8, y + 14);
+    this.ctx.fillText(isNightmare ? 'RADAR // PESADILLA' : 'RADAR // CO-OP', x + 8, y + 14);
     this.ctx.restore();
   }
 

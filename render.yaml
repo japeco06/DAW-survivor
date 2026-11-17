@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: cyber-survivor-coop
+    name: daw-survivor-coop
     runtime: node
     plan: free
     rootDir: server

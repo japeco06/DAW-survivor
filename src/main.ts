@@ -20,11 +20,11 @@ function showError(msg: string) {
 }
 
 window.addEventListener('error', (e) => {
-  console.error('Cyber Survivor Error:', e.error || e.message);
+  console.error('DAW-survivor Error:', e.error || e.message);
 });
 
 window.addEventListener('unhandledrejection', (e) => {
-  console.error('Cyber Survivor Promise Error:', e.reason);
+  console.error('DAW-survivor Promise Error:', e.reason);
 });
 
 function initGame(): void {

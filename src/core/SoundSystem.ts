@@ -14,7 +14,7 @@ export interface AudioSettings {
   screenShakeEnabled: boolean;
 }
 
-const SETTINGS_KEY = 'cyber_survivor_audio_settings_v1';
+const SETTINGS_KEY = 'daw_survivor_audio_settings_v1';
 
 export class SoundSystem {
   private ctx: AudioContext | null = null;
@@ -44,7 +44,9 @@ export class SoundSystem {
 
   private loadSettings(): void {
     try {
-      const saved = localStorage.getItem(SETTINGS_KEY);
+      const saved =
+        localStorage.getItem(SETTINGS_KEY) ||
+        localStorage.getItem('cyber_survivor_audio_settings_v1');
       if (saved) {
         const parsed = JSON.parse(saved) as Partial<AudioSettings>;
         if (typeof parsed.masterVolume === 'number') this.masterVolume = parsed.masterVolume;

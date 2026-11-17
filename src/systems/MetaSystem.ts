@@ -63,7 +63,7 @@ interface SavedMetaState {
   maxDamageToToro?: number;
 }
 
-export const STORAGE_KEY = 'cyber_survivor_meta_v020';
+export const STORAGE_KEY = 'daw_survivor_meta_v020';
 export const GACHA_PULL_SINGLE_COST = 20;
 export const GACHA_PULL_TEN_COST = 200;
 export const GACHA_DUPLICATE_REFUND = 10;
@@ -624,7 +624,9 @@ export class MetaSystem {
 
   public static readEquippedHatFromStorage(): HatItem | null {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw =
+        window.localStorage.getItem(STORAGE_KEY) ||
+        window.localStorage.getItem('cyber_survivor_meta_v020');
       if (!raw) return null;
       const parsed = JSON.parse(raw) as Partial<SavedMetaState>;
       return getHatById(parsed.equippedHatId);
@@ -709,7 +711,9 @@ export class MetaSystem {
 
   private load(): void {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw =
+        window.localStorage.getItem(STORAGE_KEY) ||
+        window.localStorage.getItem('cyber_survivor_meta_v020');
       if (!raw) return;
       const parsed = JSON.parse(raw) as Partial<SavedMetaState>;
       this.applyParsedState(parsed);
