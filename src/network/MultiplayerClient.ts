@@ -11,6 +11,7 @@ import type {
 } from './MultiplayerTypes';
 
 const SERVER_URL_STORAGE_KEY = 'daw_survivor_mp_server_v1';
+const DEFAULT_PRODUCTION_SERVER_URL = 'https://daw-survivor-coop.onrender.com';
 
 // URL por defecto en producción si se compila con VITE_MULTIPLAYER_URL
 const ENV_SERVER_URL: string = (import.meta as any).env?.VITE_MULTIPLAYER_URL || '';
@@ -77,7 +78,7 @@ export class MultiplayerClient {
       }
     }
 
-    return '';
+    return DEFAULT_PRODUCTION_SERVER_URL;
   }
 
   public normalizeUrl(raw: string): string {
@@ -90,18 +91,20 @@ export class MultiplayerClient {
 
   public setServerUrl(raw: string): string {
     const clean = this.normalizeUrl(raw);
-    this.serverUrl = clean;
     try {
       if (clean.length > 0) {
         localStorage.setItem(SERVER_URL_STORAGE_KEY, clean);
+        this.serverUrl = clean;
       } else {
         localStorage.removeItem(SERVER_URL_STORAGE_KEY);
+        localStorage.removeItem('cyber_survivor_mp_server_v1');
+        this.serverUrl = this.resolveInitialServerUrl();
       }
     } catch {
-      // Ignorar
+      this.serverUrl = clean || this.resolveInitialServerUrl();
     }
     this.disconnect();
-    return clean;
+    return this.serverUrl;
   }
 
   public get myId(): string {
@@ -140,8 +143,8 @@ export class MultiplayerClient {
       const socket = io(this.serverUrl, {
         transports: ['websocket', 'polling'],
         reconnection: true,
-        reconnectionAttempts: 5,
-        timeout: 22000,
+        reconnectionAttempts: 8,
+        timeout: 45000,
       } as any);
       this.socket = socket;
 
