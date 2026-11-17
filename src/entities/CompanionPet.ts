@@ -435,8 +435,8 @@ export class CompanionPet {
       }
     } else if (this.branch === 'PINBALL') {
       const targetCount = playerLevel >= 20 ? 3 : 1;
-      const basePinballSpeed = 680;
-      const speed = playerLevel >= 5 ? Math.round(basePinballSpeed * 1.5) : basePinballSpeed;
+      const basePinballSpeed = 440;
+      const speed = playerLevel >= 5 ? Math.round(basePinballSpeed * 1.25) : basePinballSpeed;
       if (this.units.length !== targetCount) {
         this.spawnUnits(targetCount, player.x, player.y, 24, speed);
       } else {
@@ -463,7 +463,7 @@ export class CompanionPet {
         milestoneMsg = 'EVOLUCIÓN LVL 10 [PINBALL]: ¡EXPLOSIÓN CINÉTICA (4 DISPAROS CARDINALES)!';
       } else if (playerLevel >= 5 && this.lastMilestoneLevel < 5) {
         this.lastMilestoneLevel = 5;
-        milestoneMsg = 'EVOLUCIÓN LVL 5 [PINBALL]: ¡+50% VELOCIDAD Y ESTELA CORRUPTA!';
+        milestoneMsg = 'EVOLUCIÓN LVL 5 [PINBALL]: ¡+25% VELOCIDAD Y ESTELA CORRUPTA!';
       }
     }
 
