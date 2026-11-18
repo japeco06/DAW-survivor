@@ -119,7 +119,7 @@ export interface CoopWorldSnapshot {
   zones: SnapshotZoneTuple[];
   arcs: [number, number][][];
   pulses: SnapshotPulseTuple[];
-  oasis?: [string, number, number][];
+  oasis?: [string, number, number, number][];
 }
 
 export interface CoopLevelUpPayload {

@@ -108,7 +108,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.5.1';
+const GAME_VERSION = 'v1.5.2';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v1';
@@ -2326,7 +2326,13 @@ export class Game {
     // Invitado Co-op: predice movimiento local suave y envía inputs al Host (30 Hz)
     if (this.isCoopMode && !this.isCoopHost) {
       if (!this.isPaused && !this.coopSelfDowned && !this.coopWaitingUpgrade && !this.upgradeSystem.isChoosingUpgrade()) {
-        this.player.externalSpeedMultiplier = this.worldEnv.isInSlowLiquid(this.player.x, this.player.y) ? 0.58 : 1.0;
+        this.player.externalSpeedMultiplier = this.worldEnv.isInSlowLiquid(
+          this.player.x,
+          this.player.y,
+          this.elapsedTime
+        )
+          ? 0.58
+          : 1.0;
         this.player.update(
           dt,
           this.input,
@@ -2343,7 +2349,7 @@ export class Game {
         this.player.x = resolved.x;
         this.player.y = resolved.y;
       }
-      this.worldEnv.updateOases(dt, [{ x: this.player.x, y: this.player.y }], false);
+      this.worldEnv.updateOases(dt, [{ x: this.player.x, y: this.player.y }], false, this.elapsedTime);
       this.coopInputTimer += dt;
       if (this.coopInputTimer >= 0.033) {
         this.coopInputTimer = 0;
@@ -2401,7 +2407,11 @@ export class Game {
     this.dailyMissions.reportProgress('LEVEL', this.upgradeSystem.level);
 
     if (!this.isCoopMode || (!this.coopSelfDowned && !this.isPaused)) {
-      this.player.externalSpeedMultiplier = this.worldEnv.isInSlowLiquid(this.player.x, this.player.y)
+      this.player.externalSpeedMultiplier = this.worldEnv.isInSlowLiquid(
+        this.player.x,
+        this.player.y,
+        this.elapsedTime
+      )
         ? 0.58
         : 1.0;
       this.player.update(
@@ -2425,7 +2435,11 @@ export class Game {
     if (this.isCoopMode && this.isCoopHost) {
       for (const peer of this.coopPeers.values()) {
         if (!peer.downed) {
-          peer.player.externalSpeedMultiplier = this.worldEnv.isInSlowLiquid(peer.player.x, peer.player.y)
+          peer.player.externalSpeedMultiplier = this.worldEnv.isInSlowLiquid(
+            peer.player.x,
+            peer.player.y,
+            this.elapsedTime
+          )
             ? 0.58
             : 1.0;
           peer.player.updateWithVector(
@@ -2635,8 +2649,17 @@ export class Game {
       }
     }
 
-    // Oasis con recompensas (HP, CryptoCoins, XP y Turbo)
-    const oasisRewards = this.worldEnv.updateOases(dt, alivePosList, true);
+    // Oasis dinámicos con recompensas (desaparecen al recogerse y reaparecen en otra zona)
+    const { rewards: oasisRewards, spawned: oasisSpawned } = this.worldEnv.updateOases(
+      dt,
+      alivePosList,
+      true,
+      this.elapsedTime
+    );
+    for (const sp of oasisSpawned) {
+      this.particleSystem.spawnExplosion(sp.x, sp.y, '#34d399', 18, false);
+      this.addTerminalLog('✦ NEW OASIS DETECTED! (+HP +CRYPTO +XP)');
+    }
     for (const ow of oasisRewards) {
       this.sound.playAchievement();
       this.particleSystem.spawnExplosion(ow.x, ow.y, '#10b981', 36, true);
@@ -3542,7 +3565,15 @@ export class Game {
       this.ctx.save();
       this.ctx.translate(-cam.x, -cam.y);
 
-      this.worldEnv.draw(this.ctx, cam.x, cam.y, LOGICAL_WIDTH, LOGICAL_HEIGHT, performance.now());
+      this.worldEnv.draw(
+        this.ctx,
+        cam.x,
+        cam.y,
+        LOGICAL_WIDTH,
+        LOGICAL_HEIGHT,
+        performance.now(),
+        this.elapsedTime
+      );
 
       if (this.isCoopMode && !this.isCoopHost && this.coopSnapshot) {
         CoopRenderer.drawWorld(this.ctx, this.coopSnapshot, this.mpClient.myId, {
@@ -7851,13 +7882,8 @@ export class Game {
     this.ctx.arc(cx, cy, size * 0.34, 0, Math.PI * 2);
     this.ctx.stroke();
 
-    // Oasis de recompensa (rombos esmeralda o gris en recarga)
-    const { oases } = this.worldEnv.queryArea(
-      this.player.x - radarRange,
-      this.player.y - radarRange,
-      this.player.x + radarRange,
-      this.player.y + radarRange
-    );
+    // Oasis dinámicos activos (rombos esmeralda)
+    const oases = this.worldEnv.getAllActiveOases();
     const maxR = size * 0.44;
     for (const oasis of oases) {
       const dx = (oasis.x - this.player.x) * scale;
@@ -7865,8 +7891,7 @@ export class Game {
       const d = Math.hypot(dx, dy);
       const ox = d > maxR ? cx + (dx / d) * maxR : cx + dx;
       const oy = d > maxR ? cy + (dy / d) * maxR : cy + dy;
-      const ready = oasis.cooldownTimer <= 0;
-      this.ctx.fillStyle = ready ? '#10b981' : '#64748b';
+      this.ctx.fillStyle = '#10b981';
       this.ctx.beginPath();
       this.ctx.moveTo(ox, oy - 4.2);
       this.ctx.lineTo(ox + 4.2, oy);

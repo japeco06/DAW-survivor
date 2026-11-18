@@ -14,6 +14,10 @@ export interface SlowLiquidPool {
   y: number;
   radius: number;
   phase: number;
+  flowAngle: number;
+  ampX: number;
+  ampY: number;
+  freq: number;
 }
 
 export interface OasisZone {
@@ -24,6 +28,7 @@ export interface OasisZone {
   duration: number;
   progress: number;
   cooldownTimer: number;
+  spawnAnim?: number;
 }
 
 export interface OasisRewardEvent {
@@ -38,58 +43,43 @@ export interface OasisRewardEvent {
 interface SectorData {
   obstacles: WorldObstacle[];
   liquids: SlowLiquidPool[];
-  oases: { id: string; x: number; y: number; radius: number; duration: number }[];
 }
 
 const SECTOR_SIZE = 780;
 const SPAWN_CX = 960;
 const SPAWN_CY = 540;
 const SAFE_SPAWN_RADIUS = 240;
+const CLASSIC_W = 1920;
+const CLASSIC_H = 1080;
 
 /**
- * Entorno interactivo del mapa (modo finito e infinito):
- * - Obstáculos sólidos (servidores blindados) con deslizamiento suave.
- * - Charcos de líquido corrupto que ralentizan (-42% velocidad).
- * - Oasis cibernéticos curativos con recompensas (HP + Cripto + XP + Turbo).
+ * Entorno interactivo del mapa:
+ * - Modo Normal (finito): arena limpia SIN muros ni fluido lento; solo Oasis dinámicos
+ *   que desaparecen al recogerse y reaparecen al tiempo en diferentes lados de la pantalla.
+ * - Modo Infinito (Pesadilla / Co-op): obstáculos sólidos, corrientes móviles de fluido lento
+ *   y Oasis dinámicos alrededor de los jugadores.
  */
 export class WorldEnvironment {
   public seed: number = 1337;
   public isInfinite: boolean = false;
 
-  private classicObstacles: WorldObstacle[] = [];
-  private classicLiquids: SlowLiquidPool[] = [];
-  private classicOases: { id: string; x: number; y: number; radius: number; duration: number }[] = [];
-
   private sectorCache: Map<string, SectorData> = new Map();
-  private oasisRuntime: Map<string, { progress: number; cooldownTimer: number }> = new Map();
+  private activeOases: OasisZone[] = [];
+  private nextOasisSpawnTimer: number = 12;
+  private oasisSeq: number = 0;
+  private lastQuadrant: number = -1;
 
   public reset(seed: number = 1337, isInfinite: boolean = false): void {
     this.seed = seed >>> 0 || 1337;
     this.isInfinite = isInfinite;
     this.sectorCache.clear();
-    this.oasisRuntime.clear();
+    this.activeOases = [];
+    this.oasisSeq = 0;
+    this.lastQuadrant = -1;
 
-    if (!isInfinite) {
-      // Disposición equilibrada para Arena Clásica (1920x1080)
-      this.classicObstacles = [
-        { id: 'c_obs_1', x: 370, y: 240, width: 88, height: 88 },
-        { id: 'c_obs_2', x: 1462, y: 240, width: 88, height: 88 },
-        { id: 'c_obs_3', x: 370, y: 752, width: 88, height: 88 },
-        { id: 'c_obs_4', x: 1462, y: 752, width: 88, height: 88 },
-      ];
-      this.classicLiquids = [
-        { id: 'c_liq_1', x: 640, y: 540, radius: 74, phase: 0.4 },
-        { id: 'c_liq_2', x: 1280, y: 540, radius: 74, phase: 2.1 },
-      ];
-      this.classicOases = [
-        { id: 'c_oasis_1', x: 960, y: 215, radius: 74, duration: 1.5 },
-        { id: 'c_oasis_2', x: 960, y: 865, radius: 74, duration: 1.5 },
-      ];
-    } else {
-      this.classicObstacles = [];
-      this.classicLiquids = [];
-      this.classicOases = [];
-    }
+    // Generar un primer Oasis inicial desplazado hacia un lateral
+    this.spawnDynamicOasis([{ x: SPAWN_CX, y: SPAWN_CY }], 0);
+    this.nextOasisSpawnTimer = this.isInfinite ? 15 : 12;
   }
 
   private hash2D(sx: number, sy: number, salt: number): number {
@@ -112,7 +102,6 @@ export class WorldEnvironment {
     const baseY = sy * SECTOR_SIZE;
     const obstacles: WorldObstacle[] = [];
     const liquids: SlowLiquidPool[] = [];
-    const oases: { id: string; x: number; y: number; radius: number; duration: number }[] = [];
 
     const obsCount = this.hash2D(sx, sy, 1) > 0.25 ? 2 : 1;
     for (let i = 0; i < obsCount; i++) {
@@ -129,7 +118,10 @@ export class WorldEnvironment {
       const overlapsPrevObs = obstacles.some((prev) => {
         const px = prev.x + prev.width / 2;
         const py = prev.y + prev.height / 2;
-        return Math.abs(cx - px) < (w + prev.width) / 2 + 56 && Math.abs(cy - py) < (h + prev.height) / 2 + 56;
+        return (
+          Math.abs(cx - px) < (w + prev.width) / 2 + 56 &&
+          Math.abs(cy - py) < (h + prev.height) / 2 + 56
+        );
       });
       if (overlapsPrevObs) {
         continue;
@@ -143,55 +135,55 @@ export class WorldEnvironment {
       });
     }
 
-    // Líquido lento (charco de refrigerante/datos corruptos)
+    // Corriente de fluido lento móvil (~82% por sector)
     if (this.hash2D(sx, sy, 31) > 0.18) {
-      const r = 68 + Math.floor(this.hash2D(sx, sy, 32) * 34);
-      const lx = baseX + 130 + this.hash2D(sx, sy, 33) * (SECTOR_SIZE - 260);
-      const ly = baseY + 130 + this.hash2D(sx, sy, 34) * (SECTOR_SIZE - 260);
-      const overlapsObs = obstacles.some(
-        (o) => Math.hypot(lx - (o.x + o.width / 2), ly - (o.y + o.height / 2)) < r + 84
-      );
-      if (!overlapsObs && Math.hypot(lx - SPAWN_CX, ly - SPAWN_CY) > SAFE_SPAWN_RADIUS) {
+      const r = 36 + Math.floor(this.hash2D(sx, sy, 32) * 14);
+      const lx = baseX + 180 + this.hash2D(sx, sy, 33) * (SECTOR_SIZE - 360);
+      const ly = baseY + 180 + this.hash2D(sx, sy, 34) * (SECTOR_SIZE - 360);
+      if (Math.hypot(lx - SPAWN_CX, ly - SPAWN_CY) > SAFE_SPAWN_RADIUS + 60) {
         liquids.push({
           id: `liq_${sx}_${sy}`,
           x: Math.round(lx),
           y: Math.round(ly),
           radius: r,
           phase: this.hash2D(sx, sy, 35) * Math.PI * 2,
+          flowAngle: this.hash2D(sx, sy, 36) * Math.PI * 2,
+          ampX: 165 + Math.floor(this.hash2D(sx, sy, 37) * 75),
+          ampY: 85 + Math.floor(this.hash2D(sx, sy, 38) * 60),
+          freq: 0.42 + this.hash2D(sx, sy, 39) * 0.24,
         });
       }
     }
 
-    // Oasis con recompensas (garantizado cerca de origen en sector (1, 0) y ~62% en resto)
-    const isOriginSector = sx === 1 && sy === 0;
-    if (isOriginSector || this.hash2D(sx, sy, 41) > 0.36) {
-      const r = 74;
-      const ox = isOriginSector
-        ? SPAWN_CX + 320
-        : baseX + 150 + this.hash2D(sx, sy, 42) * (SECTOR_SIZE - 300);
-      const oy = isOriginSector
-        ? SPAWN_CY - 190
-        : baseY + 150 + this.hash2D(sx, sy, 43) * (SECTOR_SIZE - 300);
-      const badObs = obstacles.some(
-        (o) => Math.hypot(ox - (o.x + o.width / 2), oy - (o.y + o.height / 2)) < r + 86
-      );
-      const badLiq = liquids.some(
-        (l) => Math.hypot(ox - l.x, oy - l.y) < r + l.radius + 52
-      );
-      if (!badObs && !badLiq) {
-        oases.push({
-          id: `oasis_${sx}_${sy}`,
-          x: Math.round(ox),
-          y: Math.round(oy),
-          radius: r,
-          duration: 1.5,
-        });
-      }
-    }
-
-    const sector: SectorData = { obstacles, liquids, oases };
+    const sector: SectorData = { obstacles, liquids };
     this.sectorCache.set(key, sector);
     return sector;
+  }
+
+  /**
+   * Calcula los 5 nodos conectados de una corriente fluida en movimiento en tiempo t.
+   */
+  public getFluidStreamNodes(
+    pool: SlowLiquidPool,
+    timeSec: number
+  ): { x: number; y: number; radius: number }[] {
+    const ca = Math.cos(pool.flowAngle);
+    const sa = Math.sin(pool.flowAngle);
+    const nodes: { x: number; y: number; radius: number }[] = [];
+    const taper = [1.0, 0.94, 0.85, 0.74, 0.6];
+
+    for (let i = 0; i < 5; i++) {
+      const tau = timeSec - i * 0.32;
+      const a = tau * pool.freq + pool.phase;
+      const lx = Math.sin(a) * pool.ampX;
+      const ly = Math.sin(a * 2 + 0.7) * pool.ampY;
+      nodes.push({
+        x: pool.x + lx * ca - ly * sa,
+        y: pool.y + lx * sa + ly * ca,
+        radius: pool.radius * taper[i],
+      });
+    }
+    return nodes;
   }
 
   public queryArea(
@@ -206,49 +198,61 @@ export class WorldEnvironment {
   } {
     if (!this.isInfinite) {
       return {
-        obstacles: this.classicObstacles,
-        liquids: this.classicLiquids,
-        oases: this.classicOases.map((o) => {
-          const st = this.oasisRuntime.get(o.id);
-          return {
-            ...o,
-            progress: st?.progress ?? 0,
-            cooldownTimer: st?.cooldownTimer ?? 0,
-          };
-        }),
+        obstacles: [],
+        liquids: [],
+        oases: this.activeOases.filter(
+          (o) =>
+            o.x + o.radius >= minX &&
+            o.x - o.radius <= maxX &&
+            o.y + o.radius >= minY &&
+            o.y - o.radius <= maxY
+        ),
       };
     }
 
-    const sMinX = Math.floor(minX / SECTOR_SIZE);
-    const sMaxX = Math.floor(maxX / SECTOR_SIZE);
-    const sMinY = Math.floor(minY / SECTOR_SIZE);
-    const sMaxY = Math.floor(maxY / SECTOR_SIZE);
+    const pad = 280;
+    const sMinX = Math.floor((minX - pad) / SECTOR_SIZE);
+    const sMaxX = Math.floor((maxX + pad) / SECTOR_SIZE);
+    const sMinY = Math.floor((minY - pad) / SECTOR_SIZE);
+    const sMaxY = Math.floor((maxY + pad) / SECTOR_SIZE);
 
     const obstacles: WorldObstacle[] = [];
     const liquids: SlowLiquidPool[] = [];
-    const oases: OasisZone[] = [];
 
     for (let sx = sMinX; sx <= sMaxX; sx++) {
       for (let sy = sMinY; sy <= sMaxY; sy++) {
         const sec = this.getOrCreateSector(sx, sy);
         obstacles.push(...sec.obstacles);
         liquids.push(...sec.liquids);
-        for (const o of sec.oases) {
-          const st = this.oasisRuntime.get(o.id);
-          oases.push({
-            ...o,
-            progress: st?.progress ?? 0,
-            cooldownTimer: st?.cooldownTimer ?? 0,
-          });
-        }
       }
     }
+
+    const oases = this.activeOases.filter(
+      (o) =>
+        o.x + o.radius >= minX &&
+        o.x - o.radius <= maxX &&
+        o.y + o.radius >= minY &&
+        o.y - o.radius <= maxY
+    );
 
     return { obstacles, liquids, oases };
   }
 
+  public getAllActiveOases(): OasisZone[] {
+    return this.activeOases;
+  }
+
   public resolveCircleCollision(x: number, y: number, radius: number): { x: number; y: number } {
-    const area = this.queryArea(x - radius - 140, y - radius - 140, x + radius + 140, y + radius + 140);
+    if (!this.isInfinite) {
+      return { x, y };
+    }
+
+    const area = this.queryArea(
+      x - radius - 140,
+      y - radius - 140,
+      x + radius + 140,
+      y + radius + 140
+    );
     let rx = x;
     let ry = y;
 
@@ -266,7 +270,6 @@ export class WorldEnvironment {
           rx += (dx / dist) * overlap;
           ry += (dy / dist) * overlap;
         } else {
-          // Centro exactamente dentro del bloque: empujar hacia la cara más cercana
           const leftPen = rx - obs.x;
           const rightPen = obs.x + obs.width - rx;
           const topPen = ry - obs.y;
@@ -283,93 +286,212 @@ export class WorldEnvironment {
     return { x: rx, y: ry };
   }
 
-  public isInSlowLiquid(x: number, y: number): boolean {
-    const area = this.queryArea(x - 130, y - 130, x + 130, y + 130);
+  public isInSlowLiquid(x: number, y: number, timeSec: number = 0): boolean {
+    if (!this.isInfinite) return false;
+
+    const area = this.queryArea(x - 160, y - 160, x + 160, y + 160);
     for (const pool of area.liquids) {
-      if (Math.hypot(x - pool.x, y - pool.y) <= pool.radius * 0.94) {
-        return true;
+      const nodes = this.getFluidStreamNodes(pool, timeSec);
+      for (const n of nodes) {
+        if (Math.hypot(x - n.x, y - n.y) <= n.radius * 0.98) {
+          return true;
+        }
       }
     }
     return false;
   }
 
+  private spawnDynamicOasis(
+    alivePlayers: { x: number; y: number }[],
+    timeSec: number
+  ): OasisZone | null {
+    if (alivePlayers.length === 0) return null;
+
+    // Elegir un cuadrante distinto al anterior para aparecer en diferentes lados de la pantalla
+    const candidateQuads = [0, 1, 2, 3].filter((q) => q !== this.lastQuadrant);
+    const chosenQuad = candidateQuads[Math.floor(Math.random() * candidateQuads.length)];
+    this.lastQuadrant = chosenQuad;
+
+    const r = 72;
+    let bestX = SPAWN_CX + 340;
+    let bestY = SPAWN_CY;
+
+    if (!this.isInfinite) {
+      // Modo Normal: laterales distintos de la arena 1920x1080
+      for (let attempt = 0; attempt < 16; attempt++) {
+        let cx = SPAWN_CX;
+        let cy = SPAWN_CY;
+        if (chosenQuad === 0) {
+          cx = 170 + Math.random() * 290;
+          cy = 180 + Math.random() * (CLASSIC_H - 360);
+        } else if (chosenQuad === 1) {
+          cx = CLASSIC_W - 460 + Math.random() * 290;
+          cy = 180 + Math.random() * (CLASSIC_H - 360);
+        } else if (chosenQuad === 2) {
+          cx = 360 + Math.random() * (CLASSIC_W - 720);
+          cy = 145 + Math.random() * 145;
+        } else {
+          cx = 360 + Math.random() * (CLASSIC_W - 720);
+          cy = CLASSIC_H - 290 + Math.random() * 145;
+        }
+
+        const tooCloseToPlayer = alivePlayers.some((p) => Math.hypot(p.x - cx, p.y - cy) < 230);
+        const tooCloseToOasis = this.activeOases.some((o) => Math.hypot(o.x - cx, o.y - cy) < 320);
+        if (!tooCloseToPlayer && !tooCloseToOasis) {
+          bestX = Math.round(cx);
+          bestY = Math.round(cy);
+          break;
+        }
+        bestX = Math.round(cx);
+        bestY = Math.round(cy);
+      }
+    } else {
+      // Modo Infinito: borde/lateral distinto alrededor de un jugador vivo sin pisar obstáculos ni fluido
+      const anchor = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
+      for (let attempt = 0; attempt < 18; attempt++) {
+        const quadOffset = chosenQuad * (Math.PI * 0.5);
+        const angle = quadOffset + (Math.random() - 0.5) * 1.15;
+        const dist = 420 + Math.random() * 340;
+        const cx = anchor.x + Math.cos(angle) * dist;
+        const cy = anchor.y + Math.sin(angle) * dist;
+
+        const area = this.queryArea(cx - 160, cy - 160, cx + 160, cy + 160);
+        const hitsObs = area.obstacles.some(
+          (o) =>
+            cx + r + 18 > o.x &&
+            cx - r - 18 < o.x + o.width &&
+            cy + r + 18 > o.y &&
+            cy - r - 18 < o.y + o.height
+        );
+        const hitsFluid = area.liquids.some((liq) =>
+          this.getFluidStreamNodes(liq, timeSec).some((n) => Math.hypot(cx - n.x, cy - n.y) < r + n.radius + 20)
+        );
+        const hitsOasis = this.activeOases.some((o) => Math.hypot(o.x - cx, o.y - cy) < 420);
+        if (!hitsObs && !hitsFluid && !hitsOasis) {
+          bestX = Math.round(cx);
+          bestY = Math.round(cy);
+          break;
+        }
+        if (attempt === 17) {
+          bestX = Math.round(cx);
+          bestY = Math.round(cy);
+        }
+      }
+    }
+
+    const oasis: OasisZone = {
+      id: `dyn_oasis_${++this.oasisSeq}`,
+      x: bestX,
+      y: bestY,
+      radius: r,
+      duration: 1.5,
+      progress: 0,
+      cooldownTimer: 0,
+      spawnAnim: 1.0,
+    };
+    this.activeOases.push(oasis);
+    return oasis;
+  }
+
   public updateOases(
     dt: number,
     alivePlayers: { x: number; y: number }[],
-    authoritative: boolean
-  ): OasisRewardEvent[] {
-    // Enfriar oasis que están en cooldown
-    for (const [id, st] of this.oasisRuntime.entries()) {
-      if (st.cooldownTimer > 0) {
-        st.cooldownTimer = Math.max(0, st.cooldownTimer - dt);
-        if (st.cooldownTimer === 0 && st.progress === 0) {
-          this.oasisRuntime.delete(id);
-        }
+    authoritative: boolean,
+    timeSec: number = 0
+  ): { rewards: OasisRewardEvent[]; spawned: OasisZone[] } {
+    for (const o of this.activeOases) {
+      if (o.spawnAnim && o.spawnAnim > 0) {
+        o.spawnAnim = Math.max(0, o.spawnAnim - dt * 1.4);
       }
     }
 
-    if (!authoritative || alivePlayers.length === 0) return [];
+    if (!authoritative || alivePlayers.length === 0) {
+      return { rewards: [], spawned: [] };
+    }
 
     const rewards: OasisRewardEvent[] = [];
-    const seen = new Set<string>();
+    const spawned: OasisZone[] = [];
 
-    for (const pl of alivePlayers) {
-      const area = this.queryArea(pl.x - 140, pl.y - 140, pl.x + 140, pl.y + 140);
-      for (const oasis of area.oases) {
-        if (seen.has(oasis.id)) continue;
-        seen.add(oasis.id);
-
-        const st = this.oasisRuntime.get(oasis.id) || { progress: 0, cooldownTimer: 0 };
-        if (st.cooldownTimer > 0) continue;
-
-        const someoneInside = alivePlayers.some(
-          (p) => Math.hypot(p.x - oasis.x, p.y - oasis.y) <= oasis.radius
-        );
-
-        if (someoneInside) {
-          st.progress += dt;
-          if (st.progress >= oasis.duration) {
-            st.progress = 0;
-            st.cooldownTimer = 38;
-            rewards.push({
-              id: oasis.id,
-              x: oasis.x,
-              y: oasis.y,
-              heal: 35,
-              coins: 4,
-              xp: 150,
-            });
-          }
-          this.oasisRuntime.set(oasis.id, st);
-        } else if (st.progress > 0) {
-          st.progress = Math.max(0, st.progress - dt * 0.45);
-          if (st.progress === 0) {
-            this.oasisRuntime.delete(oasis.id);
-          } else {
-            this.oasisRuntime.set(oasis.id, st);
-          }
+    // 1. Limpiar Oasis que hayan quedado demasiado lejos de todos los jugadores en modo infinito
+    if (this.isInfinite) {
+      for (let i = this.activeOases.length - 1; i >= 0; i--) {
+        const o = this.activeOases[i];
+        let minDist = Infinity;
+        for (const p of alivePlayers) {
+          const d = Math.hypot(o.x - p.x, o.y - p.y);
+          if (d < minDist) minDist = d;
+        }
+        if (minDist > 2200) {
+          this.activeOases.splice(i, 1);
+          this.nextOasisSpawnTimer = Math.min(this.nextOasisSpawnTimer, 2.5);
         }
       }
     }
 
-    return rewards;
-  }
+    // 2. Recolección y desaparición inmediata al completarse
+    for (let i = this.activeOases.length - 1; i >= 0; i--) {
+      const oasis = this.activeOases[i];
+      const someoneInside = alivePlayers.some(
+        (p) => Math.hypot(p.x - oasis.x, p.y - oasis.y) <= oasis.radius
+      );
 
-  public exportOasisStates(): [string, number, number][] {
-    const out: [string, number, number][] = [];
-    for (const [id, st] of this.oasisRuntime.entries()) {
-      if (st.progress > 0 || st.cooldownTimer > 0) {
-        out.push([id, Number(st.progress.toFixed(2)), Number(st.cooldownTimer.toFixed(1))]);
+      if (someoneInside) {
+        oasis.progress += dt;
+        if (oasis.progress >= oasis.duration) {
+          rewards.push({
+            id: oasis.id,
+            x: oasis.x,
+            y: oasis.y,
+            heal: 35,
+            coins: 4,
+            xp: 150,
+          });
+          this.activeOases.splice(i, 1);
+          this.nextOasisSpawnTimer = this.isInfinite ? 11 + Math.random() * 5 : 10 + Math.random() * 4;
+        }
+      } else if (oasis.progress > 0) {
+        oasis.progress = Math.max(0, oasis.progress - dt * 0.45);
       }
     }
-    return out.slice(0, 24);
+
+    // 3. Temporizador de aparición de nuevos Oasis en otro lado
+    const maxConcurrent = this.isInfinite ? 2 : 1;
+    if (this.activeOases.length < maxConcurrent) {
+      this.nextOasisSpawnTimer -= dt;
+      if (this.nextOasisSpawnTimer <= 0) {
+        const created = this.spawnDynamicOasis(alivePlayers, timeSec);
+        if (created) {
+          spawned.push(created);
+        }
+        this.nextOasisSpawnTimer = this.isInfinite ? 13 + Math.random() * 5 : 11 + Math.random() * 4;
+      }
+    }
+
+    return { rewards, spawned };
   }
 
-  public applyRemoteOasisStates(states: [string, number, number][]): void {
-    this.oasisRuntime.clear();
-    for (const [id, progress, cooldownTimer] of states) {
-      this.oasisRuntime.set(id, { progress, cooldownTimer });
-    }
+  public exportOasisStates(): [string, number, number, number][] {
+    return this.activeOases.slice(0, 8).map((o) => [
+      o.id,
+      Math.round(o.x),
+      Math.round(o.y),
+      Number((o.progress / o.duration).toFixed(2)),
+    ]);
+  }
+
+  public applyRemoteOasisStates(states: [string, number, number, number][]): void {
+    const prevIds = new Set(this.activeOases.map((o) => o.id));
+    const prevAnim = new Map(this.activeOases.map((o) => [o.id, o.spawnAnim ?? 0]));
+    this.activeOases = states.map(([id, x, y, pct]) => ({
+      id,
+      x,
+      y,
+      radius: 72,
+      duration: 1.5,
+      progress: Math.max(0, Math.min(1.5, pct * 1.5)),
+      cooldownTimer: 0,
+      spawnAnim: prevIds.has(id) ? prevAnim.get(id) ?? 0 : 1.0,
+    }));
   }
 
   public draw(
@@ -378,95 +500,141 @@ export class WorldEnvironment {
     camY: number,
     viewW: number,
     viewH: number,
-    nowMs: number
+    nowMs: number,
+    timeSec: number = 0
   ): void {
     const area = this.queryArea(camX - 180, camY - 180, camX + viewW + 180, camY + viewH + 180);
 
-    // 1. Charcos de líquido lento (datos viscosos violeta/púrpura)
-    for (const pool of area.liquids) {
-      const pulse = Math.sin(nowMs * 0.004 + pool.phase) * 0.06;
-      const r = pool.radius * (1 + pulse);
+    // 1. Corrientes móviles de fluido viscoso (solo Modo Infinito: Pesadilla / Co-op)
+    if (this.isInfinite) {
+      for (const pool of area.liquids) {
+        const nodes = this.getFluidStreamNodes(pool, timeSec);
+        const head = nodes[0];
 
-      ctx.save();
-      ctx.fillStyle = 'rgba(126, 34, 206, 0.28)';
-      ctx.beginPath();
-      ctx.arc(pool.x, pool.y, r, 0, Math.PI * 2);
-      ctx.fill();
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
-      ctx.fillStyle = 'rgba(168, 85, 247, 0.22)';
-      ctx.beginPath();
-      ctx.arc(pool.x + Math.cos(nowMs * 0.002 + pool.phase) * 5, pool.y + Math.sin(nowMs * 0.002) * 4, r * 0.68, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = 'rgba(216, 180, 254, 0.62)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([8, 6]);
-      ctx.beginPath();
-      ctx.arc(pool.x, pool.y, r, (nowMs * 0.001) % (Math.PI * 2), Math.PI * 2 + (nowMs * 0.001) % (Math.PI * 2));
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Burbujas viscosas
-      ctx.fillStyle = 'rgba(233, 213, 255, 0.55)';
-      for (let b = 0; b < 3; b++) {
-        const ba = pool.phase + b * 2.1 + nowMs * 0.0008;
-        const br = r * (0.28 + b * 0.16);
+        // Halo exterior difuso del fluido en movimiento
+        ctx.strokeStyle = 'rgba(107, 33, 168, 0.34)';
+        ctx.lineWidth = pool.radius * 2.15;
         ctx.beginPath();
-        ctx.arc(pool.x + Math.cos(ba) * br, pool.y + Math.sin(ba * 1.2) * br, 2.5 + Math.abs(Math.sin(nowMs * 0.005 + b)) * 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
+        ctx.moveTo(nodes[0].x, nodes[0].y);
+        for (let i = 1; i < nodes.length - 1; i++) {
+          const mx = (nodes[i].x + nodes[i + 1].x) * 0.5;
+          const my = (nodes[i].y + nodes[i + 1].y) * 0.5;
+          ctx.quadraticCurveTo(nodes[i].x, nodes[i].y, mx, my);
+        }
+        ctx.lineTo(nodes[nodes.length - 1].x, nodes[nodes.length - 1].y);
+        ctx.stroke();
 
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 10px "JetBrains Mono", Consolas, monospace';
-      ctx.fillStyle = 'rgba(233, 213, 255, 0.85)';
-      ctx.fillText(i18n.t('LÍQUIDO VISCOSO (-VEL)', 'SLOW SLUDGE (-SPD)'), pool.x, pool.y + r + 14);
-      ctx.restore();
+        // Cuerpo principal viscoso (capas conectadas con decremento de grosor tipo chorro vivo)
+        for (let i = 0; i < nodes.length; i++) {
+          const n = nodes[i];
+          const wobble = 1 + Math.sin(nowMs * 0.006 + pool.phase + i * 1.1) * 0.08;
+          ctx.fillStyle = i === 0 ? 'rgba(147, 51, 234, 0.42)' : 'rgba(126, 34, 206, 0.36)';
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.radius * wobble, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Veta energética central que fluye desde la cola hacia la cabeza
+        ctx.strokeStyle = 'rgba(216, 180, 254, 0.72)';
+        ctx.lineWidth = 3.2;
+        ctx.setLineDash([12, 10]);
+        ctx.lineDashOffset = -(nowMs * 0.065) % 22;
+        ctx.beginPath();
+        ctx.moveTo(nodes[nodes.length - 1].x, nodes[nodes.length - 1].y);
+        for (let i = nodes.length - 2; i >= 0; i--) {
+          ctx.lineTo(nodes[i].x, nodes[i].y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Partículas luminosas flotando en la corriente
+        ctx.fillStyle = 'rgba(243, 232, 255, 0.72)';
+        for (let b = 0; b < 4; b++) {
+          const tBubble = ((nowMs * 0.00055 + pool.phase + b * 0.25) % 1);
+          const idxF = tBubble * (nodes.length - 1);
+          const idx0 = Math.floor(idxF);
+          const idx1 = Math.min(nodes.length - 1, idx0 + 1);
+          const frac = idxF - idx0;
+          const bx = nodes[idx0].x + (nodes[idx1].x - nodes[idx0].x) * frac + Math.sin(nowMs * 0.004 + b) * 7;
+          const by = nodes[idx0].y + (nodes[idx1].y - nodes[idx0].y) * frac + Math.cos(nowMs * 0.004 + b) * 7;
+          ctx.beginPath();
+          ctx.arc(bx, by, 2.4 + (b % 2) * 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Borde fluido de la cabeza para señalar dirección de desplazamiento
+        ctx.strokeStyle = 'rgba(233, 213, 255, 0.65)';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(head.x, head.y, head.radius * 0.96, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 10px "JetBrains Mono", Consolas, monospace';
+        ctx.fillStyle = 'rgba(233, 213, 255, 0.88)';
+        ctx.fillText(
+          i18n.t('FLUIDO VISCOSO (-VEL)', 'SLOW FLUID (-SPD)'),
+          head.x,
+          head.y + head.radius + 15
+        );
+        ctx.restore();
+      }
     }
 
-    // 2. Oasis curativos con recompensas
+    // 2. Oasis dinámicos (desaparecen tras recogerse y reaparecen en otra posición)
     for (const oasis of area.oases) {
-      const ready = oasis.cooldownTimer <= 0;
       const pulse = 0.82 + Math.sin(nowMs * 0.005) * 0.18;
 
       ctx.save();
-      ctx.fillStyle = ready ? `rgba(16, 185, 129, ${0.18 * pulse})` : 'rgba(51, 65, 85, 0.18)';
+      if (oasis.spawnAnim && oasis.spawnAnim > 0) {
+        const ringR = oasis.radius + (1 - oasis.spawnAnim) * 58;
+        ctx.strokeStyle = `rgba(52, 211, 153, ${oasis.spawnAnim * 0.8})`;
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.arc(oasis.x, oasis.y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = `rgba(16, 185, 129, ${0.19 * pulse})`;
       ctx.beginPath();
       ctx.arc(oasis.x, oasis.y, oasis.radius, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.strokeStyle = ready ? '#10b981' : '#64748b';
-      ctx.lineWidth = ready ? 2.4 : 1.4;
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
       ctx.arc(oasis.x, oasis.y, oasis.radius, 0, Math.PI * 2);
       ctx.stroke();
 
-      if (ready) {
-        // Anillo interior cristalino de manantial
-        ctx.strokeStyle = 'rgba(110, 231, 183, 0.55)';
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.arc(oasis.x, oasis.y, oasis.radius * (0.5 + ((nowMs * 0.0006) % 0.45)), 0, Math.PI * 2);
-        ctx.stroke();
+      // Anillo interior cristalino de manantial
+      ctx.strokeStyle = 'rgba(110, 231, 183, 0.55)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(oasis.x, oasis.y, oasis.radius * (0.48 + ((nowMs * 0.0006) % 0.45)), 0, Math.PI * 2);
+      ctx.stroke();
 
-        // Núcleo diamante verde-dorado del Oasis
-        ctx.translate(oasis.x, oasis.y);
-        ctx.rotate(nowMs * 0.0018);
-        ctx.fillStyle = '#34d399';
-        ctx.strokeStyle = '#fde68a';
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        ctx.moveTo(0, -14);
-        ctx.lineTo(14, 0);
-        ctx.lineTo(0, 14);
-        ctx.lineTo(-14, 0);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.rotate(-nowMs * 0.0018);
-        ctx.translate(-oasis.x, -oasis.y);
-      }
+      // Núcleo diamante verde-dorado del Oasis
+      ctx.translate(oasis.x, oasis.y);
+      ctx.rotate(nowMs * 0.0018);
+      ctx.fillStyle = '#34d399';
+      ctx.strokeStyle = '#fde68a';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(0, -14);
+      ctx.lineTo(14, 0);
+      ctx.lineTo(0, 14);
+      ctx.lineTo(-14, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.rotate(-nowMs * 0.0018);
+      ctx.translate(-oasis.x, -oasis.y);
 
-      if (oasis.progress > 0 && ready) {
+      if (oasis.progress > 0) {
         const pct = Math.min(1, oasis.progress / oasis.duration);
         ctx.strokeStyle = '#fde047';
         ctx.lineWidth = 5;
@@ -477,62 +645,57 @@ export class WorldEnvironment {
 
       ctx.textAlign = 'center';
       ctx.font = 'bold 11px "JetBrains Mono", Consolas, monospace';
-      ctx.fillStyle = ready ? '#6ee7b7' : '#94a3b8';
+      ctx.fillStyle = '#6ee7b7';
       ctx.fillText(
-        ready
-          ? i18n.t('✦ OASIS (+HP +CRIPTO +XP)', '✦ OASIS (+HP +CRYPTO +XP)')
-          : i18n.t(`OASIS (${Math.ceil(oasis.cooldownTimer)}s)`, `OASIS (${Math.ceil(oasis.cooldownTimer)}s)`),
+        i18n.t('✦ OASIS (+HP +CRIPTO +XP)', '✦ OASIS (+HP +CRYPTO +XP)'),
         oasis.x,
         oasis.y - oasis.radius - 10
       );
       ctx.restore();
     }
 
-    // 3. Obstáculos sólidos (Bloques / Servidores de acero)
-    for (const obs of area.obstacles) {
-      const cut = 10;
-      const x = obs.x;
-      const y = obs.y;
-      const w = obs.width;
-      const h = obs.height;
+    // 3. Obstáculos sólidos (solo Modo Infinito: Pesadilla / Co-op)
+    if (this.isInfinite) {
+      for (const obs of area.obstacles) {
+        const cut = 10;
+        const x = obs.x;
+        const y = obs.y;
+        const w = obs.width;
+        const h = obs.height;
 
-      ctx.save();
-      // Sombra proyectada
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.6)';
-      ctx.fillRect(x + 6, y + 8, w, h);
+        ctx.save();
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.6)';
+        ctx.fillRect(x + 6, y + 8, w, h);
 
-      // Bloque metálico biselado
-      ctx.fillStyle = '#1e293b';
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(x + cut, y);
-      ctx.lineTo(x + w - cut, y);
-      ctx.lineTo(x + w, y + cut);
-      ctx.lineTo(x + w, y + h - cut);
-      ctx.lineTo(x + w - cut, y + h);
-      ctx.lineTo(x + cut, y + h);
-      ctx.lineTo(x, y + h - cut);
-      ctx.lineTo(x, y + cut);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x + cut, y);
+        ctx.lineTo(x + w - cut, y);
+        ctx.lineTo(x + w, y + cut);
+        ctx.lineTo(x + w, y + h - cut);
+        ctx.lineTo(x + w - cut, y + h);
+        ctx.lineTo(x + cut, y + h);
+        ctx.lineTo(x, y + h - cut);
+        ctx.lineTo(x, y + cut);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
 
-      // Panel superior + rejilla hardware
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(x + 12, y + 12, w - 24, h - 24);
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
-      ctx.lineWidth = 1.2;
-      ctx.strokeRect(x + 12, y + 12, w - 24, h - 24);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(x + 12, y + 12, w - 24, h - 24);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(x + 12, y + 12, w - 24, h - 24);
 
-      // Barras LED decorativas
-      const ledOn = Math.floor(nowMs / 450 + obs.x) % 2 === 0;
-      ctx.fillStyle = ledOn ? '#38bdf8' : '#0284c7';
-      ctx.fillRect(x + 18, y + 19, w - 36, 4);
-      ctx.fillStyle = '#475569';
-      ctx.fillRect(x + 18, y + 29, w - 36, 3);
-      ctx.fillRect(x + 18, y + 36, w - 36, 3);
-      ctx.restore();
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(x + 18, y + 18, w - 36, 4);
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.45)';
+        ctx.fillRect(x + 18, y + 28, w - 42, 3);
+        ctx.fillRect(x + 18, y + 35, w - 48, 3);
+        ctx.restore();
+      }
     }
   }
 }

@@ -318,14 +318,26 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │   ├── Obstáculos sólidos, charcos morados de líquido viscoso (`-VEL`) y Oasis esmeralda (`+HP +CR +XP +Turbo`)
 │   ├── Botón `CO-OP ONLINE 4P [K]` destacado junto a `JUGAR SOLO`, y `Gráficos Ligeros` + `Cómo Jugar` integrados dentro de Ajustes
 │
-└── v1.5.1 — Balance Integral de Armas/Jefes/Co-op, Limit Break Infinito y Rebote Predictivo en Pinball (ACTUAL)
-    ├── Reequilibrio de curva cúbica de `WaveBoss`, escalado Co-op (+50% HP/jugador), bufos a `Cortafuegos`/`Rayo SQL`/`Drones` y suelo de cooldowns
-    ├── Tarjetas infinitas (`Limit Break`) al maxear arsenal y predicción de trayectoria en `Protocolo Pinball` (ajustado a 440–550 px/s)
+├── v1.5.1 — Balance Integral de Armas/Jefes/Co-op, Limit Break Infinito y Rebote Predictivo en Pinball
+│   ├── Reequilibrio de curva cúbica de `WaveBoss`, escalado Co-op (+50% HP/jugador), bufos a `Cortafuegos`/`Rayo SQL`/`Drones` y suelo de cooldowns
+│   ├── Tarjetas infinitas (`Limit Break`) al maxear arsenal y predicción de trayectoria en `Protocolo Pinball` (ajustado a 440–550 px/s)
+│
+└── v1.5.2 — Arena Normal Despejada, Oasis Dinámicos Rotativos y Fluido Móvil en Infinito (ACTUAL)
+    ├── Modo Normal sin muros ni charcos lentos; Oasis desaparecen inmediatamente al recogerse y reaparecen luego en distintos lados de la pantalla
+    └── Modo Infinito (Pesadilla y Co-op móvil) con corrientes vivas de fluido viscoso morado que se desplazan continuamente por el mapa
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.5.2] - 2026-11-18
+- **Modo Normal Limpio (`WorldEnvironment.ts`)**:
+  - Eliminados los muros sólidos y charcos lentos en Modo Normal clásico (`1920x1080`) para mantener una arena despejada y rápida.
+- **Oasis Dinámicos en Ambos Modos (`WorldEnvironment.ts`, `Game.ts`, `MultiplayerTypes.ts`)**:
+  - Al recoger cualquier Oasis, desaparece de inmediato tanto del suelo como del minimapa; tras un breve enfriamiento (`10–18s`), aparece un nuevo Oasis en otro cuadrante/lateral distinto de la pantalla (y sincronizado por red en Co-op).
+- **Fluido Lento en Movimiento para Modo Infinito (`WorldEnvironment.ts`, `Game.ts`)**:
+  - Sustituidos los lagos estáticos por corrientes fluidas moradas animadas de 5 nodos conectados con veta energética central que fluyen continuamente por el sector usando tiempo sincronizado (`elapsedTime`).
 
 ### [v1.5.1] - 2026-11-17
 - **Rebalanceo General de Combate, Jefes y Co-op (`WaveBoss.ts`, `Spawner.ts`, `CombatSystem.ts`, `UpgradeSystem.ts`, `Game.ts`)**:
