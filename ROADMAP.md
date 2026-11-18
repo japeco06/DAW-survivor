@@ -322,14 +322,31 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │   ├── Reequilibrio de curva cúbica de `WaveBoss`, escalado Co-op (+50% HP/jugador), bufos a `Cortafuegos`/`Rayo SQL`/`Drones` y suelo de cooldowns
 │   ├── Tarjetas infinitas (`Limit Break`) al maxear arsenal y predicción de trayectoria en `Protocolo Pinball` (ajustado a 440–550 px/s)
 │
-└── v1.5.2 — Arena Normal Despejada, Oasis Dinámicos Rotativos y Fluido Móvil en Infinito (ACTUAL)
-    ├── Modo Normal sin muros ni charcos lentos; Oasis desaparecen inmediatamente al recogerse y reaparecen luego en distintos lados de la pantalla
-    └── Modo Infinito (Pesadilla y Co-op móvil) con corrientes vivas de fluido viscoso morado que se desplazan continuamente por el mapa
+├── v1.5.2 — Arena Normal Despejada, Oasis Dinámicos Rotativos y Fluido Móvil en Infinito
+│   ├── Modo Normal sin muros ni charcos lentos; Oasis desaparecen inmediatamente al recogerse y reaparecen luego en distintos lados de la pantalla
+│   └── Modo Infinito (Pesadilla y Co-op móvil) con corrientes vivas de fluido viscoso morado que se desplazan continuamente por el mapa
+│
+└── v1.5.3 — Lagos Grandes Espaciados, Obstáculos Variados en Co-op, Colores por Familia y Hexágono de Evolución (ACTUAL)
+    ├── Lagos morados estáticos más grandes (`155–200 px` radio) y mucho menos frecuentes (~25% de sectores) en Modo Infinito sin desplazarse
+    ├── Más obstáculos por sector (`3–4`), más grandes (`136–335 px`) y de 5 tipos distintos (`Muro`, `Pilar Circular`, `Búnker Octogonal`, `Bastión en L`, `Monolito`)
+    ├── Mismo color compartido entre armas, su pasiva requerida y su evolución (`#38bdf8`, `#10b981`, `#f43f5e`, `#fb923c`, `#d946ef`, `#facc15`)
+    └── Hexágono rojo más grande junto a los diamantes de nivel (`⬡` vacío -> `⬢` relleno al evolucionar) en cartas de mejora y barra superior de arsenal
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.5.3] - 2026-11-18
+- **Lagos Más Grandes y Espaciados + Obstáculos Diversos y Grandes en Co-op (`WorldEnvironment.ts`)**:
+  - Lagos estáticos ampliados a `155–200 px` de radio (`310–400 px` de diámetro) con doble onda concéntrica y contorno orgánico de 32 vértices, reducidos a ~25% de sectores (`900x900`) para evitar saturación en pantalla.
+  - Incrementada la variedad y presencia de obstáculos en Modo Infinito (`Pesadilla` y `Co-op`): `3–4` estructuras por sector con 5 arquitecturas diferenciadas (`FIREWALL_WALL` 240–335 px, `DATA_PILLAR` circular 136–184 px, `HEX_BUNKER` octogonal 166–214 px, `L_BASTION` en L 205–255 px y `SERVER_MONOLITH` 142–240 px) y colisión exacta por geometría manteniendo pasillos de `>= 104 px`.
+- **Colores Unificados por Familia de Evolución (`UpgradeSystem.ts`, `CombatSystem.ts`)**:
+  - Alineación 1-a-1 de colores entre armas, sus pasivas compatibles y sus cartas de evolución: Base (`#facc15`), Electroimán/Ping/Tesla (`#38bdf8`), System Restore/Cuarentena/Crio (`#10b981`), Robo Ancho Banda/Drones (`#f43f5e`), Fiber Optic/Cortafuegos/Disco (`#fb923c`) y Overclock Memoria/Rayo SQL (`#d946ef`).
+- **Indicador de Evolución con Hexágono Rojo (`Game.ts`, `CombatSystem.ts`)**:
+  - Añadido un hexágono rojo más grande junto a los diamantes de nivel tanto en las cartas del modal de subida de nivel como en la nueva tira superior de arsenal equipado: borde rojo con fondo vacío (`⬡`) antes de evolucionar y relleno rojo carmesí brillante (`⬢`) al completar la evolución.
+- **Sincronización de Versión (`v1.5.3`)**:
+  - Actualizados `GAME_VERSION` en `src/core/Game.ts`, `package.json`, `package-lock.json`, `server/package.json`, `server/package-lock.json`, `server/index.js` y `ROADMAP.md` a `1.5.3`.
 
 ### [v1.5.2] - 2026-11-18
 - **Modo Normal Limpio (`WorldEnvironment.ts`)**:

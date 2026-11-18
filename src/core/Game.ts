@@ -108,7 +108,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.5.2';
+const GAME_VERSION = 'v1.5.3';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v1';
@@ -7241,6 +7241,96 @@ export class Game {
     this.ctx.fillText(bossProgressLabel, rx + rw / 2, ry + 59);
     this.ctx.restore();
 
+    // ==========================================
+    // 3. BARRA SUPERIOR CENTRAL: ARSENAL + HEXÁGONO DE EVOLUCIÓN
+    // ==========================================
+    let hudBadges = this.combatSystem.getEquippedWeaponBadges(this.player);
+    if (this.isCoopMode && !this.isCoopHost && this.coopSnapshot) {
+      const me = this.coopSnapshot.players.find((p) => p.id === this.mpClient.myId);
+      if (me && me.activeWeapons.length > 0) {
+        const inferColor = (wName: string): string => {
+          const upper = wName.toUpperCase();
+          if (upper.includes('PING') || upper.includes('DDOS') || upper.includes('TESLA') || upper.includes('ARCO')) return '#38bdf8';
+          if (upper.includes('CUARENT') || upper.includes('PURGA') || upper.includes('CRIO') || upper.includes('CERO')) return '#10b981';
+          if (upper.includes('DRON') || upper.includes('OMEGA')) return '#f43f5e';
+          if (upper.includes('CORTAF') || upper.includes('SOLAR') || upper.includes('DISCO') || upper.includes('PHANTOM')) return '#fb923c';
+          if (upper.includes('SQL') || upper.includes('ZERO-DAY')) return '#d946ef';
+          if (upper.includes('MASCOTA') || upper.includes('BRUT') || upper.includes('BOTNET') || upper.includes('PINBALL')) return '#ec4899';
+          return '#facc15';
+        };
+        hudBadges = me.activeWeapons.map((wName) => {
+          const isEvolved = wName.startsWith('★');
+          const verMatch = /v(\d+)$/i.exec(wName);
+          const lvl = isEvolved ? 5 : verMatch ? Number(verMatch[1]) : 1;
+          const clean = wName.replace(/\s+v\d+$/i, '').replace(/^Mascota:\s*/i, '');
+          return {
+            shortName: clean.length > 12 ? clean.slice(0, 11) + '.' : clean,
+            color: inferColor(wName),
+            level: lvl,
+            maxLevel: 5,
+            evolved: isEvolved,
+            hasEvo: true,
+          };
+        });
+      }
+    }
+
+    if (hudBadges.length > 0) {
+      const shown = hudBadges.slice(0, 6);
+      const pillW = 148;
+      const pillH = 34;
+      const pillGap = 8;
+      const totalStripW = shown.length * pillW + (shown.length - 1) * pillGap;
+      const startStripX = w / 2 - totalStripW / 2;
+      const stripY = 18;
+
+      for (let idx = 0; idx < shown.length; idx++) {
+        const b = shown[idx];
+        const bx = startStripX + idx * (pillW + pillGap);
+        this.drawCyberPanel(
+          bx,
+          stripY,
+          pillW,
+          pillH,
+          7,
+          b.evolved ? 'rgba(42, 12, 24, 0.92)' : 'rgba(11, 19, 34, 0.88)',
+          b.color,
+          b.evolved ? 1.8 : 1.3
+        );
+
+        this.ctx.textAlign = 'left';
+        this.ctx.fillStyle = b.evolved ? '#ffffff' : b.color;
+        this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+        this.ctx.fillText(b.shortName, bx + 9, stripY + 14);
+
+        // Rombos miniatura de nivel bajo el nombre
+        for (let p = 0; p < b.maxLevel; p++) {
+          const px = bx + 11 + p * 11;
+          const py = stripY + 24;
+          const r = 2.8;
+          this.ctx.beginPath();
+          this.ctx.moveTo(px, py - r);
+          this.ctx.lineTo(px + r, py);
+          this.ctx.lineTo(px, py + r);
+          this.ctx.lineTo(px - r, py);
+          this.ctx.closePath();
+          if (p < b.level) {
+            this.ctx.fillStyle = b.color;
+            this.ctx.fill();
+          } else {
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+            this.ctx.lineWidth = 1;
+            this.ctx.stroke();
+          }
+        }
+
+        // Hexágono rojo a la derecha: vacío mientras sube nivel, relleno al evolucionar
+        if (b.hasEvo) {
+          this.drawEvolutionHexagon(bx + pillW - 16, stripY + pillH / 2, 7.2, b.evolved, b.evolved);
+        }
+      }
+    }
+
     this.ctx.restore();
   }
 
@@ -7391,6 +7481,51 @@ export class Game {
       });
   }
 
+  private drawEvolutionHexagon(
+    x: number,
+    y: number,
+    r: number,
+    filled: boolean,
+    pulse: boolean = false
+  ): void {
+    this.ctx.save();
+    this.ctx.translate(x, y);
+    this.ctx.beginPath();
+    for (let k = 0; k < 6; k++) {
+      const a = -Math.PI / 2 + (k * Math.PI) / 3;
+      const hx = Math.cos(a) * r;
+      const hy = Math.sin(a) * r;
+      if (k === 0) this.ctx.moveTo(hx, hy);
+      else this.ctx.lineTo(hx, hy);
+    }
+    this.ctx.closePath();
+
+    if (filled) {
+      this.ctx.fillStyle = '#ff1e42';
+      if (!this.lightGraphicsEnabled) {
+        this.ctx.shadowColor = '#ff1e42';
+        this.ctx.shadowBlur = pulse ? 12 : 8;
+      }
+      this.ctx.fill();
+      this.ctx.shadowBlur = 0;
+      this.ctx.strokeStyle = '#fecdd3';
+      this.ctx.lineWidth = 1.6;
+      this.ctx.stroke();
+
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+      this.ctx.beginPath();
+      this.ctx.arc(0, 0, Math.max(1.5, r * 0.28), 0, Math.PI * 2);
+      this.ctx.fill();
+    } else {
+      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      this.ctx.fill();
+      this.ctx.strokeStyle = pulse ? '#fb7185' : '#ff1e42';
+      this.ctx.lineWidth = 1.9;
+      this.ctx.stroke();
+    }
+    this.ctx.restore();
+  }
+
   private drawUpgradeModal(): void {
     const choices = this.upgradeSystem.currentChoices;
     const cards = this.getUpgradeCardRects();
@@ -7462,14 +7597,18 @@ export class Game {
       const cardDesc = i18n.currentLang === 'EN' && opt.descriptionEn ? opt.descriptionEn : opt.description;
       const cardStat = i18n.currentLang === 'EN' && opt.statBadgeEn ? opt.statBadgeEn : opt.statBadge;
 
-      // Cabecera: Etiqueta de categoría a la izquierda + rombos de nivel a la derecha
+      // Cabecera: Etiqueta de categoría a la izquierda + rombos de nivel (+ hexágono rojo de evolución) a la derecha
       this.ctx.shadowBlur = 0;
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = opt.color;
-      const pipCount = Math.max(1, opt.maxLevel);
+      const hasEvoSlot = Boolean(opt.isWeapon || opt.isEvolution);
+      const pipCount = opt.isEvolution ? 5 : Math.max(1, opt.maxLevel);
+      const ownedPips = opt.isEvolution ? 5 : opt.level;
       const pipGap = 13;
-      const firstPipX = rect.x + rect.width - 20 - (pipCount - 1) * pipGap;
-      const catMaxW = Math.max(120, firstPipX - (rect.x + 28));
+      const hexX = rect.x + rect.width - 23;
+      const rightAnchor = hasEvoSlot ? hexX - 20 : rect.x + rect.width - 20;
+      const firstPipX = rightAnchor - (pipCount - 1) * pipGap;
+      const catMaxW = Math.max(115, firstPipX - (rect.x + 26));
       let catFont = 11.5;
       const catText = `[${i + 1}] // ${cardCategory}`;
       this.ctx.font = `bold ${catFont}px ${FONT_MONO}`;
@@ -7484,8 +7623,8 @@ export class Game {
       for (let p = 0; p < pipCount; p++) {
         const px = firstPipX + p * pipGap;
         const py = rect.y + 23;
-        const isOwned = p < opt.level;
-        const isNext = p === opt.level;
+        const isOwned = p < ownedPips;
+        const isNext = !opt.isEvolution && p === opt.level;
         const r = isNext ? 4.8 : 3.8;
 
         this.ctx.save();
@@ -7513,6 +7652,11 @@ export class Game {
           this.ctx.stroke();
         }
         this.ctx.restore();
+      }
+
+      // Hexágono rojo más grande al lado de los niveles: vacío al mejorar, lleno cuando es Evolución
+      if (hasEvoSlot) {
+        this.drawEvolutionHexagon(hexX, rect.y + 23, 8.2, Boolean(opt.isEvolution), Boolean(opt.isEvolution));
       }
 
       // Nombre de la tarjeta

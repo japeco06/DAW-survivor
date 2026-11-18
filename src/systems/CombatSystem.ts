@@ -1691,6 +1691,127 @@ export class CombatSystem {
     return list;
   }
 
+  public getEquippedWeaponBadges(player?: Player): {
+    shortName: string;
+    color: string;
+    level: number;
+    maxLevel: number;
+    evolved: boolean;
+    hasEvo: boolean;
+  }[] {
+    const badges: {
+      shortName: string;
+      color: string;
+      level: number;
+      maxLevel: number;
+      evolved: boolean;
+      hasEvo: boolean;
+    }[] = [];
+
+    if (player?.isSummoner && player.companion) {
+      badges.push({
+        shortName: player.companion.branch === 'NONE' ? 'MASCOTA' : player.companion.branch,
+        color: '#ec4899',
+        level: 1,
+        maxLevel: 1,
+        evolved: player.companion.branch !== 'NONE',
+        hasEvo: true,
+      });
+    } else {
+      badges.push({
+        shortName: this.evolvedBasic ? '★ HEX-CORE' : 'FIREWALL',
+        color: '#facc15',
+        level: this.evolvedBasic ? 5 : Math.max(1, this.multiShotCount),
+        maxLevel: 5,
+        evolved: this.evolvedBasic,
+        hasEvo: true,
+      });
+    }
+
+    if (this.pingTrackerLevel > 0) {
+      badges.push({
+        shortName: this.evolvedPing ? '★ DDoS' : 'PING',
+        color: '#38bdf8',
+        level: this.pingTrackerLevel,
+        maxLevel: 5,
+        evolved: this.evolvedPing,
+        hasEvo: true,
+      });
+    }
+    if (this.quarantineLevel > 0) {
+      badges.push({
+        shortName: this.evolvedQuarantine ? '★ PURGA' : 'CUARENT.',
+        color: '#10b981',
+        level: this.quarantineLevel,
+        maxLevel: 5,
+        evolved: this.evolvedQuarantine,
+        hasEvo: true,
+      });
+    }
+    if (this.dronesLevel > 0) {
+      badges.push({
+        shortName: this.evolvedDrones ? '★ OMEGA' : 'DRONES',
+        color: '#f43f5e',
+        level: this.dronesLevel,
+        maxLevel: 5,
+        evolved: this.evolvedDrones,
+        hasEvo: true,
+      });
+    }
+    if (this.firewallPulseLevel > 0) {
+      badges.push({
+        shortName: this.evolvedFirewallPulse ? '★ SOLAR' : 'CORTAF.',
+        color: '#fb923c',
+        level: this.firewallPulseLevel,
+        maxLevel: 5,
+        evolved: this.evolvedFirewallPulse,
+        hasEvo: true,
+      });
+    }
+    if (this.sqlBeamLevel > 0) {
+      badges.push({
+        shortName: this.evolvedSqlBeam ? '★ Z-DAY' : 'RAYO SQL',
+        color: '#d946ef',
+        level: this.sqlBeamLevel,
+        maxLevel: 5,
+        evolved: this.evolvedSqlBeam,
+        hasEvo: true,
+      });
+    }
+    if (this.teslaLevel > 0) {
+      badges.push({
+        shortName: this.evolvedTesla ? '★ VOLT' : 'TESLA',
+        color: '#38bdf8',
+        level: this.teslaLevel,
+        maxLevel: 5,
+        evolved: this.evolvedTesla,
+        hasEvo: true,
+      });
+    }
+    if (this.cryoLevel > 0) {
+      badges.push({
+        shortName: this.evolvedCryo ? '★ CERO' : 'CRIO',
+        color: '#10b981',
+        level: this.cryoLevel,
+        maxLevel: 5,
+        evolved: this.evolvedCryo,
+        hasEvo: true,
+      });
+    }
+    if (this.sawLevel > 0) {
+      badges.push({
+        shortName: this.evolvedSaw ? '★ PHANTOM' : 'DISCO',
+        color: '#fb923c',
+        level: this.sawLevel,
+        maxLevel: 5,
+        evolved: this.evolvedSaw,
+        hasEvo: true,
+      });
+    }
+
+    return badges;
+  }
+
   public getFirewallNodePositions(player: Player): { x: number; y: number }[] {
     const count = this.evolvedDrones ? Math.max(6, this.firewallCount) : this.firewallCount;
     const positions: { x: number; y: number }[] = [];
