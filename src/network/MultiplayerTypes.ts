@@ -56,6 +56,7 @@ export interface PeerInputPayload {
   facingAngle: number;
   isMoving: boolean;
   seq: number;
+  ult?: boolean;
 }
 
 export interface SnapshotPlayer {
@@ -80,6 +81,9 @@ export interface SnapshotPlayer {
   ackSeq?: number;
   spd?: number;
   xpM?: number;
+  ultChg?: number;
+  ultMax?: number;
+  ultAct?: number;
 }
 
 // [typeCode, x, y, size, hp, maxHp, angle, flags, netId?]
@@ -155,6 +159,25 @@ export interface CoopLevelUpPayload {
   choicesByPlayer: Record<string, SerializedUpgradeCard[]>;
 }
 
+export interface CoopSquadMvpEntry {
+  id: string;
+  slot: number;
+  name: string;
+  color: string;
+  characterId: CharacterId;
+  totalDamage: number;
+  topWeapon: string;
+  revives: number;
+  downs: number;
+}
+
+export interface CoopGameOverStats {
+  squadMvp: CoopSquadMvpEntry[];
+  weaponsByPlayer: Record<string, Record<string, number>>;
+  killsByType: Record<string, number>;
+  damageToToro: number;
+}
+
 export interface CoopGameEventPayload {
   type:
     | 'LOG'
@@ -168,4 +191,5 @@ export interface CoopGameEventPayload {
   x?: number;
   y?: number;
   color?: string;
+  stats?: CoopGameOverStats;
 }

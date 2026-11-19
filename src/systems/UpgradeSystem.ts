@@ -1,5 +1,6 @@
 import { Player } from '../entities/Player';
 import { CombatSystem } from './CombatSystem';
+import { MetaSystem } from './MetaSystem';
 import type { SerializedUpgradeCard } from '../network/MultiplayerTypes';
 
 export interface UpgradeOption {
@@ -43,6 +44,7 @@ export class UpgradeSystem {
   public currentChoices: UpgradeOption[] = [];
 
   constructor() {
+    this.rerollsRemaining = 3 + MetaSystem.readLabBonusesFromStorage().extraRerolls;
     this.initUpgrades();
   }
 

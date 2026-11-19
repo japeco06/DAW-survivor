@@ -27,6 +27,8 @@ import { MultiplayerClient } from '../network/MultiplayerClient';
 import { CoopLobbyUI, CoopButtonAction } from '../network/CoopLobbyUI';
 import { CoopRenderer, encodeEnemyType } from '../network/CoopRenderer';
 import type {
+  CoopGameOverStats,
+  CoopSquadMvpEntry,
   CoopWorldSnapshot,
   RoomStateDTO,
   SerializedUpgradeCard,
@@ -44,6 +46,9 @@ import {
   MetaSystem,
   CharacterId,
   GameMode,
+  LabUpgradeId,
+  LAB_UPGRADES_ORDER,
+  LAB_UPGRADES_CONFIG,
   NIGHTMARE_ENTRY_COST,
   GACHA_PULL_SINGLE_COST,
   GACHA_PULL_TEN_COST,
@@ -63,7 +68,7 @@ import {
 } from 'firebase/auth';
 
 type GameState = 'MENU' | 'PLAYING' | 'GAMEOVER';
-type MenuTab = 'SHOP' | 'GACHA' | 'INVENTORY';
+type MenuTab = 'SHOP' | 'LAB' | 'GACHA' | 'INVENTORY';
 type LeaderboardCategory = 'TORO_DAMAGE' | 'SURVIVAL_TIME';
 
 interface CardRect {
@@ -108,12 +113,14 @@ interface CoopPeerRuntime {
   lastAckSeq: number;
   downed: boolean;
   reviveProgress: number;
+  revivesDone: number;
+  timesDowned: number;
 }
 
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.6.1';
+const GAME_VERSION = 'v1.7.0';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v1';
@@ -159,6 +166,7 @@ export class Game {
   private showAttackRange: boolean = false;
   private hoveredCardIndex: number = -1;
   private hoveredMenuChar: CharacterId | null = null;
+  private hoveredLabId: LabUpgradeId | null = null;
   private activeMenuTab: MenuTab = 'SHOP';
   private lastGachaResults: GachaPullEntry[] = [];
   private gachaRevealTimer: number = 0;
@@ -188,7 +196,11 @@ export class Game {
   private hoveredDailyMissionsBtn: boolean = false;
   private showDailyMissionsOverlay: boolean = false;
   private hoveredRerollBtn: boolean = false;
-  private hoveredInGameBtn: 'PAUSE' | 'MUTE' | null = null;
+  private hoveredInGameBtn: 'PAUSE' | 'MUTE' | 'ULT' | null = null;
+  private hoveredGameOverBtn: 'RETRY' | 'MENU' | null = null;
+  private runRevivesDone: number = 0;
+  private runTimesDowned: number = 0;
+  private coopGameOverSquad: CoopSquadMvpEntry[] = [];
   private statusToastText: string = '';
   private statusToastColor: string = '#38bdf8';
   private statusToastExpiresAt: number = 0;
@@ -657,6 +669,26 @@ export class Game {
       if (Math.hypot(inp.moveX, inp.moveY) > 0.05) {
         peer.player.facingAngle = inp.facingAngle;
       }
+      if (inp.ult && !peer.downed && peer.player.activateUltimate()) {
+        const uName = i18n.currentLang === 'EN' ? peer.player.ultNameEn : peer.player.ultName;
+        this.sound.playAchievement();
+        this.particleSystem.spawnExplosion(peer.player.x, peer.player.y, peer.slotColor, 34, true);
+        this.particleSystem.spawnFloatingText(
+          peer.player.x,
+          peer.player.y - 36,
+          `⚡ ¡${uName}! (${peer.player.ultDuration}s)`,
+          '#fbbf24',
+          1.35
+        );
+        const msg = `ULTIMATE: ${peer.name} unleashed ${uName} (${peer.player.ultDuration}s)!`;
+        this.addTerminalLog(msg);
+        this.mpClient.sendGameEvent({
+          type: 'REVIVE',
+          x: peer.player.x,
+          y: peer.player.y,
+          text: msg,
+        });
+      }
     };
 
     this.mpClient.onSnapshot = (snap) => {
@@ -738,6 +770,15 @@ export class Game {
         this.player.active = !me.downed;
         if (me.xpM && me.xpM > 0) {
           this.player.xpMultiplier = me.xpM;
+        }
+        if (me.ultChg !== undefined) {
+          this.player.ultCharge = me.ultChg;
+        }
+        if (me.ultMax !== undefined && me.ultMax > 0) {
+          this.player.ultMaxCharge = me.ultMax;
+        }
+        if (me.ultAct !== undefined) {
+          this.player.ultActiveTimer = me.ultAct;
         }
         if (me.spd && me.spd > 0) {
           this.player.speed = me.spd;
@@ -868,6 +909,21 @@ export class Game {
         this.upgradeSystem.clearExternalChoices();
         this.sound.setTrack('NONE');
         this.sound.playExplosion(true);
+        if (evt.stats) {
+          const myWepStats = evt.stats.weaponsByPlayer[this.mpClient.myId];
+          if (myWepStats) {
+            this.combatSystem.weaponDamageStats = { ...myWepStats };
+          }
+          if (evt.stats.killsByType) {
+            this.combatSystem.killsByTypeStats = { ...evt.stats.killsByType };
+          }
+          if (evt.stats.squadMvp) {
+            this.coopGameOverSquad = evt.stats.squadMvp;
+          }
+          if (evt.stats.damageToToro > 0) {
+            this.runDamageToToro = Math.max(this.runDamageToToro, evt.stats.damageToToro);
+          }
+        }
         this.dailyMissions.reportProgress('SURVIVAL_SEC', Math.floor(this.elapsedTime));
         this.dailyMissions.reportProgress('LEVEL', this.upgradeSystem.level);
         if (this.killCount > 0) this.dailyMissions.reportProgress('KILLS', this.killCount);
@@ -964,6 +1020,10 @@ export class Game {
     this.finalBoss = null;
     this.isPaused = false;
     this.hoveredPauseAction = null;
+    this.hoveredGameOverBtn = null;
+    this.runRevivesDone = 0;
+    this.runTimesDowned = 0;
+    this.coopGameOverSquad = [];
     this.combatSystem = new CombatSystem();
     if (myProfile.id === 'KERNEL_X') {
       this.combatSystem.multiShotCount += 1;
@@ -982,8 +1042,12 @@ export class Game {
     this.runDamageToToro = 0;
     this.runBossesKilled = 0;
     this.runTotalDamageDealt = 0;
+    this.runRevivesDone = 0;
+    this.runTimesDowned = 0;
+    this.coopGameOverSquad = [];
     this.hoveredCardIndex = -1;
     this.hoveredRerollBtn = false;
+    this.hoveredGameOverBtn = null;
     this.damageVignetteAlpha = 0;
 
     if (this.isCoopHost) {
@@ -1023,6 +1087,8 @@ export class Game {
           lastAckSeq: 0,
           downed: false,
           reviveProgress: 0,
+          revivesDone: 0,
+          timesDowned: 0,
         });
       }
 
@@ -1182,6 +1248,9 @@ export class Game {
         activeWeapons: this.combatSystem.getActiveWeaponsList(this.player).slice(0, 6),
         spd: Math.round(this.player.speed * this.player.speedBonusMultiplier),
         xpM: Number(this.player.xpMultiplier.toFixed(2)),
+        ultChg: this.player.ultCharge,
+        ultMax: this.player.ultMaxCharge,
+        ultAct: Number(this.player.ultActiveTimer.toFixed(2)),
       },
     ];
 
@@ -1210,6 +1279,9 @@ export class Game {
         ackSeq: peer.lastAckSeq,
         spd: Math.round(peer.player.speed * peer.player.speedBonusMultiplier),
         xpM: Number(peer.player.xpMultiplier.toFixed(2)),
+        ultChg: peer.player.ultCharge,
+        ultMax: peer.player.ultMaxCharge,
+        ultAct: Number(peer.player.ultActiveTimer.toFixed(2)),
       });
     }
 
@@ -1494,7 +1566,7 @@ export class Game {
     if (!this.isCoopMode) return;
     const room = this.mpClient.room;
     const startX = 16;
-    const startY = 104;
+    const startY = 126;
     const panelW = 248;
 
     const list = this.isCoopHost
@@ -1602,6 +1674,63 @@ export class Game {
       cy + 26
     );
     this.ctx.restore();
+  }
+
+  private tryTriggerPlayerUltimate(): boolean {
+    if (
+      this.gameState !== 'PLAYING' ||
+      this.isPaused ||
+      this.coopWaitingUpgrade ||
+      this.upgradeSystem.isChoosingUpgrade() ||
+      this.coopSelfDowned
+    ) {
+      return false;
+    }
+
+    if (this.isCoopMode && !this.isCoopHost) {
+      if (!this.player.canActivateUltimate()) return false;
+      this.player.activateUltimate();
+      const uName = i18n.currentLang === 'EN' ? this.player.ultNameEn : this.player.ultName;
+      this.sound.playAchievement();
+      this.particleSystem.spawnExplosion(this.player.x, this.player.y, this.player.color, 34, true);
+      this.showStatusToast(`⚡ ¡${uName} ACTIVADA (${this.player.ultDuration}s)!`, '#fbbf24', 2400);
+      const dir = this.input.getDirection();
+      const nextSeq = ++this.coopInputSeq;
+      this.mpClient.sendInput(
+        dir.x,
+        dir.y,
+        this.player.facingAngle,
+        dir.x !== 0 || dir.y !== 0,
+        nextSeq,
+        true
+      );
+      return true;
+    }
+
+    if (!this.player.activateUltimate()) return false;
+    const uName = i18n.currentLang === 'EN' ? this.player.ultNameEn : this.player.ultName;
+    this.sound.playAchievement();
+    this.particleSystem.triggerShake(8, 0.24);
+    this.particleSystem.spawnExplosion(this.player.x, this.player.y, this.player.color, 36, true);
+    this.particleSystem.spawnFloatingText(
+      this.player.x,
+      this.player.y - 36,
+      `⚡ ¡${uName}! (${this.player.ultDuration}s)`,
+      '#fbbf24',
+      1.38
+    );
+    const msg = `ULTIMATE: ${this.player.profileName} unleashed ${uName} (${this.player.ultDuration}s)!`;
+    this.addTerminalLog(msg);
+    this.showStatusToast(`⚡ ¡${uName} ACTIVADA (${this.player.ultDuration}s)!`, '#fbbf24', 2400);
+    if (this.isCoopMode && this.isCoopHost) {
+      this.mpClient.sendGameEvent({
+        type: 'REVIVE',
+        x: this.player.x,
+        y: this.player.y,
+        text: msg,
+      });
+    }
+    return true;
   }
 
   private showStatusToast(text: string, color: string = '#38bdf8', durationMs: number = 2100): void {
@@ -1771,6 +1900,9 @@ export class Game {
         };
         if (key === 'q') {
           this.activeMenuTab = 'SHOP';
+        } else if (key === 'u') {
+          this.activeMenuTab = 'LAB';
+          this.sound.playShoot(false);
         } else if (key === 'g') {
           this.activeMenuTab = 'GACHA';
         } else if (key === 'i') {
@@ -1805,6 +1937,18 @@ export class Game {
           if (res.success) {
             this.sound.playCoinPickup();
             this.syncCoopLoadout();
+          }
+        } else if (
+          this.activeMenuTab === 'LAB' &&
+          key >= '1' &&
+          key <= '6'
+        ) {
+          const labId = LAB_UPGRADES_ORDER[parseInt(key, 10) - 1];
+          if (labId) {
+            const res = this.metaSystem.buyLabUpgrade(labId);
+            this.menuFeedbackMessage = res.message;
+            if (res.success) this.sound.playCoinPickup();
+            else this.sound.playExplosion(false);
           }
         } else if (key === 'enter' || key === ' ') {
           this.startNewRun();
@@ -1869,6 +2013,16 @@ export class Game {
         return;
       }
 
+      if (
+        this.gameState === 'PLAYING' &&
+        !this.upgradeSystem.isChoosingUpgrade() &&
+        (key === ' ' || key === 'e')
+      ) {
+        e.preventDefault();
+        this.tryTriggerPlayerUltimate();
+        return;
+      }
+
       if (key === 'h') {
         if (this.gameState === 'PLAYING') {
           this.showAttackRange = !this.showAttackRange;
@@ -1885,6 +2039,7 @@ export class Game {
 
       if (this.gameState === 'MENU') {
         this.hoveredMenuChar = null;
+        this.hoveredLabId = null;
         this.hoveredHatId = null;
         this.hoveredModeBtn = null;
 
@@ -1996,6 +2151,13 @@ export class Game {
               break;
             }
           }
+        } else if (this.activeMenuTab === 'LAB') {
+          for (const labRect of this.getMenuLabRects()) {
+            if (this.isPointInRect(mx, my, labRect)) {
+              this.hoveredLabId = labRect.id;
+              break;
+            }
+          }
         } else if (this.activeMenuTab === 'INVENTORY') {
           for (const slot of this.getInventoryHatRects()) {
             if (this.isPointInRect(mx, my, slot)) {
@@ -2024,16 +2186,33 @@ export class Game {
         this.hoveredCardIndex = -1;
         this.hoveredRerollBtn = false;
         if (this.gameState === 'PLAYING') {
+          this.hoveredGameOverBtn = null;
           if (this.isPointInRect(mx, my, this.getInGamePauseButtonRect())) {
             this.hoveredInGameBtn = 'PAUSE';
           } else if (this.isPointInRect(mx, my, this.getInGameMuteButtonRect())) {
             this.hoveredInGameBtn = 'MUTE';
+          } else if (
+            this.player.canActivateUltimate() &&
+            this.isPointInRect(mx, my, this.getInGameUltBarRect())
+          ) {
+            this.hoveredInGameBtn = 'ULT';
           } else {
             this.hoveredInGameBtn = null;
           }
           this.canvas.style.cursor = this.hoveredInGameBtn ? 'pointer' : 'default';
+        } else if (this.gameState === 'GAMEOVER') {
+          this.hoveredInGameBtn = null;
+          this.hoveredGameOverBtn = null;
+          for (const gBtn of this.getGameOverButtonRects()) {
+            if (this.isPointInRect(mx, my, gBtn)) {
+              this.hoveredGameOverBtn = gBtn.action;
+              break;
+            }
+          }
+          this.canvas.style.cursor = this.hoveredGameOverBtn ? 'pointer' : 'default';
         } else {
           this.hoveredInGameBtn = null;
+          this.hoveredGameOverBtn = null;
           this.canvas.style.cursor = 'default';
         }
         return;
@@ -2075,6 +2254,14 @@ export class Game {
             }
             if (this.isPointInRect(pt.x, pt.y, this.getInGamePauseButtonRect())) {
               this.togglePause();
+              this.lastTouchTapTime = performance.now();
+              continue;
+            }
+            if (
+              this.player.canActivateUltimate() &&
+              this.isPointInRect(pt.x, pt.y, this.getInGameUltBarRect())
+            ) {
+              this.tryTriggerPlayerUltimate();
               this.lastTouchTapTime = performance.now();
               continue;
             }
@@ -2336,6 +2523,26 @@ export class Game {
             return;
           }
         }
+      } else if (this.activeMenuTab === 'LAB') {
+        for (const labRect of this.getMenuLabRects()) {
+          if (this.isPointInRect(mx, my, labRect)) {
+            const res = this.metaSystem.buyLabUpgrade(labRect.id);
+            this.menuFeedbackMessage = res.message;
+            if (res.success) {
+              this.sound.playCoinPickup();
+              this.particleSystem.spawnExplosion(
+                labRect.x + labRect.width / 2,
+                labRect.y + labRect.height / 2,
+                LAB_UPGRADES_CONFIG[labRect.id].color,
+                22,
+                true
+              );
+            } else {
+              this.sound.playExplosion(false);
+            }
+            return;
+          }
+        }
       } else if (this.activeMenuTab === 'GACHA') {
         for (const pullBtn of this.getGachaPullButtonRects()) {
           if (this.isPointInRect(mx, my, pullBtn)) {
@@ -2461,7 +2668,21 @@ export class Game {
     }
 
     if (this.gameState === 'GAMEOVER') {
-      this.exitToMainMenu();
+      for (const gBtn of this.getGameOverButtonRects()) {
+        if (this.isPointInRect(mx, my, gBtn)) {
+          if (gBtn.action === 'RETRY') {
+            if (this.isCoopMode) {
+              if (this.isCoopHost) this.mpClient.sendReturnToLobby();
+              else this.exitToMainMenu();
+            } else {
+              this.startNewRun();
+            }
+          } else {
+            this.exitToMainMenu();
+          }
+          return;
+        }
+      }
       return;
     }
 
@@ -2472,6 +2693,13 @@ export class Game {
       }
       if (this.isPointInRect(mx, my, this.getInGamePauseButtonRect())) {
         this.togglePause();
+        return;
+      }
+      if (
+        this.player.canActivateUltimate() &&
+        this.isPointInRect(mx, my, this.getInGameUltBarRect())
+      ) {
+        this.tryTriggerPlayerUltimate();
         return;
       }
       return;
@@ -2621,6 +2849,10 @@ export class Game {
     this.finalBoss = null;
     this.isPaused = false;
     this.hoveredPauseAction = null;
+    this.hoveredGameOverBtn = null;
+    this.runRevivesDone = 0;
+    this.runTimesDowned = 0;
+    this.coopGameOverSquad = [];
     this.combatSystem = new CombatSystem();
     if (profile.id === 'KERNEL_X') {
       this.combatSystem.multiShotCount += 1;
@@ -2883,30 +3115,31 @@ export class Game {
         }
       }
 
-      // Comprobar rescate de jugadores caídos (radio 75px durante 3s)
+      // Comprobar rescate de jugadores caídos (radio 75px durante 3s, acelerado por DADOS CUÁNTICOS)
       if (this.coopSelfDowned) {
-        let rescuing = false;
+        let rescuingPeer: CoopPeerRuntime | null = null;
         for (const peer of this.coopPeers.values()) {
           if (!peer.downed && Math.hypot(peer.player.x - this.player.x, peer.player.y - this.player.y) <= 75) {
-            rescuing = true;
+            rescuingPeer = peer;
             break;
           }
         }
-        if (rescuing) {
-          this.coopSelfReviveProgress += dt / 3.0;
+        if (rescuingPeer) {
+          this.coopSelfReviveProgress += (dt * rescuingPeer.player.reviveSpeedMultiplier) / 3.0;
           if (this.coopSelfReviveProgress >= 1) {
             this.coopSelfDowned = false;
             this.coopSelfReviveProgress = 0;
             this.player.active = true;
             this.player.hp = Math.ceil(this.player.maxHp * 0.5);
             this.player.invulnerabilityTimer = 2.0;
+            rescuingPeer.revivesDone += 1;
             this.sound.playAchievement();
             this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#10b981', 30, true);
             this.mpClient.sendGameEvent({
               type: 'REVIVE',
               x: this.player.x,
               y: this.player.y,
-              text: `REVIVED: ${this.player.profileName} back online!`,
+              text: `REVIVED: ${this.player.profileName} rescued by ${rescuingPeer.name}!`,
             });
           }
         } else if (this.coopSelfReviveProgress > 0) {
@@ -2916,23 +3149,31 @@ export class Game {
 
       for (const peer of this.coopPeers.values()) {
         if (!peer.downed) continue;
-        let rescuing = !this.coopSelfDowned && Math.hypot(this.player.x - peer.player.x, this.player.y - peer.player.y) <= 75;
-        if (!rescuing) {
+        const hostRescuing =
+          !this.coopSelfDowned &&
+          Math.hypot(this.player.x - peer.player.x, this.player.y - peer.player.y) <= 75;
+        let peerRescuer: CoopPeerRuntime | null = null;
+        if (!hostRescuing) {
           for (const other of this.coopPeers.values()) {
             if (other.id !== peer.id && !other.downed && Math.hypot(other.player.x - peer.player.x, other.player.y - peer.player.y) <= 75) {
-              rescuing = true;
+              peerRescuer = other;
               break;
             }
           }
         }
-        if (rescuing) {
-          peer.reviveProgress += dt / 3.0;
+        if (hostRescuing || peerRescuer) {
+          const revMult = hostRescuing
+            ? this.player.reviveSpeedMultiplier
+            : peerRescuer!.player.reviveSpeedMultiplier;
+          peer.reviveProgress += (dt * revMult) / 3.0;
           if (peer.reviveProgress >= 1) {
             peer.downed = false;
             peer.reviveProgress = 0;
             peer.player.active = true;
             peer.player.hp = Math.ceil(peer.player.maxHp * 0.5);
             peer.player.invulnerabilityTimer = 2.0;
+            if (hostRescuing) this.runRevivesDone += 1;
+            else if (peerRescuer) peerRescuer.revivesDone += 1;
             this.sound.playAchievement();
             this.particleSystem.spawnExplosion(peer.player.x, peer.player.y, '#10b981', 30, true);
             this.mpClient.sendGameEvent({
@@ -2968,6 +3209,7 @@ export class Game {
       if (!peer.downed && !peer.player.active) {
         peer.downed = true;
         peer.reviveProgress = 0;
+        peer.timesDowned += 1;
         peer.player.hp = 0;
         this.mpClient.sendGameEvent({
           type: 'DOWNED',
@@ -3340,8 +3582,13 @@ export class Game {
     }
 
     if (this.player.companion && this.player.active) {
+      const isK9Hyper = this.player.ultActiveTimer > 0 && this.player.characterId === 'MORCILLITA';
+      const savedDmgMult = this.player.damageMultiplier;
+      if (isK9Hyper) {
+        this.player.damageMultiplier = savedDmgMult * 1.8;
+      }
       const compEvents = this.player.companion.update(
-        dt,
+        isK9Hyper ? dt * 1.65 : dt,
         this.player,
         this.upgradeSystem.level,
         this.enemies,
@@ -3351,6 +3598,9 @@ export class Game {
         activeCam.y,
         this.worldEnv
       );
+      if (isK9Hyper) {
+        this.player.damageMultiplier = savedDmgMult;
+      }
       if (compEvents.screenShakeIntensity && compEvents.screenShakeIntensity > 0) {
         this.particleSystem.triggerShake(compEvents.screenShakeIntensity, 0.16);
       }
@@ -3445,8 +3695,13 @@ export class Game {
         if (peer.player.companion && peer.player.active) {
           const pCompCamX = this.isMovingMap() ? peer.player.x - LOGICAL_WIDTH / 2 : 0;
           const pCompCamY = this.isMovingMap() ? peer.player.y - LOGICAL_HEIGHT / 2 : 0;
+          const isPeerK9Hyper = peer.player.ultActiveTimer > 0 && peer.player.characterId === 'MORCILLITA';
+          const savedPeerDmg = peer.player.damageMultiplier;
+          if (isPeerK9Hyper) {
+            peer.player.damageMultiplier = savedPeerDmg * 1.8;
+          }
           const pComp = peer.player.companion.update(
-            dt,
+            isPeerK9Hyper ? dt * 1.65 : dt,
             peer.player,
             this.upgradeSystem.level,
             this.enemies,
@@ -3456,6 +3711,12 @@ export class Game {
             pCompCamY,
             this.worldEnv
           );
+          if (isPeerK9Hyper) {
+            peer.player.damageMultiplier = savedPeerDmg;
+          }
+          for (const d of pComp.damagedEnemies) {
+            peer.combatSystem.recordCompanionDamage(d.damage);
+          }
           combatEvents.enemiesKilled += pComp.killedEnemies.length;
           combatEvents.damagedEnemies.push(...pComp.damagedEnemies);
           for (const k of pComp.killedEnemies) {
@@ -3501,6 +3762,38 @@ export class Game {
       this.dailyMissions.reportProgress('KILLS', combatEvents.enemiesKilled);
       if (this.isNightmareRun) {
         this.dailyMissions.reportProgress('NIGHTMARE_KILLS', combatEvents.enemiesKilled);
+      }
+      // Cargar Ultimate por bajas (+7 extra si había un jefe entre los eliminados)
+      let ultChargeGain = combatEvents.enemiesKilled;
+      for (const de of combatEvents.destroyedEnemies) {
+        if (de.malwareType === 'RANSOMWARE' || de.malwareType === 'CRYPTO_MINER') {
+          ultChargeGain += 7;
+        }
+      }
+      if (this.player.addUltCharge(ultChargeGain)) {
+        const uName = i18n.currentLang === 'EN' ? this.player.ultNameEn : this.player.ultName;
+        this.sound.playCoinPickup();
+        this.showStatusToast(
+          i18n.t(
+            `⚡ ¡ULTIMATE LISTA: ${uName}! PULSA [ESPACIO] O [E]`,
+            `⚡ ULTIMATE READY: ${uName}! PRESS [SPACE] OR [E]`
+          ),
+          '#fbbf24',
+          2600
+        );
+      }
+      for (const peerPl of alivePeerPlayers) {
+        peerPl.addUltCharge(ultChargeGain);
+      }
+      // Fiebre del Oro (Ultimate de CRYPTO): +1 CryptoCoin garantizada cada 10 bajas mientras dura
+      for (const ap of allAlivePlayers) {
+        if (ap.ultActiveTimer > 0 && ap.characterId === 'CRYPTO') {
+          ap.ultKillAccumulator += combatEvents.enemiesKilled;
+          while (ap.ultKillAccumulator >= 10) {
+            ap.ultKillAccumulator -= 10;
+            this.spawnCryptoCoin(ap.x + (Math.random() - 0.5) * 40, ap.y + (Math.random() - 0.5) * 40, 1);
+          }
+        }
       }
     }
     const killMilestone = Math.floor(this.killCount / 25);
@@ -3809,6 +4102,7 @@ export class Game {
       if (this.isCoopMode && this.isCoopHost && this.getCoopAliveCount() > 1) {
         this.coopSelfDowned = true;
         this.coopSelfReviveProgress = 0;
+        this.runTimesDowned += 1;
         this.player.hp = 0;
         this.sound.playExplosion(false);
         this.mpClient.sendGameEvent({
@@ -3936,10 +4230,75 @@ export class Game {
   private triggerGameOverSequence(): void {
     this.gameState = 'GAMEOVER';
     this.coopWaitingUpgrade = false;
+    this.hoveredGameOverBtn = null;
     this.sound.setTrack('NONE');
     if (this.finalBoss) {
       this.runDamageToToro = Math.floor(this.finalBoss.totalDamageTaken);
     }
+
+    const computeCombatSummary = (cs: CombatSystem): { totalDamage: number; topWeapon: string } => {
+      let totalDamage = 0;
+      let topWeapon = 'Ráfaga Firewall';
+      let topDmg = -1;
+      for (const [wName, dmg] of Object.entries(cs.weaponDamageStats)) {
+        totalDamage += dmg;
+        if (dmg > topDmg) {
+          topDmg = dmg;
+          topWeapon = wName;
+        }
+      }
+      return { totalDamage: Math.round(totalDamage), topWeapon };
+    };
+
+    if (this.isCoopMode && this.isCoopHost) {
+      const room = this.mpClient.room;
+      const mySlot = room?.players.find((p) => p.id === this.mpClient.myId)?.slot ?? 0;
+      const hostSum = computeCombatSummary(this.combatSystem);
+      const squadMvp: CoopSquadMvpEntry[] = [
+        {
+          id: this.mpClient.myId,
+          slot: mySlot,
+          name: this.player.profileName,
+          color: this.player.color,
+          characterId: this.player.characterId,
+          totalDamage: hostSum.totalDamage,
+          topWeapon: hostSum.topWeapon,
+          revives: this.runRevivesDone,
+          downs: this.runTimesDowned,
+        },
+      ];
+      const weaponsByPlayer: Record<string, Record<string, number>> = {
+        [this.mpClient.myId]: { ...this.combatSystem.weaponDamageStats },
+      };
+
+      for (const peer of this.coopPeers.values()) {
+        const pSum = computeCombatSummary(peer.combatSystem);
+        squadMvp.push({
+          id: peer.id,
+          slot: peer.slot,
+          name: peer.name,
+          color: peer.slotColor,
+          characterId: peer.characterId,
+          totalDamage: pSum.totalDamage,
+          topWeapon: pSum.topWeapon,
+          revives: peer.revivesDone,
+          downs: peer.timesDowned,
+        });
+        weaponsByPlayer[peer.id] = { ...peer.combatSystem.weaponDamageStats };
+      }
+      squadMvp.sort((a, b) => b.totalDamage - a.totalDamage);
+      this.coopGameOverSquad = squadMvp;
+
+      const stats: CoopGameOverStats = {
+        squadMvp,
+        weaponsByPlayer,
+        killsByType: { ...this.combatSystem.killsByTypeStats },
+        damageToToro: this.runDamageToToro,
+      };
+      this.broadcastCoopSnapshot();
+      this.mpClient.sendGameEvent({ type: 'GAME_OVER', stats });
+    }
+
     logAnalyticsEvent('level_end', {
       success: false,
       reason: 'killed_by_enemies',
@@ -3958,10 +4317,6 @@ export class Game {
     this.sound.playExplosion(true);
     this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#00ff66', 45, true);
     this.addTerminalLog('FATAL_ERROR: Antivirus Agent terminated.');
-    if (this.isCoopMode && this.isCoopHost) {
-      this.broadcastCoopSnapshot();
-      this.mpClient.sendGameEvent({ type: 'GAME_OVER' });
-    }
   }
 
   private spawnCodeFragment(x: number, y: number, xpValue: number): void {
@@ -4951,10 +5306,10 @@ export class Game {
     height: number;
   }[] {
     const { py, leftCx } = this.getMenuLayout();
-    const tabW = 242;
+    const tabW = 180;
     const tabH = 38;
-    const gap = 16;
-    const totalW = tabW * 3 + gap * 2;
+    const gap = 12;
+    const totalW = tabW * 4 + gap * 3;
     const startX = leftCx - totalW / 2;
     const y = py + 104;
 
@@ -4968,20 +5323,116 @@ export class Game {
         height: tabH,
       },
       {
-        tab: 'GACHA',
-        label: `[G] ${i18n.t('BÓVEDA GACHA', 'GACHA VAULT')}`,
+        tab: 'LAB',
+        label: `[U] ${i18n.t('LABORATORIO', 'KERNEL LAB')}`,
         x: startX + tabW + gap,
         y,
         width: tabW,
         height: tabH,
       },
       {
-        tab: 'INVENTORY',
-        label: `[I] ${i18n.t('INVENTARIO', 'INVENTORY')} (${this.metaSystem.unlockedHats.size}/${HATS_DATABASE.length})`,
+        tab: 'GACHA',
+        label: `[G] ${i18n.t('GACHA', 'GACHA')}`,
         x: startX + (tabW + gap) * 2,
         y,
         width: tabW,
         height: tabH,
+      },
+      {
+        tab: 'INVENTORY',
+        label: `[I] ${i18n.t('SOMBREROS', 'HATS')} (${this.metaSystem.unlockedHats.size}/${HATS_DATABASE.length})`,
+        x: startX + (tabW + gap) * 3,
+        y,
+        width: tabW,
+        height: tabH,
+      },
+    ];
+  }
+
+  private getMenuLabRects(): {
+    id: LabUpgradeId;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const { py, leftCx } = this.getMenuLayout();
+    const cardW = 244;
+    const cardH = 148;
+    const gapX = 12;
+    const gapY = 12;
+    const totalW = cardW * 3 + gapX * 2;
+    const startX = leftCx - totalW / 2;
+    const startY = py + 154;
+
+    return LAB_UPGRADES_ORDER.map((id, idx) => {
+      const col = idx % 3;
+      const row = Math.floor(idx / 3);
+      return {
+        id,
+        x: startX + col * (cardW + gapX),
+        y: startY + row * (cardH + gapY),
+        width: cardW,
+        height: cardH,
+      };
+    });
+  }
+
+  private getInGameUltBarRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 30,
+      y: 91,
+      width: 328,
+      height: 20,
+    };
+  }
+
+  private getGameOverButtonRects(): {
+    action: 'RETRY' | 'MENU';
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
+    const btnW = 360;
+    const btnH = 42;
+    const gap = 24;
+    const y = cy + 236;
+
+    if (this.isCoopMode && !this.isCoopHost) {
+      return [
+        {
+          action: 'MENU',
+          label: `[T / ESC / CLIC] ${i18n.t('SALIR AL HANGAR (O ESPERA AL HOST)', 'MAIN HANGAR (OR WAIT FOR HOST)')}`,
+          x: cx - 260,
+          y,
+          width: 520,
+          height: btnH,
+        },
+      ];
+    }
+
+    return [
+      {
+        action: 'RETRY',
+        label: this.isCoopMode
+          ? `[R / ENTER] ${i18n.t('VOLVER AL LOBBY CO-OP', 'RETURN TO CO-OP LOBBY')}`
+          : `[R / ENTER] ${i18n.t('REINTENTAR PARTIDA', 'PLAY AGAIN')}`,
+        x: cx - btnW - gap / 2,
+        y,
+        width: btnW,
+        height: btnH,
+      },
+      {
+        action: 'MENU',
+        label: `[ESC / T] ${i18n.t('VOLVER AL HANGAR', 'RETURN TO HANGAR')}`,
+        x: cx + gap / 2,
+        y,
+        width: btnW,
+        height: btnH,
       },
     ];
   }
@@ -5776,14 +6227,18 @@ export class Game {
     );
 
     const pPassiveName = i18n.currentLang === 'EN' ? profile.passiveNameEn : profile.passiveName;
+    const pUltName = i18n.currentLang === 'EN' ? profile.ultNameEn : profile.ultName;
     this.ctx.fillStyle = '#fbbf24';
-    this.ctx.font = `bold 10px ${FONT_MONO}`;
-    this.ctx.fillText(`★ ${pPassiveName}`, cxBay, bayY + 244);
+    this.ctx.font = `bold 9.8px ${FONT_MONO}`;
+    this.ctx.fillText(`★ ${pPassiveName}`, cxBay, bayY + 241);
+    this.ctx.fillStyle = '#38bdf8';
+    this.ctx.fillText(`⚡ [E/ESP]: ${pUltName} (${profile.ultDuration}s)`, cxBay, bayY + 255);
 
-    // Barras de telemetría de unidad (incluyendo bonos del sombrero si aplican)
-    const hpTotal = Math.round(100 * profile.hpMultiplier + (shownHat?.stats.maxHpBonus ?? 0));
-    const spdPct = Math.round(profile.speedMultiplier * (1 + (shownHat?.stats.speedMult ?? 0)) * 100);
-    const magTotal = Math.round(115 * profile.pickupRadiusMultiplier + (shownHat?.stats.magnetBonus ?? 0));
+    // Barras de telemetría de unidad (incluyendo bonos del sombrero y del Laboratorio Kernel)
+    const lab = this.metaSystem.getLabBonuses();
+    const hpTotal = Math.round((100 * profile.hpMultiplier + (shownHat?.stats.maxHpBonus ?? 0)) * lab.hpMult);
+    const spdPct = Math.round(profile.speedMultiplier * (1 + (shownHat?.stats.speedMult ?? 0)) * lab.speedMult * 100);
+    const magTotal = Math.round((115 * profile.pickupRadiusMultiplier + (shownHat?.stats.magnetBonus ?? 0)) * lab.magnetMult);
 
     const statX = bayX + 22;
     const statW = bayW - 44;
@@ -6178,6 +6633,110 @@ export class Game {
           );
         }
 
+        this.ctx.restore();
+      }
+    } else if (this.activeMenuTab === 'LAB') {
+      const labRects = this.getMenuLabRects();
+      for (let i = 0; i < labRects.length; i++) {
+        const rect = labRects[i];
+        const cfg = LAB_UPGRADES_CONFIG[rect.id];
+        const lvl = this.metaSystem.getLabLevel(rect.id);
+        const isMaxed = lvl >= cfg.maxLevel;
+        const nextCost = isMaxed ? 0 : cfg.costs[lvl] ?? 999;
+        const canAfford = !isMaxed && this.metaSystem.coins >= nextCost;
+        const hovered = this.hoveredLabId === rect.id;
+
+        this.ctx.save();
+        this.drawCyberPanel(
+          rect.x,
+          rect.y,
+          rect.width,
+          rect.height,
+          10,
+          isMaxed
+            ? 'rgba(6, 46, 38, 0.96)'
+            : hovered
+            ? 'rgba(20, 36, 62, 0.96)'
+            : 'rgba(15, 24, 42, 0.93)',
+          isMaxed ? '#10b981' : hovered ? '#ffffff' : canAfford ? cfg.color : 'rgba(148, 163, 184, 0.45)',
+          isMaxed || hovered ? 2.2 : 1.5
+        );
+
+        this.traceChamferRect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4, 8);
+        this.ctx.clip();
+
+        // Barra superior de color del módulo
+        this.ctx.fillStyle = cfg.color;
+        this.ctx.fillRect(rect.x + 12, rect.y, rect.width - 24, 3);
+
+        const lName = i18n.currentLang === 'EN' ? cfg.nameEn : cfg.name;
+        const lSub = i18n.currentLang === 'EN' ? cfg.subtitleEn : cfg.subtitle;
+        const lDesc = i18n.currentLang === 'EN' ? cfg.descEn : cfg.desc;
+        const lStat = i18n.currentLang === 'EN' ? cfg.statPerLevelEn : cfg.statPerLevel;
+
+        this.ctx.textAlign = 'left';
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = `bold 12px ${FONT_DISPLAY}`;
+        this.ctx.fillText(`[${i + 1}] ${lName}`, rect.x + 12, rect.y + 23, rect.width - 24);
+
+        this.ctx.fillStyle = cfg.color;
+        this.ctx.font = `bold 9.5px ${FONT_MONO}`;
+        this.ctx.fillText(lSub, rect.x + 12, rect.y + 38, rect.width - 24);
+
+        // Rombos de nivel permanente
+        for (let p = 0; p < cfg.maxLevel; p++) {
+          const pxPip = rect.x + 16 + p * 14;
+          const pyPip = rect.y + 52;
+          const r = 3.6;
+          this.ctx.beginPath();
+          this.ctx.moveTo(pxPip, pyPip - r);
+          this.ctx.lineTo(pxPip + r, pyPip);
+          this.ctx.lineTo(pxPip, pyPip + r);
+          this.ctx.lineTo(pxPip - r, pyPip);
+          this.ctx.closePath();
+          if (p < lvl) {
+            this.ctx.fillStyle = cfg.color;
+            this.ctx.fill();
+          } else {
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+            this.ctx.lineWidth = 1.2;
+            this.ctx.stroke();
+          }
+        }
+
+        this.ctx.textAlign = 'right';
+        this.ctx.fillStyle = '#e2e8f0';
+        this.ctx.font = `bold 10px ${FONT_MONO}`;
+        this.ctx.fillText(`NV ${lvl}/${cfg.maxLevel}`, rect.x + rect.width - 12, rect.y + 55);
+
+        this.ctx.textAlign = 'left';
+        this.ctx.fillStyle = '#cbd5e1';
+        this.ctx.font = `10.8px ${FONT_DISPLAY}`;
+        this.wrapText(lDesc, rect.x + 12, rect.y + 72, rect.width - 24, 13.5, 2);
+
+        this.ctx.fillStyle = '#a3e635';
+        this.ctx.font = `bold 10px ${FONT_MONO}`;
+        this.ctx.fillText(`▲ ${lStat}`, rect.x + 12, rect.y + 114, rect.width - 24);
+
+        this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+        if (isMaxed) {
+          this.ctx.fillStyle = '#10b981';
+          this.ctx.fillText(
+            i18n.t('[★] NIVEL MÁXIMO', '[★] MAX LEVEL'),
+            rect.x + 12,
+            rect.y + rect.height - 11
+          );
+        } else {
+          this.ctx.fillStyle = canAfford ? '#fbbf24' : '#f43f5e';
+          this.ctx.fillText(
+            i18n.t(
+              `▸ [${i + 1}] MEJORAR (${nextCost} CR)`,
+              `▸ [${i + 1}] UPGRADE (${nextCost} CR)`
+            ),
+            rect.x + 12,
+            rect.y + rect.height - 11
+          );
+        }
         this.ctx.restore();
       }
     } else if (this.activeMenuTab === 'GACHA') {
@@ -7793,12 +8352,12 @@ export class Game {
     this.ctx.save();
 
     // ==========================================
-    // 1. POD SUPERIOR IZQUIERDO: AGENTE, NIVEL, HP BAR Y ARSENAL
+    // 1. POD SUPERIOR IZQUIERDO: AGENTE, NIVEL, HP BAR, ARSENAL Y ULTIMATE
     // ==========================================
     const lx = 16;
     const ly = 18;
     const lw = 356;
-    const lh = 76;
+    const lh = 100;
     this.drawCyberPanel(lx, ly, lw, lh, 10, 'rgba(11, 19, 34, 0.9)', 'rgba(56, 189, 248, 0.55)', 1.5);
 
     this.ctx.save();
@@ -7887,6 +8446,54 @@ export class Game {
       this.ctx.font = `bold ${wFont}px ${FONT_DISPLAY}`;
     }
     this.ctx.fillText(weaponsLabel, lx + 14, ly + 65);
+
+    // Barra interactiva de Habilidad Activa / Ultimate (cargada por bajas, dura X segundos)
+    const ultRect = this.getInGameUltBarRect();
+    const isUltActive = this.player.ultActiveTimer > 0;
+    const isUltReady = this.player.canActivateUltimate();
+    const ultRatio = isUltActive
+      ? Math.max(0, Math.min(1, this.player.ultActiveTimer / Math.max(0.1, this.player.ultDuration)))
+      : Math.max(0, Math.min(1, this.player.ultCharge / Math.max(1, this.player.ultMaxCharge)));
+    const uName = i18n.currentLang === 'EN' ? this.player.ultNameEn : this.player.ultName;
+    const ultPulse = 0.72 + 0.28 * Math.sin(performance.now() * 0.012);
+
+    this.ctx.fillStyle = 'rgba(7, 11, 20, 0.95)';
+    this.ctx.fillRect(ultRect.x, ultRect.y, ultRect.width, ultRect.height);
+
+    if (ultRatio > 0) {
+      this.ctx.fillStyle = isUltActive
+        ? '#f97316'
+        : isUltReady
+        ? `rgba(16, 185, 129, ${0.7 + 0.3 * ultPulse})`
+        : '#0284c7';
+      this.ctx.fillRect(ultRect.x, ultRect.y, ultRect.width * ultRatio, ultRect.height);
+    }
+
+    this.ctx.strokeStyle =
+      this.hoveredInGameBtn === 'ULT'
+        ? '#ffffff'
+        : isUltActive
+        ? '#fbbf24'
+        : isUltReady
+        ? '#34d399'
+        : 'rgba(56, 189, 248, 0.45)';
+    this.ctx.lineWidth = isUltReady || isUltActive ? 1.6 : 1;
+    this.ctx.strokeRect(ultRect.x, ultRect.y, ultRect.width, ultRect.height);
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = isUltReady ? '#fef08a' : '#f8fafc';
+    this.ctx.font = `bold 10px ${FONT_MONO}`;
+    const ultText = isUltActive
+      ? `🔥 ${uName}: ${this.player.ultActiveTimer.toFixed(1)}s`
+      : isUltReady
+      ? `⚡ [ESPACIO / E] ¡${uName} LISTA!`
+      : `⚡ [E] ${uName} (${this.player.ultCharge}/${this.player.ultMaxCharge})`;
+    this.ctx.fillText(
+      ultText,
+      ultRect.x + ultRect.width / 2,
+      ultRect.y + 13.5,
+      ultRect.width - 12
+    );
     this.ctx.restore();
 
     // ==========================================
@@ -9123,10 +9730,73 @@ export class Game {
       );
     }
 
-    const panelY = cy - 150;
     const subW = 405;
-    const subH = 320;
-    const leftX = cx - subW - 12;
+    const hasCoopMvp = this.isCoopMode && this.coopGameOverSquad.length > 0;
+    if (hasCoopMvp) {
+      // Tabla MVP del Escuadrón Co-op (Daño total, Mejor arma, Reanimaciones y Medallas)
+      const mvpX = cx - subW - 12;
+      const mvpY = cy - 166;
+      const mvpW = subW * 2 + 24;
+      const mvpH = 98;
+      this.ctx.save();
+      this.drawCyberPanel(mvpX, mvpY, mvpW, mvpH, 10, 'rgba(11, 20, 36, 0.96)', '#fbbf24', 1.6);
+      this.traceChamferRect(mvpX + 2, mvpY + 2, mvpW - 4, mvpH - 4, 8);
+      this.ctx.clip();
+
+      this.ctx.textAlign = 'left';
+      this.ctx.fillStyle = '#fde047';
+      this.ctx.font = `bold 12px ${FONT_MONO}`;
+      this.ctx.fillText(
+        i18n.t(
+          '★ CLASIFICACIÓN DEL ESCUADRÓN CO-OP (MVP DAÑO Y RESCATES)',
+          '★ CO-OP SQUAD LEADERBOARD (DAMAGE MVP & REVIVES)'
+        ),
+        mvpX + 16,
+        mvpY + 20
+      );
+
+      const bestRevives = Math.max(0, ...this.coopGameOverSquad.map((s) => s.revives));
+      const colW = (mvpW - 24) / Math.max(1, Math.min(4, this.coopGameOverSquad.length));
+      for (let idx = 0; idx < Math.min(4, this.coopGameOverSquad.length); idx++) {
+        const sq = this.coopGameOverSquad[idx];
+        const sx = mvpX + 12 + idx * colW;
+        const sy = mvpY + 30;
+        const isTopDmg = idx === 0 && sq.totalDamage > 0;
+        const isTopMedic = bestRevives > 0 && sq.revives === bestRevives;
+
+        this.ctx.fillStyle = 'rgba(15, 25, 44, 0.92)';
+        this.ctx.fillRect(sx + 4, sy, colW - 8, 58);
+        this.ctx.fillStyle = sq.color;
+        this.ctx.fillRect(sx + 4, sy, 4, 58);
+
+        this.ctx.textAlign = 'left';
+        this.ctx.fillStyle = '#f8fafc';
+        this.ctx.font = `bold 11.5px ${FONT_DISPLAY}`;
+        const badge = isTopDmg ? '★ MVP ' : isTopMedic ? '✚ MED ' : '';
+        this.ctx.fillText(`${badge}J${sq.slot + 1} ${sq.name}`, sx + 13, sy + 16, colW - 22);
+
+        this.ctx.fillStyle = '#38bdf8';
+        this.ctx.font = `bold 11px ${FONT_MONO}`;
+        this.ctx.fillText(
+          `${sq.totalDamage.toLocaleString('en-US')} DMG  •  ✚${sq.revives}`,
+          sx + 13,
+          sy + 34,
+          colW - 22
+        );
+
+        this.ctx.fillStyle = '#94a3b8';
+        this.ctx.font = `10px ${FONT_DISPLAY}`;
+        this.ctx.fillText(sq.topWeapon, sx + 13, sy + 50, colW - 22);
+      }
+      this.ctx.restore();
+    }
+
+    const panelY = hasCoopMvp ? cy - 58 : cy - 150;
+    const subW2 = 405;
+    const subH = hasCoopMvp ? 276 : 320;
+    const rowStepWep = hasCoopMvp ? 35 : 42;
+    const rowStepEn = hasCoopMvp ? 33 : 40;
+    const leftX = cx - subW2 - 12;
     const rightX = cx + 12;
 
     this.ctx.save();
@@ -9154,7 +9824,7 @@ export class Game {
     } else {
       for (let w = 0; w < Math.min(6, weaponDamages.length); w++) {
         const item = weaponDamages[w];
-        const rowY = panelY + 54 + w * 42;
+        const rowY = panelY + 50 + w * rowStepWep;
         const pct = Math.round((item.damage / totalDmg) * 100);
         const col = rowColors[w % rowColors.length];
 
@@ -9170,9 +9840,9 @@ export class Game {
         this.ctx.textAlign = 'left';
         const barW = subW - 32;
         this.ctx.fillStyle = 'rgba(20, 30, 48, 0.95)';
-        this.ctx.fillRect(leftX + 16, rowY + 18, barW, 8);
+        this.ctx.fillRect(leftX + 16, rowY + 17, barW, 7);
         this.ctx.fillStyle = col;
-        this.ctx.fillRect(leftX + 16, rowY + 18, (item.damage / totalDmg) * barW, 8);
+        this.ctx.fillRect(leftX + 16, rowY + 17, (item.damage / totalDmg) * barW, 7);
       }
     }
     this.ctx.restore();
@@ -9198,7 +9868,7 @@ export class Game {
 
     for (let e = 0; e < enemyRows.length; e++) {
       const er = enemyRows[e];
-      const rY = panelY + 58 + e * 40;
+      const rY = panelY + 54 + e * rowStepEn;
 
       this.ctx.fillStyle = er.color;
       this.ctx.fillRect(rightX + 16, rY + 3, 8, 8);
@@ -9215,19 +9885,24 @@ export class Game {
     }
     this.ctx.restore();
 
-    const blink = Math.floor(performance.now() / 450) % 2 === 0;
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = blink ? '#38bdf8' : '#f8fafc';
-    this.ctx.font = `bold 15px ${FONT_MONO}`;
-    this.ctx.fillText(
-      this.isCoopMode
-        ? this.isCoopHost
-          ? `[R / ENTER]: ${i18n.t('Volver al Lobby Co-op', 'Return to Co-op Lobby')}  •  [T / ESC / CLIC]: ${i18n.t('Salir al Hangar', 'Main Hangar')}`
-          : `[T / ESC / CLIC]: ${i18n.t('Salir al Hangar (o espera al Host)', 'Main Hangar (or wait for Host)')}`
-        : `[R / ENTER]: ${i18n.t('Reintentar Partida', 'Retry Run')}  •  [T / ESC / CLIC]: ${i18n.t('Ir al Hangar Principal', 'Main Hangar')}`,
-      cx,
-      cy + 242
-    );
+    for (const gBtn of this.getGameOverButtonRects()) {
+      const hovered = this.hoveredGameOverBtn === gBtn.action;
+      const isRetry = gBtn.action === 'RETRY';
+      const col = isRetry ? '#10b981' : '#38bdf8';
+      this.drawClippedButton(
+        gBtn,
+        hovered
+          ? isRetry
+            ? 'rgba(6, 62, 42, 0.96)'
+            : 'rgba(14, 52, 82, 0.96)'
+          : 'rgba(15, 25, 44, 0.94)',
+        hovered ? '#ffffff' : col,
+        hovered ? 2.2 : 1.5,
+        hovered ? '#ffffff' : col,
+        13,
+        gBtn.label
+      );
+    }
     this.ctx.restore();
   }
 }

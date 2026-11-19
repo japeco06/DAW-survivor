@@ -27,7 +27,18 @@ export class Player extends Entity {
   public dodgeChance: number = 0;
   public bonusCoinDropChance: number = 0;
   public passiveRegenPerSec: number = 0;
+  public reviveSpeedMultiplier: number = 1.0;
   private regenAccumulator: number = 0;
+
+  // Sistema de Habilidad Activa / Ultimate (cargada por bajas, dura X segundos)
+  public ultCharge: number = 0;
+  public ultMaxCharge: number = 35;
+  public ultActiveTimer: number = 0;
+  public ultDuration: number = 6.0;
+  public ultPulseTimer: number = 0;
+  public ultKillAccumulator: number = 0;
+  public ultName: string = 'SOBRECARGA EMP';
+  public ultNameEn: string = 'EMP OVERLOAD';
 
   // Pasivas específicas por personaje
   public shieldReady: boolean = false;
@@ -63,10 +74,11 @@ export class Player extends Entity {
     const hat =
       hatOverride !== undefined ? hatOverride : MetaSystem.readEquippedHatFromStorage();
     const hatSpeedMult = 1 + (hat?.stats.speedMult ?? 0);
+    const lab = MetaSystem.readLabBonusesFromStorage();
 
     const speed = profile
-      ? Math.round(baseSpeed * profile.speedMultiplier * hatSpeedMult)
-      : Math.round(baseSpeed * hatSpeedMult);
+      ? Math.round(baseSpeed * profile.speedMultiplier * hatSpeedMult * lab.speedMult)
+      : Math.round(baseSpeed * hatSpeedMult * lab.speedMult);
     const color = profile ? profile.color : '#00ff66';
 
     super(x, y, 28, speed, color);
@@ -78,6 +90,10 @@ export class Player extends Entity {
       this.pickupRadius = Math.round(basePickupRadius * profile.pickupRadiusMultiplier);
       this.borderColor = profile.borderColor;
       this.profileName = profile.name;
+      this.ultName = profile.ultName;
+      this.ultNameEn = profile.ultNameEn;
+      this.ultDuration = profile.ultDuration;
+      this.ultMaxCharge = Math.max(18, Math.round(profile.ultKillsRequired * lab.ultChargeMult));
       if (profile.id === 'MORCILLITA') {
         this.isSummoner = true;
         this.companion = new CompanionPet(x, y);
@@ -97,6 +113,16 @@ export class Player extends Entity {
         this.passiveRegenPerSec = 2.0;
       }
     }
+
+    // Aplicar mejoras permanentes del Laboratorio Kernel
+    this.maxHp = Math.round(this.maxHp * lab.hpMult);
+    this.hp = this.maxHp;
+    this.pickupRadius = Math.round(this.pickupRadius * lab.magnetMult);
+    this.xpMultiplier = Number((this.xpMultiplier + lab.xpBonus).toFixed(2));
+    this.damageMultiplier = Number((this.damageMultiplier + lab.damageBonus).toFixed(2));
+    this.fireRateMultiplier = Number((this.fireRateMultiplier + lab.fireRateBonus).toFixed(2));
+    this.bonusCoinDropChance = Number((this.bonusCoinDropChance + lab.coinDropBonus).toFixed(3));
+    this.reviveSpeedMultiplier = lab.reviveSpeedMult;
 
     if (hat) {
       this.equippedHat = hat;
@@ -146,8 +172,23 @@ export class Player extends Entity {
       this.adrenalineTimer = Math.max(0, this.adrenalineTimer - dt);
     }
 
-    if (this.passiveRegenPerSec > 0 && this.active && this.hp < this.maxHp) {
-      this.regenAccumulator += this.passiveRegenPerSec * dt;
+    if (this.ultActiveTimer > 0) {
+      this.ultActiveTimer = Math.max(0, this.ultActiveTimer - dt);
+      this.ultPulseTimer -= dt;
+    }
+
+    const activeUltRegen =
+      this.ultActiveTimer > 0
+        ? this.characterId === 'PROXY'
+          ? 8
+          : this.characterId === 'STANDARD'
+          ? 4
+          : 0
+        : 0;
+    const totalRegen = this.passiveRegenPerSec + activeUltRegen;
+
+    if (totalRegen > 0 && this.active && this.hp < this.maxHp) {
+      this.regenAccumulator += totalRegen * dt;
       if (this.regenAccumulator >= 1) {
         const healInt = Math.floor(this.regenAccumulator);
         this.regenAccumulator -= healInt;
@@ -173,9 +214,21 @@ export class Player extends Entity {
     const nx = len > 1 ? dirX / len : dirX;
     const ny = len > 1 ? dirY / len : dirY;
     const adrenalineSpeedMult = this.adrenalineTimer > 0 ? 1.25 : 1.0;
+    const ultSpeedMult =
+      this.ultActiveTimer > 0
+        ? this.characterId === 'ROOT'
+          ? 1.65
+          : this.characterId === 'SPECTRE'
+          ? 1.45
+          : this.characterId === 'OVERCLOCK'
+          ? 1.35
+          : this.characterId === 'MORCILLITA'
+          ? 1.2
+          : 1.12
+        : 1.0;
     const effectiveSpeed = Math.min(
-      620,
-      this.speed * adrenalineSpeedMult * this.speedBonusMultiplier * this.externalSpeedMultiplier
+      680,
+      this.speed * adrenalineSpeedMult * ultSpeedMult * this.speedBonusMultiplier * this.externalSpeedMultiplier
     );
     this.isMoving = nx !== 0 || ny !== 0;
 
@@ -196,16 +249,18 @@ export class Player extends Entity {
 
       if (this.characterId === 'ROOT') {
         this.rootTrailSpawnTimer += dt;
-        if (this.rootTrailSpawnTimer >= 0.22) {
+        const spawnInterval = this.ultActiveTimer > 0 ? 0.11 : 0.22;
+        if (this.rootTrailSpawnTimer >= spawnInterval) {
           this.rootTrailSpawnTimer = 0;
+          const isSuper = this.ultActiveTimer > 0;
           this.rootTrailNodes.push({
             x: this.x,
             y: this.y,
-            life: 2.2,
-            maxLife: 2.2,
-            radius: 26,
+            life: isSuper ? 2.8 : 2.2,
+            maxLife: isSuper ? 2.8 : 2.2,
+            radius: isSuper ? 44 : 26,
           });
-          if (this.rootTrailNodes.length > 14) {
+          if (this.rootTrailNodes.length > (isSuper ? 26 : 14)) {
             this.rootTrailNodes.shift();
           }
         }
@@ -230,7 +285,45 @@ export class Player extends Entity {
   }
 
   public getEffectiveFireRateMultiplier(): number {
-    return this.adrenalineTimer > 0 ? this.fireRateMultiplier * 1.45 : this.fireRateMultiplier;
+    let mult = this.adrenalineTimer > 0 ? this.fireRateMultiplier * 1.45 : this.fireRateMultiplier;
+    if (this.ultActiveTimer > 0) {
+      if (this.characterId === 'OVERCLOCK') mult *= 2.2;
+      else if (this.characterId === 'CRYPTO' || this.characterId === 'KERNEL_X') mult *= 1.5;
+      else if (this.characterId === 'STANDARD' || this.characterId === 'SPECTRE') mult *= 1.35;
+    }
+    return mult;
+  }
+
+  public getEffectivePickupRadius(): number {
+    return this.ultActiveTimer > 0 && this.characterId === 'CRYPTO'
+      ? this.pickupRadius + 600
+      : this.pickupRadius;
+  }
+
+  public addUltCharge(kills: number): boolean {
+    if (!this.active || this.ultActiveTimer > 0 || kills <= 0) return false;
+    const wasReady = this.ultCharge >= this.ultMaxCharge;
+    this.ultCharge = Math.min(this.ultMaxCharge, this.ultCharge + kills);
+    return !wasReady && this.ultCharge >= this.ultMaxCharge;
+  }
+
+  public canActivateUltimate(): boolean {
+    return this.active && this.ultActiveTimer <= 0 && this.ultCharge >= this.ultMaxCharge;
+  }
+
+  public activateUltimate(): boolean {
+    if (!this.canActivateUltimate()) return false;
+    this.ultCharge = 0;
+    this.ultActiveTimer = this.ultDuration;
+    this.ultPulseTimer = 0;
+    this.ultKillAccumulator = 0;
+    if (this.characterId === 'ROOT') {
+      this.invulnerabilityTimer = Math.max(this.invulnerabilityTimer, 0.8);
+    } else if (this.characterId === 'PROXY') {
+      this.shieldReady = true;
+      this.shieldRechargeTimer = 0;
+    }
+    return true;
   }
 
   public triggerOverclockAdrenaline(): void {
@@ -245,6 +338,11 @@ export class Player extends Entity {
       return false;
     }
 
+    if (this.ultActiveTimer > 0 && this.characterId === 'ROOT') {
+      this.lastHitOutcome = 'DODGED';
+      return false;
+    }
+
     if (this.characterId === 'PROXY' && this.shieldReady) {
       this.shieldReady = false;
       this.shieldRechargeTimer = this.shieldMaxCooldown;
@@ -253,13 +351,22 @@ export class Player extends Entity {
       return false;
     }
 
-    if (this.dodgeChance > 0 && Math.random() < this.dodgeChance) {
+    const effectiveDodge =
+      this.ultActiveTimer > 0 && this.characterId === 'SPECTRE'
+        ? Math.min(0.8, this.dodgeChance + 0.35)
+        : this.dodgeChance;
+    if (effectiveDodge > 0 && Math.random() < effectiveDodge) {
       this.invulnerabilityTimer = 0.35;
       this.lastHitOutcome = 'DODGED';
       return false;
     }
 
-    this.hp = Math.max(0, this.hp - amount);
+    const finalAmount =
+      this.ultActiveTimer > 0 && this.characterId === 'PROXY'
+        ? Math.max(1, Math.round(amount * 0.3))
+        : amount;
+
+    this.hp = Math.max(0, this.hp - finalAmount);
     this.invulnerabilityTimer = this.invulnerabilityDuration;
     this.lastHitOutcome = 'HIT';
 
@@ -325,6 +432,11 @@ export class Player extends Entity {
     }
     ctx.globalAlpha = 1;
 
+    // Aura de Habilidad Ultimate activa (compartida con CoopRenderer)
+    if (this.ultActiveTimer > 0) {
+      Player.drawUltimateAura(ctx, this.x, this.y, this.characterId, this.ultActiveTimer, now);
+    }
+
     // Aro sutil de telemetría alrededor del bot (y escudo Aegis para PROXY / Adrenalina para OVERCLOCK)
     if (this.characterId === 'PROXY' && this.shieldReady) {
       ctx.strokeStyle = '#38bdf8';
@@ -380,6 +492,76 @@ export class Player extends Entity {
 
     this.drawHealthBar(ctx);
 
+    ctx.restore();
+  }
+
+  public static drawUltimateAura(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    characterId: CharacterId,
+    ultTimer: number,
+    nowMs: number
+  ): void {
+    if (ultTimer <= 0) return;
+    ctx.save();
+    ctx.translate(x, y);
+    const pulse = 0.78 + 0.22 * Math.sin(nowMs * 0.012);
+
+    if (characterId === 'PROXY') {
+      // Cúpula Aegis de 210px con malla hexagonal
+      const r = 210;
+      ctx.fillStyle = `rgba(168, 85, 247, ${0.13 * pulse})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#e9d5ff';
+      ctx.lineWidth = 2.6;
+      ctx.setLineDash([14, 8]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r, (nowMs * 0.0012) % (Math.PI * 2), Math.PI * 2 + (nowMs * 0.0012) % (Math.PI * 2));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (characterId === 'OVERCLOCK') {
+      // Aura de fusión nuclear térmica (180px)
+      const r = 180;
+      ctx.fillStyle = `rgba(249, 115, 22, ${0.16 * pulse})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2.8;
+      ctx.setLineDash([10, 6]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r, -(nowMs * 0.0025) % (Math.PI * 2), Math.PI * 2 - (nowMs * 0.0025) % (Math.PI * 2));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      const col =
+        characterId === 'STANDARD'
+          ? '#00ff66'
+          : characterId === 'ROOT'
+          ? '#38bdf8'
+          : characterId === 'MORCILLITA'
+          ? '#ec4899'
+          : characterId === 'CRYPTO'
+          ? '#fbbf24'
+          : characterId === 'SPECTRE'
+          ? '#22d3ee'
+          : '#ef4444';
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, 34 + Math.sin(nowMs * 0.018) * 3, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.rotate(nowMs * 0.004);
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.arc(0, 0, 44, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.restore();
   }
 

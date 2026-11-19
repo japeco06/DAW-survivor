@@ -24,6 +24,138 @@ export type CharacterId =
 export type GameMode = 'CLASSIC' | 'NIGHTMARE';
 export const NIGHTMARE_ENTRY_COST = 15;
 
+export type LabUpgradeId =
+  | 'HULL_ARMOR'
+  | 'CPU_OVERCLOCK'
+  | 'DATA_MAGNET'
+  | 'TURBO_SERVOS'
+  | 'CRYPTO_MINING'
+  | 'TACTICAL_DICE';
+
+export interface LabUpgradeConfig {
+  id: LabUpgradeId;
+  name: string;
+  nameEn: string;
+  subtitle: string;
+  subtitleEn: string;
+  desc: string;
+  descEn: string;
+  statPerLevel: string;
+  statPerLevelEn: string;
+  color: string;
+  maxLevel: number;
+  costs: number[];
+}
+
+export interface LabComputedBonuses {
+  hpMult: number;
+  damageBonus: number;
+  magnetMult: number;
+  xpBonus: number;
+  speedMult: number;
+  fireRateBonus: number;
+  coinDropBonus: number;
+  ultChargeMult: number;
+  extraRerolls: number;
+  reviveSpeedMult: number;
+}
+
+export const LAB_UPGRADES_ORDER: LabUpgradeId[] = [
+  'HULL_ARMOR',
+  'CPU_OVERCLOCK',
+  'DATA_MAGNET',
+  'TURBO_SERVOS',
+  'CRYPTO_MINING',
+  'TACTICAL_DICE',
+];
+
+export const LAB_UPGRADES_CONFIG: Record<LabUpgradeId, LabUpgradeConfig> = {
+  HULL_ARMOR: {
+    id: 'HULL_ARMOR',
+    name: 'BLINDAJE DE CHASIS',
+    nameEn: 'CHASSIS ARMOR',
+    subtitle: 'DEFENSA // +8% HP MÁX',
+    subtitleEn: 'DEFENSE // +8% MAX HP',
+    desc: 'Refuerza las placas del núcleo con aleación cuántica permanente.',
+    descEn: 'Reinforces core plating with permanent quantum alloy.',
+    statPerLevel: '+8% HP Máx / nivel',
+    statPerLevelEn: '+8% Max HP / level',
+    color: '#10b981',
+    maxLevel: 5,
+    costs: [12, 24, 40, 60, 85],
+  },
+  CPU_OVERCLOCK: {
+    id: 'CPU_OVERCLOCK',
+    name: 'FRECUENCIA DE NÚCLEO',
+    nameEn: 'CORE FREQUENCY',
+    subtitle: 'ATAQUE // +6% DAÑO',
+    subtitleEn: 'OFFENSE // +6% DAMAGE',
+    desc: 'Eleva el voltaje base de todas las armas y mascotas.',
+    descEn: 'Boosts base voltage across all weapons and companions.',
+    statPerLevel: '+6% Daño Global / nivel',
+    statPerLevelEn: '+6% Global Dmg / level',
+    color: '#f43f5e',
+    maxLevel: 5,
+    costs: [15, 28, 45, 68, 95],
+  },
+  DATA_MAGNET: {
+    id: 'DATA_MAGNET',
+    name: 'BOBINA MAGNÉTICA',
+    nameEn: 'MAGNETIC COIL',
+    subtitle: 'UTILIDAD // +15% IMÁN +6% XP',
+    subtitleEn: 'UTILITY // +15% MAGNET +6% XP',
+    desc: 'Amplía permanentemente el campo de atracción y ganancia de XP.',
+    descEn: 'Permanently expands pickup radius and XP gain.',
+    statPerLevel: '+15% Imán y +6% XP / nv',
+    statPerLevelEn: '+15% Magnet & +6% XP / lv',
+    color: '#38bdf8',
+    maxLevel: 5,
+    costs: [12, 22, 38, 58, 82],
+  },
+  TURBO_SERVOS: {
+    id: 'TURBO_SERVOS',
+    name: 'SERVOMOTORES TURBO',
+    nameEn: 'TURBO SERVOS',
+    subtitle: 'AGILIDAD // +4% VEL +5% CAD',
+    subtitleEn: 'AGILITY // +4% SPD +5% ROF',
+    desc: 'Acelera el desplazamiento del chasis y la cadencia de disparo.',
+    descEn: 'Accelerates chassis movement and weapon fire rate.',
+    statPerLevel: '+4% Vel y +5% Cadencia / nv',
+    statPerLevelEn: '+4% Spd & +5% ROF / lv',
+    color: '#fb923c',
+    maxLevel: 5,
+    costs: [15, 28, 45, 68, 95],
+  },
+  CRYPTO_MINING: {
+    id: 'CRYPTO_MINING',
+    name: 'SUBRUTINA DE MINERÍA',
+    nameEn: 'MINING SUBROUTINE',
+    subtitle: 'BOTÍN // +2.5% CRIPTO +ULT',
+    subtitleEn: 'LOOT // +2.5% CRYPTO +ULT',
+    desc: 'Extrae más CryptoCoins y reduce las bajas necesarias para la Ultimate.',
+    descEn: 'Extracts more CryptoCoins and speeds up Ultimate charge.',
+    statPerLevel: '+2.5% Drop CR y -2 Bajas Ult / nv',
+    statPerLevelEn: '+2.5% CR Drop & -2 Ult Kills / lv',
+    color: '#fbbf24',
+    maxLevel: 5,
+    costs: [18, 32, 52, 76, 105],
+  },
+  TACTICAL_DICE: {
+    id: 'TACTICAL_DICE',
+    name: 'DADOS CUÁNTICOS',
+    nameEn: 'QUANTUM DICE',
+    subtitle: 'TÁCTICA // +1 REROLL +RESCATE',
+    subtitleEn: 'TACTICS // +1 REROLL +REVIVE',
+    desc: 'Otorga Rerolls extra por partida y acelera reanimaciones en Co-op.',
+    descEn: 'Grants extra Rerolls per run and faster Co-op revives.',
+    statPerLevel: '+1 Reroll y +15% Rescate / nv',
+    statPerLevelEn: '+1 Reroll & +15% Revive / lv',
+    color: '#c084fc',
+    maxLevel: 3,
+    costs: [25, 55, 95],
+  },
+};
+
 export interface LeaderboardEntry {
   uid: string;
   displayName: string;
@@ -43,6 +175,12 @@ export interface CharacterProfile {
   passiveNameEn: string;
   passiveDesc: string;
   passiveDescEn: string;
+  ultName: string;
+  ultNameEn: string;
+  ultDesc: string;
+  ultDescEn: string;
+  ultDuration: number;
+  ultKillsRequired: number;
   color: string;
   borderColor: string;
   speedMultiplier: number;
@@ -61,6 +199,7 @@ interface SavedMetaState {
   highScore?: number;
   bestTimeSeconds?: number;
   maxDamageToToro?: number;
+  labLevels?: Partial<Record<LabUpgradeId, number>>;
 }
 
 export const STORAGE_KEY = 'daw_survivor_meta_v020';
@@ -84,6 +223,14 @@ export class MetaSystem {
   public highScore: number = 0;
   public bestTimeSeconds: number = 0;
   public maxDamageToToro: number = 0;
+  public labLevels: Record<LabUpgradeId, number> = {
+    HULL_ARMOR: 0,
+    CPU_OVERCLOCK: 0,
+    DATA_MAGNET: 0,
+    TURBO_SERVOS: 0,
+    CRYPTO_MINING: 0,
+    TACTICAL_DICE: 0,
+  };
   private dirty: boolean = false;
   private lastSaveTime: number = 0;
 
@@ -111,6 +258,12 @@ export class MetaSystem {
       passiveNameEn: 'KERNEL SURGE',
       passiveDesc: 'Al recibir daño emite onda (45 dmg) + cura +1 HP cada 25 bajas.',
       passiveDescEn: 'Releases radial pulse (45 dmg) on hit + heals +1 HP every 25 kills.',
+      ultName: 'SOBRECARGA EMP',
+      ultNameEn: 'EMP OVERLOAD',
+      ultDesc: '6s: Pulsos EMP que destruyen balas, congelan enemigos, +35% cadencia y +4 HP/s.',
+      ultDescEn: '6s: EMP blasts destroy bullets, freeze foes, +35% fire rate & +4 HP/s.',
+      ultDuration: 6.0,
+      ultKillsRequired: 35,
       color: '#00ff66',
       borderColor: '#ffffff',
       speedMultiplier: 1.0,
@@ -130,6 +283,12 @@ export class MetaSystem {
       passiveNameEn: 'OVERCLOCK TRAIL',
       passiveDesc: 'Deja nodos de fuego eléctrico al moverse (-30% velocidad enemiga).',
       passiveDescEn: 'Drops electric trail nodes while moving (-30% enemy speed).',
+      ultName: 'PROTOCOLO FANTASMA',
+      ultNameEn: 'PHANTOM PROTOCOL',
+      ultDesc: '5.5s: Invulnerabilidad fasada, +65% velocidad y estela de alto voltaje (x2.5 daño).',
+      ultDescEn: '5.5s: Phase invulnerability, +65% speed & high-voltage trail (2.5x dmg).',
+      ultDuration: 5.5,
+      ultKillsRequired: 35,
       color: '#1e40af',
       borderColor: '#60a5fa',
       speedMultiplier: 1.2,
@@ -149,6 +308,12 @@ export class MetaSystem {
       passiveNameEn: 'AEGIS BARRIER',
       passiveDesc: 'Cada 16 s bloquea por completo 1 impacto y repele enemigos.',
       passiveDescEn: 'Every 16s completely blocks 1 enemy hit and knocks foes back.',
+      ultName: 'CÚPULA AEGIS',
+      ultNameEn: 'AEGIS DOME',
+      ultDesc: '7s: Cúpula (210px) que destruye balas, reduce 70% daño, cura +8 HP/s al equipo y electrocuta.',
+      ultDescEn: '7s: 210px Dome destroys bullets, -70% dmg taken, heals squad +8 HP/s & zaps.',
+      ultDuration: 7.0,
+      ultKillsRequired: 35,
       color: '#9333ea',
       borderColor: '#f3e8ff',
       speedMultiplier: 0.85,
@@ -168,6 +333,12 @@ export class MetaSystem {
       passiveNameEn: 'SYMBIOTIC LINK',
       passiveDesc: 'Mascota autónoma con 3 ramas evolutivas y mejoras en Nv.5 / 10 / 20.',
       passiveDescEn: 'Autonomous companion with 3 evolution branches & Lvl 5 / 10 / 20 boosts.',
+      ultName: 'HIPER-EVOLUCIÓN K9',
+      ultNameEn: 'K9 HYPER-DRIVE',
+      ultDesc: '7.5s: Morcillita gana +80% daño, +65% velocidad y emite ondas sísmicas continuas.',
+      ultDescEn: '7.5s: Morcillita gains +80% dmg, +65% speed & emits continuous shockwaves.',
+      ultDuration: 7.5,
+      ultKillsRequired: 35,
       color: '#ec4899',
       borderColor: '#fbcfe8',
       speedMultiplier: 1.05,
@@ -187,6 +358,12 @@ export class MetaSystem {
       passiveNameEn: 'HASH MAGNET',
       passiveDesc: '+35% imán, +5% crítico y mayor probabilidad de soltar CryptoCoins.',
       passiveDescEn: '+35% magnet, +5% crit chance & bonus CryptoCoin drop rate.',
+      ultName: 'FIEBRE DEL ORO',
+      ultNameEn: 'GOLD RUSH',
+      ultDesc: '7s: Imán global (+600px), +50% cadencia, rayos dorados y +1 CryptoCoin cada 10 bajas.',
+      ultDescEn: '7s: Screen-wide magnet, +50% ROF, gold lightning & +1 CryptoCoin per 10 kills.',
+      ultDuration: 7.0,
+      ultKillsRequired: 35,
       color: '#f59e0b',
       borderColor: '#fef08a',
       speedMultiplier: 1.05,
@@ -206,6 +383,12 @@ export class MetaSystem {
       passiveNameEn: 'SPECTRAL PHASE',
       passiveDesc: '22% probabilidad de esquivar cualquier daño + 15% crítico base.',
       passiveDescEn: '22% chance to phase through any damage + 15% base crit chance.',
+      ultName: 'EJECUCIÓN SOMBRÍA',
+      ultNameEn: 'SHADOW EXECUTION',
+      ultDesc: '6s: 100% Prob. Crítica, +55% esquiva/velocidad y ráfaga automática de dagas sombrías.',
+      ultDescEn: '6s: 100% Crit Chance, +55% dodge/speed & automatic shadow dagger barrage.',
+      ultDuration: 6.0,
+      ultKillsRequired: 35,
       color: '#06b6d4',
       borderColor: '#cffafe',
       speedMultiplier: 1.12,
@@ -225,6 +408,12 @@ export class MetaSystem {
       passiveNameEn: 'ADRENALINE SURGE',
       passiveDesc: 'Cada 25 bajas entra en Sobrecarga durante 3.5 s (+45% cadencia / +25% vel).',
       passiveDescEn: 'Triggers 3.5s Overdrive every 25 kills (+45% fire rate / +25% speed).',
+      ultName: 'FUSIÓN NUCLEAR',
+      ultNameEn: 'NUCLEAR MELTDOWN',
+      ultDesc: '6s: Cadencia x2.2, +35% velocidad y aura térmica abrasadora (180px) continua.',
+      ultDescEn: '6s: 2.2x Fire Rate, +35% speed & scorching 180px thermal plasma aura.',
+      ultDuration: 6.0,
+      ultKillsRequired: 35,
       color: '#f97316',
       borderColor: '#fed7aa',
       speedMultiplier: 1.08,
@@ -244,6 +433,12 @@ export class MetaSystem {
       passiveNameEn: 'REGEN CORE',
       passiveDesc: 'Regenera +2 HP/s continuamente y empieza con +20% daño +1 bala.',
       passiveDescEn: 'Passively regenerates +2 HP/s and starts with +20% dmg +1 extra shot.',
+      ultName: 'TORMENTA ORBITAL',
+      ultNameEn: 'ORBITAL STORM',
+      ultDesc: '6.5s: +3 proyectiles extra, +50% cadencia y bombardeo láser orbital automático.',
+      ultDescEn: '6.5s: +3 extra projectiles, +50% fire rate & automatic orbital laser strikes.',
+      ultDuration: 6.5,
+      ultKillsRequired: 35,
       color: '#ef4444',
       borderColor: '#fecaca',
       speedMultiplier: 0.9,
@@ -294,6 +489,75 @@ export class MetaSystem {
 
   public getSelectedProfile(): CharacterProfile {
     return this.characters[this.selectedCharacter];
+  }
+
+  public getLabLevel(id: LabUpgradeId): number {
+    return this.labLevels[id] ?? 0;
+  }
+
+  public buyLabUpgrade(id: LabUpgradeId): { success: boolean; message: string } {
+    const cfg = LAB_UPGRADES_CONFIG[id];
+    const curLvl = this.getLabLevel(id);
+    if (curLvl >= cfg.maxLevel) {
+      return {
+        success: false,
+        message: `> ${cfg.name} ya está al NIVEL MÁXIMO (Nv.${cfg.maxLevel}/${cfg.maxLevel}).`,
+      };
+    }
+    const cost = cfg.costs[curLvl] ?? 999;
+    if (this.coins < cost) {
+      return {
+        success: false,
+        message: `> ERROR: Necesitas ${cost} CR para mejorar ${cfg.name} a Nv.${curLvl + 1} (Tienes ${this.coins} CR).`,
+      };
+    }
+    this.coins -= cost;
+    this.labLevels[id] = curLvl + 1;
+    this.save();
+    void this.syncToCloud();
+    return {
+      success: true,
+      message: `> ¡MEJORA PERMANENTE INSTALADA: ${cfg.name} Nv.${curLvl + 1}/${cfg.maxLevel}! (-${cost} CR)`,
+    };
+  }
+
+  public static computeLabBonuses(levels?: Partial<Record<LabUpgradeId, number>>): LabComputedBonuses {
+    const hull = Math.max(0, Math.min(5, Math.floor(levels?.HULL_ARMOR ?? 0)));
+    const cpu = Math.max(0, Math.min(5, Math.floor(levels?.CPU_OVERCLOCK ?? 0)));
+    const mag = Math.max(0, Math.min(5, Math.floor(levels?.DATA_MAGNET ?? 0)));
+    const srv = Math.max(0, Math.min(5, Math.floor(levels?.TURBO_SERVOS ?? 0)));
+    const min = Math.max(0, Math.min(5, Math.floor(levels?.CRYPTO_MINING ?? 0)));
+    const dice = Math.max(0, Math.min(3, Math.floor(levels?.TACTICAL_DICE ?? 0)));
+
+    return {
+      hpMult: 1 + hull * 0.08,
+      damageBonus: cpu * 0.06,
+      magnetMult: 1 + mag * 0.15,
+      xpBonus: mag * 0.06,
+      speedMult: 1 + srv * 0.04,
+      fireRateBonus: srv * 0.05,
+      coinDropBonus: min * 0.025,
+      ultChargeMult: Math.max(0.65, 1 - min * 0.06),
+      extraRerolls: dice,
+      reviveSpeedMult: 1 + dice * 0.15,
+    };
+  }
+
+  public getLabBonuses(): LabComputedBonuses {
+    return MetaSystem.computeLabBonuses(this.labLevels);
+  }
+
+  public static readLabBonusesFromStorage(): LabComputedBonuses {
+    try {
+      const raw =
+        window.localStorage.getItem(STORAGE_KEY) ||
+        window.localStorage.getItem('cyber_survivor_meta_v020');
+      if (!raw) return MetaSystem.computeLabBonuses();
+      const parsed = JSON.parse(raw) as Partial<SavedMetaState>;
+      return MetaSystem.computeLabBonuses(parsed.labLevels);
+    } catch {
+      return MetaSystem.computeLabBonuses();
+    }
   }
 
   public selectOrBuyCharacter(id: CharacterId): { success: boolean; message: string } {
@@ -526,6 +790,7 @@ export class MetaSystem {
         unlockedHats: Array.from(this.unlockedHats),
         equippedHatId: this.equippedHatId,
         highScore: this.highScore,
+        labLevels: { ...this.labLevels },
       };
 
       // Only overwrite maxDamageToToro / bestTimeSeconds if strictly greater than saved value (or if not yet present)
@@ -693,6 +958,18 @@ export class MetaSystem {
     if (typeof parsed.maxDamageToToro === 'number' && Number.isFinite(parsed.maxDamageToToro) && parsed.maxDamageToToro >= 0) {
       this.maxDamageToToro = Math.max(this.maxDamageToToro, Math.floor(parsed.maxDamageToToro));
     }
+    if (parsed.labLevels && typeof parsed.labLevels === 'object') {
+      for (const id of LAB_UPGRADES_ORDER) {
+        const cfg = LAB_UPGRADES_CONFIG[id];
+        const rawVal = parsed.labLevels[id];
+        if (typeof rawVal === 'number' && Number.isFinite(rawVal)) {
+          const cleanLvl = Math.max(0, Math.min(cfg.maxLevel, Math.floor(rawVal)));
+          this.labLevels[id] = mergeWithCurrent
+            ? Math.max(this.labLevels[id] ?? 0, cleanLvl)
+            : cleanLvl;
+        }
+      }
+    }
   }
 
   private getStatePayload(): SavedMetaState {
@@ -706,6 +983,7 @@ export class MetaSystem {
       highScore: this.highScore,
       bestTimeSeconds: this.bestTimeSeconds,
       maxDamageToToro: this.maxDamageToToro,
+      labLevels: { ...this.labLevels },
     };
   }
 

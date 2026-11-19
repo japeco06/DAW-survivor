@@ -349,16 +349,42 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │   ├── Paridad total Co-op + Servidor endurecido (`server/index.js`): proyectiles enemigos y eventos de terreno golpean a Invitados, simulación única (`1x`) de arrays compartidos, Drones/Morcillita/Anillos/Barra y música de Jefes/Feedback de daño/Guardado en la nube en Invitados, cámara espectadora al caer y cola íntegra de múltiples subidas de nivel
 │   └── Rendimiento: consultas de obstáculos *zero-allocation* con caché LRU (`WorldEnvironment.ts`), `ParticleSystem` con arrastre independiente del FPS y sin `save/restore` por partícula, eliminación de `shadowBlur` en jefes/mascota/sombreros y `PingProjectile` con recálculo amortiguado
 │
-└── v1.6.1 — Pulido de UI/UX: Pausa Segura con Esc, Silenciado Rápido [M], Toasts y Banners Sin Solapes (ACTUAL)
-    ├── Pausa intuitiva con `Esc` / `P` (ya no sale al menú por accidente al pulsar `Esc` en pausa; auto-pausa al cambiar de pestaña en Solo) y barra de estado de atajos en tiempo real dentro del menú de pausa
-    ├── Botón rápido clicable/táctil de Audio (`🔊/🔇`) junto a `[ESC] PAUSA` en el HUD superior derecho, atajo `[M]` (y `Shift+M` en Menú) y cápsula efímera de estado para Audio (`[M]`), Gráficos Ligeros (`[V]`) y Pantalla Completa (`[F]`)
-    ├── Toasts de Logros y Misiones Diarias reubicados en pila limpia en esquina inferior derecha (sin tapar jamás la barra de armas ni alertas) y pila dinámica `drawTopStatusBanners()` para Enjambre, Jefes, Hielo y Overclock sin colisiones verticales
-    └── Flechas de aliados Co-op elevadas automáticamente por encima de la barra inferior de Jefes y `El Toro`
+├── v1.6.1 — Pulido de UI/UX: Pausa Segura con Esc, Silenciado Rápido [M], Toasts y Banners Sin Solapes
+│   ├── Pausa intuitiva con `Esc` / `P` (ya no sale al menú por accidente al pulsar `Esc` en pausa; auto-pausa al cambiar de pestaña en Solo) y barra de estado de atajos en tiempo real dentro del menú de pausa
+│   ├── Botón rápido clicable/táctil de Audio (`🔊/🔇`) junto a `[ESC] PAUSA` en el HUD superior derecho, atajo `[M]` (y `Shift+M` en Menú) y cápsula efímera de estado para Audio (`[M]`), Gráficos Ligeros (`[V]`) y Pantalla Completa (`[F]`)
+│   ├── Toasts de Logros y Misiones Diarias reubicados en pila limpia en esquina inferior derecha (sin tapar jamás la barra de armas ni alertas) y pila dinámica `drawTopStatusBanners()` para Enjambre, Jefes, Hielo y Overclock sin colisiones verticales
+│   └── Flechas de aliados Co-op elevadas automáticamente por encima de la barra inferior de Jefes y `El Toro`
+│
+└── v1.7.0 — Habilidades Ultimate por Agente, Laboratorio Permanente, Tabla MVP Co-op y Complejos de Obstáculos Soldados (ACTUAL)
+    ├── Habilidad Activa / Ultimate única para cada uno de los 8 Agentes (se carga con bajas `35` y dura `5.5–7.5 s`, activable con `[Espacio]` / `[E]` o clic en la barra HUD en Solo y Co-op)
+    ├── Pestaña `[U] LABORATORIO` (`KERNEL LAB`) en el Hangar con 6 módulos permanentes (`Nv 0..5`) comprables con CryptoCoins y sincronizados con la nube
+    ├── Pantalla Post-Partida con Tabla MVP del Escuadrón Co-op (medallas de Daño y Médico, daño total, mejor arma, reanimaciones), desglose real de daño por arma en Invitados y botones interactivos
+    └── Complejos de obstáculos mejorados en Mapa Infinito: 2 nuevos módulos (`CRYO_SILO` y `PLASMA_BARRIER`), prevención de pasillos trampa (`>= 88 px`), renderizado en 3 pasadas (sombra unificada -> cuerpos -> abrazaderas de soldadura) y elección del rodeo más corto
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.7.0] - 2026-11-19
+- **Habilidad Activa / Ultimate por Agente Cargada por Bajas (`Player.ts`, `CombatSystem.ts`, `MetaSystem.ts`, `Game.ts`, `CoopRenderer.ts`, `MultiplayerTypes.ts`, `MultiplayerClient.ts`, `server/index.js`)**:
+  - Cada uno de los 8 agentes cuenta con una Ultimate temática con carga por bajas (`35 bajas` base, reducidas por Subrutina de Minería, `+7` por jefe/minero) y duración activa (`5.5–7.5 s`), activable con `[Espacio]`, `[E]` o clic/toque en la barra del HUD tanto en Solo como en Co-op (Host e Invitados):
+    - **Estándar (`SOBRECARGA EMP` - 6s)**: Pulsos EMP que destruyen balas, congelan enemigos `1s`, `+35%` cadencia y `+4 HP/s`.
+    - **Root (`PROTOCOLO FANTASMA` - 5.5s)**: Invulnerabilidad fasada, `+65%` velocidad y estela de alto voltaje (`2.5×` daño y radio).
+    - **Proxy (`CÚPULA AEGIS` - 7s)**: Cúpula de `210 px` que vaporiza proyectiles enemigos para el escuadrón, reduce `70%` el daño recibido, cura `+8 HP/s` y electrocuta.
+    - **Morcillita (`HIPER-EVOLUCIÓN K9` - 7.5s)**: Sobrecarga a Morcillita con `+80%` daño y `+65%` velocidad de ataque/movimiento.
+    - **Crypto (`FIEBRE DEL ORO` - 7s)**: Imán global (`+600 px`), `+50%` cadencia, rayos dorados y `+1 CryptoCoin` garantizada cada 10 bajas.
+    - **Spectre (`EJECUCIÓN SOMBRÍA` - 6s)**: `100%` probabilidad crítica (`2.5×` daño), `+45%` velocidad, `+35%` esquiva y ráfagas automáticas de dagas sombrías.
+    - **Overclock (`FUSIÓN NUCLEAR` - 6s)**: Cadencia `×2.2`, `+35%` velocidad y aura térmica abrasadora continua de `180 px`.
+    - **Kernel-X (`TORMENTA ORBITAL` - 6.5s)**: `+3` proyectiles extra, `+50%` cadencia y bombardeo láser orbital automático sobre los enemigos de mayor vida.
+- **Laboratorio de Mejoras Permanentes en el Hangar (`MetaSystem.ts`, `Player.ts`, `UpgradeSystem.ts`, `Game.ts`)**:
+  - Nueva pestaña **`[U] LABORATORIO`** (`KERNEL LAB`) con 6 módulos permanentes (`BLINDAJE DE CHASIS`, `FRECUENCIA DE NÚCLEO`, `BOBINA MAGNÉTICA`, `SERVOMOTORES TURBO`, `SUBRUTINA DE MINERÍA` y `DADOS CUÁNTICOS`) persistidos en `localStorage` y Firestore, reflejados en vivo en las barras de telemetría del Hangar.
+- **Pantalla Post-Partida con Tabla MVP Co-op y Estadísticas Reales en Invitados (`Game.ts`, `MultiplayerTypes.ts`)**:
+  - El Host empaqueta `CoopGameOverStats` en el evento `GAME_OVER` para que todos los Invitados vean su desglose real de daño por arma, amenazas purgadas y la tabla **`CLASIFICACIÓN DEL ESCUADRÓN CO-OP`** (daño total, arma estrella, reanimaciones `✚` y medallas `★ MVP` / `✚ MED`), junto con botones interactivos al pie.
+- **Complejos de Obstáculos Mejorados en Mapa Infinito (`WorldEnvironment.ts`)**:
+  - Añadidos dos nuevos obstáculos (`CRYO_SILO` con turbina rotatoria y `PLASMA_BARRIER` con pilones y haz de alto voltaje), unión profunda en piezas circulares (`24 px`), filtro contra callejones trampa (`< 88 px`), renderizado en 3 pasadas (sombra unificada -> cuerpos -> abrazaderas de soldadura con conducto de plasma en cada unión `jointPoint`) y elección del rodeo más corto hacia el objetivo en `moveEntityAvoidingObstacles`.
+- **Sincronización de Versión (`v1.7.0`)**:
+  - Actualizados `GAME_VERSION` en `src/core/Game.ts`, `package.json`, `package-lock.json`, `server/package.json`, `server/package-lock.json`, `server/index.js` y `ROADMAP.md` a `1.7.0`.
 
 ### [v1.6.1] - 2026-11-19
 - **Pausa Segura con `Esc` y Auto-Pausa en Solo (`Game.ts`)**:

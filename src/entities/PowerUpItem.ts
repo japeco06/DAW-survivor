@@ -22,7 +22,7 @@ export class PowerUpItem extends Entity {
     const dy = player.y - this.y;
     const dist = Math.hypot(dx, dy);
 
-    if (dist <= player.pickupRadius * 1.15 || this.magnetized) {
+    if (dist <= player.getEffectivePickupRadius() * 1.15 || this.magnetized) {
       this.magnetized = true;
       if (dist > 0) {
         this.x += (dx / dist) * this.speed * dt;

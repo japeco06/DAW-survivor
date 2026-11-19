@@ -372,9 +372,20 @@ export class MultiplayerClient {
     });
   }
 
-  public sendInput(moveX: number, moveY: number, facingAngle: number, isMoving: boolean, seq: number): void {
+  public sendInput(
+    moveX: number,
+    moveY: number,
+    facingAngle: number,
+    isMoving: boolean,
+    seq: number,
+    ult: boolean = false
+  ): void {
     if (this.socket?.connected && this.room?.status === 'IN_GAME') {
-      this.socket.volatile.emit('game:input', { moveX, moveY, facingAngle, isMoving, seq });
+      if (ult) {
+        this.socket.emit('game:input', { moveX, moveY, facingAngle, isMoving, seq, ult: true });
+      } else {
+        this.socket.volatile.emit('game:input', { moveX, moveY, facingAngle, isMoving, seq });
+      }
     }
   }
 

@@ -24,7 +24,7 @@ export class CodeFragment extends Entity {
     const dist = Math.hypot(dx, dy);
 
     // Si entra dentro del radio magnético del jugador, se engancha y vuela hacia él
-    if (dist <= player.pickupRadius || this.magnetized) {
+    if (dist <= player.getEffectivePickupRadius() || this.magnetized) {
       this.magnetized = true;
       if (dist > 0) {
         this.x += (dx / dist) * this.speed * dt;

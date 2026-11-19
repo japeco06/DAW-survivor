@@ -24,7 +24,7 @@ export class CryptoCoin extends Entity {
     const dist = Math.hypot(dx, dy);
 
     // Se magnetiza al entrar en el radio de recolección del jugador
-    if (dist <= player.pickupRadius * 1.15 || this.magnetized) {
+    if (dist <= player.getEffectivePickupRadius() * 1.15 || this.magnetized) {
       this.magnetized = true;
       if (dist > 0) {
         this.x += (dx / dist) * this.speed * dt;

@@ -869,9 +869,12 @@ export class CombatSystem {
     };
 
     const rollCritHit = (scaledDamage: number): { dmg: number; isCrit: boolean } => {
-      const isCrit = Math.random() < player.critChance;
+      const isSpectreUlt = player.ultActiveTimer > 0 && player.characterId === 'SPECTRE';
+      const effCrit = isSpectreUlt ? 1.0 : player.critChance;
+      const isCrit = Math.random() < effCrit;
+      const critMult = isSpectreUlt ? 2.5 : 2.0;
       return {
-        dmg: isCrit ? scaledDamage * 2 : scaledDamage,
+        dmg: isCrit ? Math.round(scaledDamage * critMult) : scaledDamage,
         isCrit,
       };
     };
@@ -886,9 +889,166 @@ export class CombatSystem {
       (this.evolvedPing ? this.pingCooldown * 0.72 : this.pingCooldown) / effectiveRof
     );
 
+    // --- HABILIDAD ULTIMATE ACTIVA POR AGENTE (pulsos periódicos durante ultActiveTimer > 0) ---
+    if (player.active && player.ultActiveTimer > 0 && player.ultPulseTimer <= 0) {
+      if (player.characterId === 'STANDARD') {
+        player.ultPulseTimer = 1.45;
+        const empDmg = computeBaseScaledDamage(85);
+        this.cryoRings.push({
+          x: player.x,
+          y: player.y,
+          radius: 18,
+          maxRadius: 260,
+          alpha: 0.92,
+          color: '#00ff66',
+        });
+        for (const ep of this.enemyProjectiles) {
+          if (ep.active && Math.hypot(ep.x - player.x, ep.y - player.y) <= 265) {
+            ep.active = false;
+            wallImpacts.push({ x: ep.x, y: ep.y, color: '#00ff66' });
+          }
+        }
+        for (const enemy of enemies) {
+          if (!enemy.active) continue;
+          const d = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+          if (d <= 260 + enemy.size * 0.45) {
+            const dx = (enemy.x - player.x) / (d || 1);
+            const dy = (enemy.y - player.y) / (d || 1);
+            enemy.takeDamage(empDmg, dx * 48, dy * 48);
+            if (enemy.active) {
+              enemy.networkFreezeTimer = Math.max(enemy.networkFreezeTimer, 1.0);
+            }
+            this.weaponDamageStats['Ráfaga Firewall'] += empDmg;
+            damagedEnemies.push({ x: enemy.x, y: enemy.y, damage: empDmg, color: '#00ff66', isCrit: true });
+            registerEnemyKillIfDead(enemy);
+          }
+        }
+      } else if (player.characterId === 'PROXY') {
+        player.ultPulseTimer = 0.4;
+        const domeDmg = computeBaseScaledDamage(30);
+        if (allCoopTargets) {
+          for (const ally of allCoopTargets) {
+            if (ally.active && ally !== player && Math.hypot(ally.x - player.x, ally.y - player.y) <= 215) {
+              ally.heal(3);
+            }
+          }
+        }
+        for (const enemy of enemies) {
+          if (!enemy.active) continue;
+          const d = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+          if (d <= 210 + enemy.size * 0.4) {
+            const dx = (enemy.x - player.x) / (d || 1);
+            const dy = (enemy.y - player.y) / (d || 1);
+            enemy.takeDamage(domeDmg, dx * 18, dy * 18);
+            if (enemy.active) {
+              enemy.cryoSlowTimer = Math.max(enemy.cryoSlowTimer, 0.8);
+              enemy.cryoSlowFactor = Math.min(enemy.cryoSlowFactor, 0.5);
+            }
+            this.weaponDamageStats['Cortafuegos'] += domeDmg;
+            damagedEnemies.push({ x: enemy.x, y: enemy.y, damage: domeDmg, color: '#c084fc' });
+            registerEnemyKillIfDead(enemy);
+          }
+        }
+      } else if (player.characterId === 'SPECTRE') {
+        player.ultPulseTimer = 0.35;
+        const daggerTargets = this.findNearestEnemies(player, enemies, 3, worldEnv);
+        const daggerDmg = computeBaseScaledDamage(46);
+        for (let i = 0; i < daggerTargets.length; i++) {
+          const tgt = daggerTargets[i];
+          const ang = Math.atan2(tgt.y - player.y, tgt.x - player.x);
+          projectiles.push(
+            new Projectile(player.x, player.y, Math.cos(ang), Math.sin(ang), 760, daggerDmg, 2, true)
+          );
+        }
+        if (daggerTargets.length > 0) shotsFired++;
+      } else if (player.characterId === 'OVERCLOCK') {
+        player.ultPulseTimer = 0.25;
+        const burnDmg = computeBaseScaledDamage(26);
+        for (const enemy of enemies) {
+          if (!enemy.active) continue;
+          if (Math.hypot(enemy.x - player.x, enemy.y - player.y) <= 180 + enemy.size * 0.45) {
+            const critRoll = rollCritHit(burnDmg);
+            enemy.takeDamage(critRoll.dmg, 0, 0);
+            this.weaponDamageStats['Cortafuegos'] += critRoll.dmg;
+            damagedEnemies.push({
+              x: enemy.x,
+              y: enemy.y,
+              damage: critRoll.dmg,
+              color: '#fb923c',
+              isCrit: critRoll.isCrit,
+            });
+            registerEnemyKillIfDead(enemy);
+          }
+        }
+      } else if (player.characterId === 'KERNEL_X') {
+        player.ultPulseTimer = 0.45;
+        let bestEnemy: Adware | null = null;
+        let bestHp = -1;
+        for (const enemy of enemies) {
+          if (!enemy.active) continue;
+          if (Math.hypot(enemy.x - player.x, enemy.y - player.y) <= 520 && enemy.hp > bestHp) {
+            bestHp = enemy.hp;
+            bestEnemy = enemy;
+          }
+        }
+        if (bestEnemy) {
+          const strikeDmg = computeBaseScaledDamage(115);
+          this.teslaArcs.push({
+            points: [
+              { x: bestEnemy.x, y: bestEnemy.y - 240 },
+              { x: bestEnemy.x, y: bestEnemy.y },
+            ],
+            life: 0.22,
+            maxLife: 0.22,
+            color: '#ef4444',
+          });
+          this.cryoRings.push({
+            x: bestEnemy.x,
+            y: bestEnemy.y,
+            radius: 10,
+            maxRadius: 68,
+            alpha: 0.88,
+            color: '#f87171',
+          });
+          for (const foe of enemies) {
+            if (!foe.active) continue;
+            if (Math.hypot(foe.x - bestEnemy.x, foe.y - bestEnemy.y) <= 68 + foe.size * 0.4) {
+              foe.takeDamage(strikeDmg, 0, 0);
+              this.weaponDamageStats['Rayo SQL'] += strikeDmg;
+              damagedEnemies.push({ x: foe.x, y: foe.y, damage: strikeDmg, color: '#ef4444', isCrit: true });
+              registerEnemyKillIfDead(foe);
+            }
+          }
+        }
+      } else if (player.characterId === 'CRYPTO') {
+        player.ultPulseTimer = 0.5;
+        const goldTargets = this.findNearestEnemies(player, enemies, 2, worldEnv);
+        const goldDmg = computeBaseScaledDamage(52);
+        for (const gt of goldTargets) {
+          gt.takeDamage(goldDmg, 0, 0);
+          this.weaponDamageStats['Bobina Tesla'] += goldDmg;
+          this.teslaArcs.push({
+            points: [
+              { x: player.x, y: player.y },
+              { x: gt.x, y: gt.y },
+            ],
+            life: 0.18,
+            maxLife: 0.18,
+            color: '#fbbf24',
+          });
+          damagedEnemies.push({ x: gt.x, y: gt.y, damage: goldDmg, color: '#fbbf24', isCrit: true });
+          registerEnemyKillIfDead(gt);
+        }
+      } else {
+        player.ultPulseTimer = 0.5;
+      }
+    }
+
     // --- ARMA 1: Ráfaga de Firewall (-> Cañón Hex-Core) ---
     if (!player.isSummoner && player.active && this.fireTimer >= effectiveFireCooldown) {
-      const shotCount = this.evolvedBasic ? Math.max(4, this.multiShotCount + 1) : this.multiShotCount;
+      const ultBonusShots = player.ultActiveTimer > 0 && player.characterId === 'KERNEL_X' ? 3 : 0;
+      const shotCount =
+        (this.evolvedBasic ? Math.max(4, this.multiShotCount + 1) : this.multiShotCount) + ultBonusShots;
       const targets = this.findNearestEnemies(player, enemies, shotCount, worldEnv);
       if (targets.length > 0) {
         this.fireTimer = 0;
@@ -1425,7 +1585,8 @@ export class CombatSystem {
 
     // --- PASIVA ROOT: Nodos eléctricos que queman y frenan ---
     if (player.rootTrailNodes.length > 0) {
-      const trailDmg = Math.max(6, Math.round(9 * player.damageMultiplier));
+      const rootMult = player.ultActiveTimer > 0 && player.characterId === 'ROOT' ? 22 : 9;
+      const trailDmg = Math.max(6, Math.round(rootMult * player.damageMultiplier));
       for (const enemy of enemies) {
         if (!enemy.active) continue;
         const cd = (this.rootTrailHitCooldowns.get(enemy) ?? 0) - dt;
@@ -1726,6 +1887,23 @@ export class CombatSystem {
         }
 
         if (!eProj.active) continue;
+        // Cúpula Aegis de PROXY (210px) destruye proyectiles enemigos para todo el escuadrón
+        let blockedByDome = false;
+        for (const targetPlayer of projTargets) {
+          if (
+            targetPlayer.active &&
+            targetPlayer.ultActiveTimer > 0 &&
+            targetPlayer.characterId === 'PROXY' &&
+            Math.hypot(eProj.x - targetPlayer.x, eProj.y - targetPlayer.y) <= 212
+          ) {
+            eProj.active = false;
+            wallImpacts.push({ x: eProj.x, y: eProj.y, color: '#c084fc' });
+            blockedByDome = true;
+            break;
+          }
+        }
+        if (blockedByDome || !eProj.active) continue;
+
         for (const targetPlayer of projTargets) {
           if (!targetPlayer.active) continue;
           if (CombatSystem.checkAABBCollision(targetPlayer, eProj)) {

@@ -397,6 +397,10 @@ export class CoopRenderer {
     ctx.ellipse(x, y + size * 0.52, size * 0.52, size * 0.22, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    if (pl.ultAct && pl.ultAct > 0) {
+      Player.drawUltimateAura(ctx, x, y, pl.characterId, pl.ultAct, now);
+    }
+
     if (pl.shieldReady) {
       ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 2.4;

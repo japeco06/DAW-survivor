@@ -5,7 +5,9 @@ export type ObstacleKind =
   | 'DATA_PILLAR'
   | 'FIREWALL_WALL'
   | 'HEX_BUNKER'
-  | 'L_BASTION';
+  | 'L_BASTION'
+  | 'CRYO_SILO'
+  | 'PLASMA_BARRIER';
 
 export interface WorldObstacle {
   id: string;
@@ -19,6 +21,8 @@ export interface WorldObstacle {
   /** Grosor del ala y orientación (0..3) para bastiones en L */
   armThickness?: number;
   orientation?: number;
+  /** Punto de soldadura con la pieza ancla del complejo */
+  jointPoint?: { x: number; y: number; vertical: boolean };
   /** Semilla visual determinista para LEDs y detalles */
   variantSeed: number;
 }
@@ -70,6 +74,8 @@ const OBSTACLE_KINDS: readonly ObstacleKind[] = [
   'L_BASTION',
   'DATA_PILLAR',
   'SERVER_MONOLITH',
+  'CRYO_SILO',
+  'PLASMA_BARRIER',
 ];
 
 /**
@@ -197,10 +203,10 @@ export class WorldEnvironment {
   } {
     const variantSeed = this.hash2D(sx, sy, 90 + index * 11);
 
-    if (kind === 'FIREWALL_WALL') {
+    if (kind === 'FIREWALL_WALL' || kind === 'PLASMA_BARRIER') {
       const vertical = this.hash2D(sx, sy, 12 + index * 7) > 0.5;
       const length = 225 + Math.floor(this.hash2D(sx, sy, 13 + index * 7) * 95);
-      const thick = 62 + Math.floor(this.hash2D(sx, sy, 14 + index * 7) * 16);
+      const thick = 64 + Math.floor(this.hash2D(sx, sy, 14 + index * 7) * 14);
       return {
         width: vertical ? thick : length,
         height: vertical ? length : thick,
@@ -208,8 +214,11 @@ export class WorldEnvironment {
       };
     }
 
-    if (kind === 'DATA_PILLAR') {
-      const r = 68 + Math.floor(this.hash2D(sx, sy, 15 + index * 7) * 24);
+    if (kind === 'DATA_PILLAR' || kind === 'CRYO_SILO') {
+      const r =
+        kind === 'CRYO_SILO'
+          ? 76 + Math.floor(this.hash2D(sx, sy, 15 + index * 7) * 20)
+          : 68 + Math.floor(this.hash2D(sx, sy, 15 + index * 7) * 24);
       return {
         width: r * 2,
         height: r * 2,
@@ -334,46 +343,83 @@ export class WorldEnvironment {
       if (rootPiece) {
         obstacles.push(rootPiece);
 
-        // Pegar entre 1 y 2 piezas adicionales tocándose (solape estructural de 10-14 px sin grietas)
+        // Pegar entre 1 y 2 piezas adicionales tocándose con unión profunda y sin callejones trampa
         for (let p = 1; p < clusterPieceTarget; p++) {
-          const nextKind = OBSTACLE_KINDS[(kindStart + p * 2) % OBSTACLE_KINDS.length];
+          const nextKind = OBSTACLE_KINDS[(kindStart + p * 2 + 1) % OBSTACLE_KINDS.length];
           const nextDim = this.buildPieceDimensions(sx, sy, p, nextKind);
-          const anchor = obstacles[Math.floor(this.hash2D(sx, sy, 60 + p) * obstacles.length)];
+          const anchorIdx = Math.floor(this.hash2D(sx, sy, 60 + p) * obstacles.length);
+          const anchor = obstacles[anchorIdx];
           const attachBox =
             anchor.kind === 'L_BASTION'
               ? this.getLBastionRects(anchor)[p % 2]
               : { x: anchor.x, y: anchor.y, w: anchor.width, h: anchor.height };
           const dirBase = Math.floor(this.hash2D(sx, sy, 70 + p) * 4) % 4;
-          const jointOverlap = 14; // Solape firme para que parezcan pegadas y no pasen balas por grietas
+          const isRoundJoint =
+            anchor.kind === 'DATA_PILLAR' ||
+            anchor.kind === 'CRYO_SILO' ||
+            nextKind === 'DATA_PILLAR' ||
+            nextKind === 'CRYO_SILO';
+          const jointOverlap = isRoundJoint ? 24 : 16;
 
           let placed = false;
           for (let dTry = 0; dTry < 4 && !placed; dTry++) {
             const dir = (dirBase + dTry) % 4;
-            const slideAlign = this.hash2D(sx, sy, 80 + p * 7 + dTry) * 0.5 - 0.1;
+            const slideAlign = isRoundJoint
+              ? 0
+              : (this.hash2D(sx, sy, 80 + p * 7 + dTry) - 0.5) * 0.45;
             let nx = attachBox.x;
             let ny = attachBox.y;
+            let jx = attachBox.x;
+            let jy = attachBox.y;
+            let jVert = false;
 
             if (dir === 0) {
               nx = attachBox.x + attachBox.w - jointOverlap;
-              ny = attachBox.y + Math.round((attachBox.h - nextDim.height) * 0.5 + slideAlign * 40);
+              ny = attachBox.y + Math.round((attachBox.h - nextDim.height) * 0.5 + slideAlign * 36);
+              jx = attachBox.x + attachBox.w - jointOverlap * 0.5;
+              jy = Math.max(attachBox.y, ny) + Math.min(attachBox.h, nextDim.height) * 0.5;
+              jVert = true;
             } else if (dir === 1) {
-              nx = attachBox.x + Math.round((attachBox.w - nextDim.width) * 0.5 + slideAlign * 40);
+              nx = attachBox.x + Math.round((attachBox.w - nextDim.width) * 0.5 + slideAlign * 36);
               ny = attachBox.y + attachBox.h - jointOverlap;
+              jx = Math.max(attachBox.x, nx) + Math.min(attachBox.w, nextDim.width) * 0.5;
+              jy = attachBox.y + attachBox.h - jointOverlap * 0.5;
+              jVert = false;
             } else if (dir === 2) {
               nx = attachBox.x - nextDim.width + jointOverlap;
-              ny = attachBox.y + Math.round((attachBox.h - nextDim.height) * 0.5 + slideAlign * 40);
+              ny = attachBox.y + Math.round((attachBox.h - nextDim.height) * 0.5 + slideAlign * 36);
+              jx = attachBox.x + jointOverlap * 0.5;
+              jy = Math.max(attachBox.y, ny) + Math.min(attachBox.h, nextDim.height) * 0.5;
+              jVert = true;
             } else {
-              nx = attachBox.x + Math.round((attachBox.w - nextDim.width) * 0.5 + slideAlign * 40);
+              nx = attachBox.x + Math.round((attachBox.w - nextDim.width) * 0.5 + slideAlign * 36);
               ny = attachBox.y - nextDim.height + jointOverlap;
+              jx = Math.max(attachBox.x, nx) + Math.min(attachBox.w, nextDim.width) * 0.5;
+              jy = attachBox.y + jointOverlap * 0.5;
+              jVert = false;
             }
 
-            if (isPieceClear(nx, ny, nextDim.width, nextDim.height)) {
+            // Evitar que la nueva pieza cree pasillos trampa (< 88 px) con otra pieza del mismo grupo
+            let createsPinchTrap = false;
+            for (let k = 0; k < obstacles.length; k++) {
+              if (k === anchorIdx) continue;
+              const other = obstacles[k];
+              const gapX = Math.max(0, Math.max(other.x - (nx + nextDim.width), nx - (other.x + other.width)));
+              const gapY = Math.max(0, Math.max(other.y - (ny + nextDim.height), ny - (other.y + other.height)));
+              if (Math.hypot(gapX, gapY) < 88) {
+                createsPinchTrap = true;
+                break;
+              }
+            }
+
+            if (!createsPinchTrap && isPieceClear(nx, ny, nextDim.width, nextDim.height)) {
               obstacles.push({
                 id: `obs_${sx}_${sy}_${p}`,
                 kind: nextKind,
                 x: Math.round(nx),
                 y: Math.round(ny),
                 ...nextDim,
+                jointPoint: { x: Math.round(jx), y: Math.round(jy), vertical: jVert },
               });
               placed = true;
             }
@@ -460,7 +506,7 @@ export class WorldEnvironment {
   }
 
   private pointHitsObstacle(x: number, y: number, radius: number, obs: WorldObstacle): boolean {
-    if (obs.kind === 'DATA_PILLAR' && obs.radius) {
+    if ((obs.kind === 'DATA_PILLAR' || obs.kind === 'CRYO_SILO') && obs.radius) {
       const cx = obs.x + obs.radius;
       const cy = obs.y + obs.radius;
       const totalR = obs.radius + radius;
@@ -561,10 +607,10 @@ export class WorldEnvironment {
     if (count === 0) return { x, y };
     let rx = x;
     let ry = y;
-    for (let pass = 0; pass < 2; pass++) {
+    for (let pass = 0; pass < 3; pass++) {
       for (let i = 0; i < count; i++) {
         const obs = list[i];
-        if (obs.kind === 'DATA_PILLAR' && obs.radius) {
+        if ((obs.kind === 'DATA_PILLAR' || obs.kind === 'CRYO_SILO') && obs.radius) {
           const res = this.pushOutCircle(rx, ry, radius, obs.x + obs.radius, obs.y + obs.radius, obs.radius);
           rx = res.x;
           ry = res.y;
@@ -612,13 +658,17 @@ export class WorldEnvironment {
   public findClearSpawnPosition(x: number, y: number, radius: number): { x: number; y: number } {
     if (!this.isInfinite) return { x, y };
     const count = this.collectObstaclesIntoScratch(x - 240, y - 240, x + 240, y + 240, 360);
-    if (count === 0) return { x, y };
+    const avoidLakes = radius >= 55;
+    if (count === 0 && !avoidLakes) return { x, y };
 
     const isFree = (px: number, py: number): boolean => {
       for (let i = 0; i < count; i++) {
         if (this.pointHitsObstacle(px, py, radius + 6, this.scratchObstacles[i])) {
           return false;
         }
+      }
+      if (avoidLakes && this.isInSlowLiquid(px, py)) {
+        return false;
       }
       return true;
     };
@@ -730,12 +780,16 @@ export class WorldEnvironment {
     }
 
     const sideCheckDist = radius * 2.1 + 52;
+    const posRayX = prevX + Math.cos(baseAngle + 0.85) * sideCheckDist;
+    const posRayY = prevY + Math.sin(baseAngle + 0.85) * sideCheckDist;
+    const negRayX = prevX + Math.cos(baseAngle - 0.85) * sideCheckDist;
+    const negRayY = prevY + Math.sin(baseAngle - 0.85) * sideCheckDist;
     const posBlocked =
       this.findSegmentImpactInList(
         prevX,
         prevY,
-        prevX + Math.cos(baseAngle + 0.85) * sideCheckDist,
-        prevY + Math.sin(baseAngle + 0.85) * sideCheckDist,
+        posRayX,
+        posRayY,
         radius + 1,
         this.scratchObstacles,
         count
@@ -744,14 +798,22 @@ export class WorldEnvironment {
       this.findSegmentImpactInList(
         prevX,
         prevY,
-        prevX + Math.cos(baseAngle - 0.85) * sideCheckDist,
-        prevY + Math.sin(baseAngle - 0.85) * sideCheckDist,
+        negRayX,
+        negRayY,
         radius + 1,
         this.scratchObstacles,
         count
       ) !== null;
 
-    const firstSign = !posBlocked && negBlocked ? 1 : !negBlocked && posBlocked ? -1 : preferSide >= 0 ? 1 : -1;
+    let preferredTurn = preferSide >= 0 ? 1 : -1;
+    if (!posBlocked && !negBlocked) {
+      const dPos = Math.hypot(targetX - posRayX, targetY - posRayY);
+      const dNeg = Math.hypot(targetX - negRayX, targetY - negRayY);
+      if (Math.abs(dPos - dNeg) > 8) {
+        preferredTurn = dPos < dNeg ? 1 : -1;
+      }
+    }
+    const firstSign = !posBlocked && negBlocked ? 1 : !negBlocked && posBlocked ? -1 : preferredTurn;
     const secondSign = -firstSign;
     const offsets = [
       firstSign * 0.62,
@@ -1178,6 +1240,64 @@ export class WorldEnvironment {
     ctx.restore();
   }
 
+  private drawObstacleShadow(ctx: CanvasRenderingContext2D, obs: WorldObstacle): void {
+    const x = obs.x;
+    const y = obs.y;
+    const w = obs.width;
+    const h = obs.height;
+    ctx.save();
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.64)';
+
+    if ((obs.kind === 'DATA_PILLAR' || obs.kind === 'CRYO_SILO') && obs.radius) {
+      ctx.beginPath();
+      ctx.arc(x + obs.radius + 9, y + obs.radius + 11, obs.radius + 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    if (obs.kind === 'L_BASTION') {
+      const [hRect, vRect] = this.getLBastionRects(obs);
+      ctx.fillRect(hRect.x + 8, hRect.y + 10, hRect.w, hRect.h);
+      ctx.fillRect(vRect.x + 8, vRect.y + 10, vRect.w, vRect.h);
+      ctx.restore();
+      return;
+    }
+
+    ctx.fillRect(x + 8, y + 10, w, h);
+    ctx.restore();
+  }
+
+  private drawObstacleJoint(ctx: CanvasRenderingContext2D, obs: WorldObstacle, nowMs: number): void {
+    if (!obs.jointPoint) return;
+    const { x, y, vertical } = obs.jointPoint;
+    ctx.save();
+    ctx.translate(x, y);
+    if (!vertical) ctx.rotate(Math.PI / 2);
+
+    // Abrazadera estructural blindada que suelda visualmente las piezas del complejo
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.fillRect(-13, -24, 26, 48);
+    ctx.strokeRect(-13, -24, 26, 48);
+
+    // Pernos de anclaje en las 4 esquinas
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillRect(-9, -20, 4, 4);
+    ctx.fillRect(5, -20, 4, 4);
+    ctx.fillRect(-9, 16, 4, 4);
+    ctx.fillRect(5, 16, 4, 4);
+
+    // Conducto de plasma energético central que une ambos módulos
+    const pulse = 0.65 + 0.35 * Math.sin(nowMs * 0.005 + obs.variantSeed * 8);
+    ctx.fillStyle = `rgba(56, 189, 248, ${pulse})`;
+    ctx.fillRect(-4, -14, 8, 28);
+    ctx.fillStyle = '#e0f2fe';
+    ctx.fillRect(-1.5, -10, 3, 20);
+    ctx.restore();
+  }
+
   private drawObstacle(ctx: CanvasRenderingContext2D, obs: WorldObstacle, nowMs: number): void {
     const x = obs.x;
     const y = obs.y;
@@ -1185,15 +1305,102 @@ export class WorldEnvironment {
     const h = obs.height;
     ctx.save();
 
-    if (obs.kind === 'DATA_PILLAR' && obs.radius) {
+    if (obs.kind === 'CRYO_SILO' && obs.radius) {
       const cx = x + obs.radius;
       const cy = y + obs.radius;
       const r = obs.radius;
 
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.65)';
+      ctx.fillStyle = '#082f49';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.8;
       ctx.beginPath();
-      ctx.arc(cx + 8, cy + 10, r, 0, Math.PI * 2);
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
+      ctx.stroke();
+
+      // Anillo blindado segmentado exterior
+      ctx.strokeStyle = 'rgba(125, 211, 252, 0.55)';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([16, 10]);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.82, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Turbina criogénica rotatoria
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(-nowMs * 0.0014);
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 3;
+      for (let b = 0; b < 4; b++) {
+        const a = (b / 4) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * (r * 0.16), Math.sin(a) * (r * 0.16));
+        ctx.lineTo(Math.cos(a + 0.32) * (r * 0.64), Math.sin(a + 0.32) * (r * 0.64));
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const pulse = 0.72 + Math.sin(nowMs * 0.0045 + obs.variantSeed * 5) * 0.28;
+      ctx.fillStyle = `rgba(103, 232, 249, ${pulse})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ecfeff';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+
+      ctx.restore();
+      return;
+    }
+
+    if (obs.kind === 'PLASMA_BARRIER') {
+      const horiz = w >= h;
+      const cut = 10;
+      ctx.fillStyle = '#18181b';
+      ctx.strokeStyle = '#a855f7';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x + cut, y);
+      ctx.lineTo(x + w - cut, y);
+      ctx.lineTo(x + w, y + cut);
+      ctx.lineTo(x + w, y + h - cut);
+      ctx.lineTo(x + w - cut, y + h);
+      ctx.lineTo(x + cut, y + h);
+      ctx.lineTo(x, y + h - cut);
+      ctx.lineTo(x, y + cut);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Pilones extremos blindados + núcleo de plasma de alto voltaje
+      const pulse = 0.7 + 0.3 * Math.sin(nowMs * 0.006 + obs.variantSeed * 7);
+      if (horiz) {
+        ctx.fillStyle = '#2e1065';
+        ctx.fillRect(x + 6, y + 6, 26, h - 12);
+        ctx.fillRect(x + w - 32, y + 6, 26, h - 12);
+        ctx.fillStyle = `rgba(192, 132, 252, ${pulse})`;
+        ctx.fillRect(x + 34, y + h / 2 - 6, w - 68, 12);
+        ctx.fillStyle = '#faf5ff';
+        ctx.fillRect(x + 36, y + h / 2 - 2, w - 72, 4);
+      } else {
+        ctx.fillStyle = '#2e1065';
+        ctx.fillRect(x + 6, y + 6, w - 12, 26);
+        ctx.fillRect(x + 6, y + h - 32, w - 12, 26);
+        ctx.fillStyle = `rgba(192, 132, 252, ${pulse})`;
+        ctx.fillRect(x + w / 2 - 6, y + 34, 12, h - 68);
+        ctx.fillStyle = '#faf5ff';
+        ctx.fillRect(x + w / 2 - 2, y + 36, 4, h - 72);
+      }
+      ctx.restore();
+      return;
+    }
+
+    if (obs.kind === 'DATA_PILLAR' && obs.radius) {
+      const cx = x + obs.radius;
+      const cy = y + obs.radius;
+      const r = obs.radius;
 
       ctx.fillStyle = '#1e1b4b';
       ctx.strokeStyle = '#818cf8';
@@ -1264,10 +1471,6 @@ export class WorldEnvironment {
         ctx.closePath();
       };
 
-      traceOct(8, 10, 0);
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.62)';
-      ctx.fill();
-
       traceOct(0, 0, 0);
       ctx.fillStyle = '#0f292e';
       ctx.fill();
@@ -1330,10 +1533,6 @@ export class WorldEnvironment {
         ctx.closePath();
       };
 
-      traceBar(7, 9);
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.65)';
-      ctx.fill();
-
       traceBar(0, 0);
       ctx.fillStyle = '#241811';
       ctx.fill();
@@ -1389,10 +1588,6 @@ export class WorldEnvironment {
         ctx.closePath();
       };
 
-      traceL(7, 9);
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.62)';
-      ctx.fill();
-
       traceL(0, 0);
       ctx.fillStyle = '#2b1222';
       ctx.fill();
@@ -1418,9 +1613,6 @@ export class WorldEnvironment {
     }
 
     const cut = 16;
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.65)';
-    ctx.fillRect(x + 8, y + 10, w, h);
-
     ctx.fillStyle = '#1e293b';
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 2.4;
@@ -1545,10 +1737,16 @@ export class WorldEnvironment {
       ctx.restore();
     }
 
-    // 3. Complejos de obstáculos pegados entre sí (solo Modo Infinito: Pesadilla / Co-op)
+    // 3. Complejos de obstáculos pegados entre sí en 3 pasadas (sombra unificada -> cuerpos -> abrazaderas de soldadura)
     if (this.isInfinite) {
       for (const obs of area.obstacles) {
+        this.drawObstacleShadow(ctx, obs);
+      }
+      for (const obs of area.obstacles) {
         this.drawObstacle(ctx, obs, nowMs);
+      }
+      for (const obs of area.obstacles) {
+        this.drawObstacleJoint(ctx, obs, nowMs);
       }
     }
   }
