@@ -27,6 +27,7 @@ export class CryptoMiner extends Adware {
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);
     }
+    const slowFactor = this.tickSpeedMultiplier(dt);
 
     this.wobbleTimer += dt * 7;
     this.escapeTimer -= dt;
@@ -41,8 +42,8 @@ export class CryptoMiner extends Adware {
     const dy = this.y - player.y;
     const fleeAngle = Math.atan2(dy, dx) + Math.sin(this.wobbleTimer) * 0.35 + this.wanderAngle;
 
-    let vx = Math.cos(fleeAngle) * this.speed;
-    let vy = Math.sin(fleeAngle) * this.speed;
+    let vx = Math.cos(fleeAngle) * this.speed * slowFactor;
+    let vy = Math.sin(fleeAngle) * this.speed * slowFactor;
 
     const minX = this.unbounded ? player.x - 900 : 44;
     const maxX = this.unbounded ? player.x + 900 : 1920 - 44;

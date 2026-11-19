@@ -105,6 +105,7 @@ export class TrojanShooter extends Adware {
     const dy = player.y - this.y;
     const distance = Math.hypot(dx, dy) || 1;
     this.angle = Math.atan2(dy, dx);
+    this.facingAngle = this.angle;
 
     if (distance > this.preferredMaxRange) {
       this.x += (dx / distance) * this.speed * speedMult * dt;

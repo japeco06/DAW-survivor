@@ -192,9 +192,11 @@ export class ElToroBoss extends Adware {
       ctx.restore();
     }
 
-    // 3. Aura exterior colosal del Toro
-    ctx.shadowColor = this.state === 'TELEGRAPH' ? '#facc15' : '#ff0044';
-    ctx.shadowBlur = isFlashing ? 38 : this.state === 'CHASE' ? 22 : 34;
+    // 3. Aura exterior colosal del Toro (halo ligero sin shadowBlur costoso)
+    ctx.fillStyle = this.state === 'TELEGRAPH' ? 'rgba(250, 204, 21, 0.16)' : 'rgba(255, 0, 68, 0.18)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 6, 66, 56, 0, 0, Math.PI * 2);
+    ctx.fill();
 
     // Lomo / Hombros masivos de toro blindado
     ctx.fillStyle = isFlashing ? '#ffffff' : '#450a0a';
@@ -273,15 +275,11 @@ export class ElToroBoss extends Adware {
     // 6. Argolla nasal dorada gigante (clásico de Toro)
     ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = 5;
-    ctx.shadowColor = '#f59e0b';
-    ctx.shadowBlur = 14;
     ctx.beginPath();
     ctx.arc(x, y + 30, 13, 0.15 * Math.PI, 0.85 * Math.PI, false);
     ctx.stroke();
 
     // 7. Ojos furiosos inclinados
-    ctx.shadowColor = '#ff0044';
-    ctx.shadowBlur = 16;
     ctx.fillStyle = this.state === 'TELEGRAPH' ? '#facc15' : '#ff0044';
 
     // Ojo izquierdo
@@ -301,7 +299,6 @@ export class ElToroBoss extends Adware {
     ctx.fill();
 
     // Etiqueta flotante sobre el Jefe Final
-    ctx.shadowBlur = 8;
     ctx.fillStyle = '#fde047';
     ctx.font = 'bold 12px "Courier New", monospace';
     ctx.textAlign = 'center';

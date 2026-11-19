@@ -5,7 +5,7 @@ import { Player } from '../entities/Player';
 import { Adware } from '../entities/Adware';
 import { Worm } from '../entities/Worm';
 import { CryptoMiner } from '../entities/CryptoMiner';
-import { WaveBoss, RansomwareBoss } from '../entities/WaveBoss';
+import { WaveBoss, RansomwareBoss, RootkitTitanBoss, WormPrimeBoss, SpywareSpecterBoss } from '../entities/WaveBoss';
 import { Projectile } from '../entities/Projectile';
 import { PingProjectile } from '../entities/PingProjectile';
 import { QuarantineZone } from '../entities/QuarantineZone';
@@ -30,10 +30,14 @@ import type {
   CoopWorldSnapshot,
   RoomStateDTO,
   SerializedUpgradeCard,
+  SnapshotBossHUD,
+  SnapshotDroneTuple,
   SnapshotEnemyTuple,
+  SnapshotPetTuple,
   SnapshotPickupTuple,
   SnapshotPlayer,
   SnapshotProjTuple,
+  SnapshotRingTuple,
   SnapshotZoneTuple,
 } from '../network/MultiplayerTypes';
 import {
@@ -109,7 +113,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.5.5';
+const GAME_VERSION = 'v1.6.0';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v1';
@@ -217,7 +221,7 @@ export class Game {
   private coopInputTimer: number = 0;
   private coopInputSeq: number = 0;
   private coopPendingInputs: { seq: number; x: number; y: number }[] = [];
-  private coopLastPrevEnemyHp: Map<number, { x: number; y: number; hp: number }> = new Map();
+  private coopLastPrevEnemyHp: Map<number, { x: number; y: number; hp: number; maxHp: number }> = new Map();
   public readonly firestoreDb = db;
   private menuFeedbackMessage: string = i18n.t(
     'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.',
@@ -392,6 +396,28 @@ export class Game {
   private getCameraOrigin(): { x: number; y: number } {
     if (!this.isMovingMap() || this.gameState === 'MENU') {
       return { x: 0, y: 0 };
+    }
+    if (this.isCoopMode && this.coopSelfDowned) {
+      if (this.isCoopHost) {
+        for (const peer of this.coopPeers.values()) {
+          if (!peer.downed && peer.player.active) {
+            return {
+              x: peer.player.x - LOGICAL_WIDTH / 2,
+              y: peer.player.y - LOGICAL_HEIGHT / 2,
+            };
+          }
+        }
+      } else if (this.coopSnapshot) {
+        const aliveAlly = this.coopSnapshot.players.find(
+          (p) => p.id !== this.mpClient.myId && !p.downed
+        );
+        if (aliveAlly) {
+          return {
+            x: aliveAlly.x - LOGICAL_WIDTH / 2,
+            y: aliveAlly.y - LOGICAL_HEIGHT / 2,
+          };
+        }
+      }
     }
     return {
       x: this.player.x - LOGICAL_WIDTH / 2,
@@ -597,6 +623,17 @@ export class Game {
 
   private setupMultiplayerHandlers(): void {
     this.mpClient.onRoomUpdate = (room) => {
+      if (!room && this.isCoopMode && this.gameState === 'PLAYING') {
+        this.exitToMainMenu(true);
+        this.showCoopModal = true;
+        this.coopFeedbackMsg =
+          this.mpClient.statusMessage ||
+          i18n.t(
+            'Conexión perdida con la sala Co-op.',
+            'Connection lost to the Co-op room.'
+          );
+        return;
+      }
       if (this.gameState === 'MENU' && !room && this.showCoopModal) {
         this.coopFeedbackMsg = this.mpClient.statusMessage;
       }
@@ -626,11 +663,14 @@ export class Game {
       CoopRenderer.ingestSnapshot(snap);
 
       const prevCoins = this.coopSnapshot?.coins ?? 0;
-      const prevXp = this.coopSnapshot?.xp ?? 0;
+      const prevMyHp = this.player.hp;
       this.coopSnapshot = snap;
       this.elapsedTime = snap.t;
       this.killCount = snap.kc;
       this.runBossesKilled = snap.bk;
+      if (snap.boss?.toroDmg !== undefined) {
+        this.runDamageToToro = Math.max(this.runDamageToToro, snap.boss.toroDmg);
+      }
       if (snap.coins > prevCoins) {
         const delta = snap.coins - prevCoins;
         this.metaSystem.addCoins(delta);
@@ -650,18 +690,28 @@ export class Game {
         this.worldEnv.applyRemoteOasisStates(snap.oasis);
       }
 
-      // Retroalimentación visual ligera en cliente al detectar bajas de enemigos por netId
+      // Música dinámica en cliente Invitado según estado del Jefe / El Toro
+      if (snap.toro || snap.boss?.isToro) {
+        if (this.sound.getCurrentTrack() !== 'FINAL_BOSS') this.sound.setTrack('FINAL_BOSS');
+      } else if (snap.boss && snap.boss.hp > 0) {
+        if (this.sound.getCurrentTrack() !== 'BOSS') this.sound.setTrack('BOSS');
+      } else if (this.gameState === 'PLAYING') {
+        if (this.sound.getCurrentTrack() !== 'INGAME') this.sound.setTrack('INGAME');
+      }
+
+      // Retroalimentación visual ligera en cliente al detectar bajas reales de enemigos por netId
       if (!this.lightGraphicsEnabled) {
-        const currentById = new Map<number, { x: number; y: number; hp: number }>();
+        const currentById = new Map<number, { x: number; y: number; hp: number; maxHp: number }>();
         for (const e of snap.enemies) {
           const nid = e[8];
           if (nid === undefined) continue;
-          currentById.set(nid, { x: e[1], y: e[2], hp: e[4] });
+          currentById.set(nid, { x: e[1], y: e[2], hp: e[4], maxHp: e[5] });
         }
         for (const [oldId, oldInfo] of this.coopLastPrevEnemyHp.entries()) {
           if (
             !currentById.has(oldId) &&
-            Math.hypot(oldInfo.x - this.player.x, oldInfo.y - this.player.y) < 1100
+            oldInfo.hp <= Math.max(40, oldInfo.maxHp * 0.65) &&
+            Math.hypot(oldInfo.x - this.player.x, oldInfo.y - this.player.y) < 950
           ) {
             this.particleSystem.spawnExplosion(oldInfo.x, oldInfo.y, '#ff1e42', 7, false);
           }
@@ -671,11 +721,20 @@ export class Game {
 
       const me = snap.players.find((p) => p.id === this.mpClient.myId);
       if (me) {
+        if (me.hp < prevMyHp && prevMyHp > 0 && !this.coopSelfDowned) {
+          this.damageVignetteAlpha = 0.6;
+          this.particleSystem.triggerShake(7, 0.22);
+          this.sound.playExplosion(false);
+          this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#ff1e42', 12, false);
+        }
         this.coopSelfDowned = me.downed;
         this.coopSelfReviveProgress = me.reviveProgress;
         this.player.hp = me.hp;
         this.player.maxHp = me.maxHp;
         this.player.active = !me.downed;
+        if (me.xpM && me.xpM > 0) {
+          this.player.xpMultiplier = me.xpM;
+        }
         if (me.spd && me.spd > 0) {
           this.player.speed = me.spd;
           this.player.speedBonusMultiplier = 1.0;
@@ -805,6 +864,13 @@ export class Game {
         this.upgradeSystem.clearExternalChoices();
         this.sound.setTrack('NONE');
         this.sound.playExplosion(true);
+        this.dailyMissions.reportProgress('SURVIVAL_SEC', Math.floor(this.elapsedTime));
+        this.dailyMissions.reportProgress('LEVEL', this.upgradeSystem.level);
+        if (this.killCount > 0) this.dailyMissions.reportProgress('KILLS', this.killCount);
+        if (this.runBossesKilled > 0) this.dailyMissions.reportProgress('BOSSES', this.runBossesKilled);
+        this.metaSystem.updateHighScore(this.killCount, this.elapsedTime, this.runDamageToToro);
+        this.highScoreKills = Math.max(this.highScoreKills, this.metaSystem.highScore);
+        void this.metaSystem.syncToCloud(this.elapsedTime, this.runDamageToToro);
         this.achievementSystem.flushPendingSave(true);
         this.metaSystem.flushPendingSave();
         this.dailyMissions.flushPendingSave(true);
@@ -903,7 +969,7 @@ export class Game {
     this.spawner.isNightmareMode = this.isNightmareRun;
     this.spawner.isInfiniteMap = this.isMovingMap();
     this.spawner.coopPlayerCount = Math.max(1, room.players.length);
-    this.worldEnv.reset(room.worldSeed || 1337, this.isMovingMap());
+    this.worldEnv.reset(room.worldSeed || 1337, this.isMovingMap(), this.isCoopHost);
     this.particleSystem.clear();
     this.elapsedTime = 0;
     this.killCount = 0;
@@ -957,9 +1023,16 @@ export class Game {
       }
 
       const cam = this.getCameraOrigin();
-      this.spawner.spawnOpeningWave(this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, cam.x, cam.y);
+      this.spawner.spawnOpeningWave(
+        this.enemies,
+        LOGICAL_WIDTH,
+        LOGICAL_HEIGHT,
+        cam.x,
+        cam.y,
+        this.worldEnv
+      );
       if (this.isNightmareRun) {
-        this.terrainEvents.reset(this.player.x, this.player.y);
+        this.terrainEvents.reset(this.player.x, this.player.y, this.worldEnv);
       }
       this.broadcastCoopSnapshot();
     }
@@ -1009,7 +1082,8 @@ export class Game {
     this.coopUpgradeTimer = 18.0;
 
     if (this.coopSelfDowned || !this.upgradeSystem.isChoosingUpgrade()) {
-      this.upgradeSystem.clearExternalChoices();
+      this.upgradeSystem.pendingLevelUps = Math.max(0, this.upgradeSystem.pendingLevelUps - 1);
+      this.upgradeSystem.currentChoices = [];
       this.coopUpgradePickedIds.add(myId);
     }
 
@@ -1042,6 +1116,13 @@ export class Game {
     this.mpClient.sendUpgradeStatus(readyCount, totalCount);
 
     if (readyCount >= totalCount) {
+      if (this.upgradeSystem.pendingLevelUps > 0) {
+        if (!this.coopSelfDowned) {
+          this.upgradeSystem.rollChoices(this.player);
+        }
+        this.triggerCoopTeamLevelUp();
+        return;
+      }
       this.coopWaitingUpgrade = false;
       this.coopUpgradePickedIds.clear();
       this.coopUpgradeStatusText = '';
@@ -1055,6 +1136,7 @@ export class Game {
     if (!this.coopUpgradePickedIds.has(this.mpClient.myId)) {
       if (this.upgradeSystem.isChoosingUpgrade()) {
         this.upgradeSystem.selectUpgrade(0, this.player, this.combatSystem);
+        this.upgradeSystem.currentChoices = [];
       }
       this.coopUpgradePickedIds.add(this.mpClient.myId);
     }
@@ -1062,6 +1144,7 @@ export class Game {
       if (!this.coopUpgradePickedIds.has(peer.id)) {
         if (peer.upgradeSystem.isChoosingUpgrade()) {
           peer.upgradeSystem.selectUpgrade(0, peer.player, peer.combatSystem);
+          peer.upgradeSystem.currentChoices = [];
         }
         this.coopUpgradePickedIds.add(peer.id);
       }
@@ -1092,8 +1175,9 @@ export class Game {
         reviveProgress: Number(this.coopSelfReviveProgress.toFixed(2)),
         shieldReady: this.player.shieldReady,
         adrenaline: this.player.adrenalineTimer > 0,
-        activeWeapons: this.combatSystem.getActiveWeaponsList(this.player).slice(0, 4),
+        activeWeapons: this.combatSystem.getActiveWeaponsList(this.player).slice(0, 6),
         spd: Math.round(this.player.speed * this.player.speedBonusMultiplier),
+        xpM: Number(this.player.xpMultiplier.toFixed(2)),
       },
     ];
 
@@ -1118,9 +1202,10 @@ export class Game {
         reviveProgress: Number(peer.reviveProgress.toFixed(2)),
         shieldReady: peer.player.shieldReady,
         adrenaline: peer.player.adrenalineTimer > 0,
-        activeWeapons: peer.combatSystem.getActiveWeaponsList(peer.player).slice(0, 4),
+        activeWeapons: peer.combatSystem.getActiveWeaponsList(peer.player).slice(0, 6),
         ackSeq: peer.lastAckSeq,
         spd: Math.round(peer.player.speed * peer.player.speedBonusMultiplier),
+        xpM: Number(peer.player.xpMultiplier.toFixed(2)),
       });
     }
 
@@ -1157,7 +1242,12 @@ export class Game {
       if (e.malwareType === 'ARMORED_WORM' || e.malwareType === 'EVASOR') flags |= 1;
       if (e.networkFreezeTimer > 0 || e.cryoSlowTimer > 0) flags |= 2;
       if (e.hitFlashTimer > 0) flags |= 4;
-      if (e instanceof ElToroBoss && e.state !== 'CHASE') flags |= 8;
+      if (e instanceof ElToroBoss) {
+        if (e.state === 'TELEGRAPH') flags |= 8;
+        else if (e.state === 'DASH') flags |= 16;
+      } else if (e instanceof RootkitTitanBoss && e.getIsStealthed()) {
+        flags |= 16;
+      }
       enemies.push([
         encodeEnemyType(e),
         Math.round(e.x),
@@ -1209,6 +1299,27 @@ export class Game {
     };
     collectCombatShots(this.combatSystem);
     for (const peer of this.coopPeers.values()) collectCombatShots(peer.combatSystem);
+
+    // Mascotas Morcillita, sus fragmentos virales y ondas de choque
+    const pets: SnapshotPetTuple[] = [];
+    const rings: SnapshotRingTuple[] = [];
+    const collectPlayerCompanion = (pl: Player) => {
+      if (!pl.active || !pl.companion) return;
+      const bCode = pl.companion.getBranchCode();
+      for (const u of pl.companion.getUnits()) {
+        pets.push([Math.round(u.x), Math.round(u.y), bCode, Math.round(u.size)]);
+      }
+      for (const sp of pl.companion.getSnapshotProjectiles()) {
+        pushProjCand(6, sp.x, sp.y, sp.vx, sp.vy, false, sp.size);
+      }
+      for (const sw of pl.companion.getSnapshotShockwaves()) {
+        rings.push([Math.round(sw.x), Math.round(sw.y), Math.round(sw.radius), 4]);
+      }
+    };
+    collectPlayerCompanion(this.player);
+    for (const peer of this.coopPeers.values()) {
+      if (!peer.downed) collectPlayerCompanion(peer.player);
+    }
 
     projCandidates.sort((a, b) => a.d2 - b.d2);
     const projectiles: SnapshotProjTuple[] = projCandidates.slice(0, 125).map((c) => c.tuple);
@@ -1273,6 +1384,78 @@ export class Game {
     for (const pl of this.combatSystem.firewallPulses) {
       if (pl.active) pulses.push([Math.round(pl.x), Math.round(pl.y), Math.round(pl.radius), pl.isEvolved ? 1 : 0]);
     }
+    for (const peer of this.coopPeers.values()) {
+      for (const pl of peer.combatSystem.firewallPulses) {
+        if (pl.active) pulses.push([Math.round(pl.x), Math.round(pl.y), Math.round(pl.radius), pl.isEvolved ? 1 : 0]);
+      }
+    }
+
+    // Drones orbitales del escuadrón
+    const drones: SnapshotDroneTuple[] = [];
+    if (!this.coopSelfDowned && this.player.active) {
+      drones.push(...this.combatSystem.getSnapshotDrones(this.player));
+    }
+    for (const peer of this.coopPeers.values()) {
+      if (!peer.downed && peer.player.active) {
+        drones.push(...peer.combatSystem.getSnapshotDrones(peer.player));
+      }
+    }
+
+    // Anillos Crio, explosiones de drones, charcos de Worm Prime y estelas Root
+    rings.push(...this.combatSystem.getSnapshotRings());
+    for (const peer of this.coopPeers.values()) {
+      rings.push(...peer.combatSystem.getSnapshotRings());
+    }
+    for (const rn of this.player.rootTrailNodes) {
+      rings.push([Math.round(rn.x), Math.round(rn.y), Math.round(rn.radius), 3]);
+    }
+    for (const peer of this.coopPeers.values()) {
+      for (const rn of peer.player.rootTrailNodes) {
+        rings.push([Math.round(rn.x), Math.round(rn.y), Math.round(rn.radius), 3]);
+      }
+    }
+    let activeWaveBoss: WaveBoss | null = null;
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      if (e instanceof WormPrimeBoss) {
+        for (const pd of e.getPuddles()) {
+          rings.push([Math.round(pd.x), Math.round(pd.y), Math.round(pd.radius), 2]);
+        }
+      }
+      if (!activeWaveBoss && e instanceof WaveBoss) {
+        activeWaveBoss = e;
+      }
+    }
+
+    // HUD de Jefe / El Toro para sincronizar barra y alerta en clientes Invitados
+    let bossHud: SnapshotBossHUD | null = null;
+    if (this.finalBoss && this.finalBoss.active) {
+      bossHud = {
+        name: 'EL TORO',
+        color: this.finalBoss.state === 'TELEGRAPH' ? '#fbbf24' : '#f43f5e',
+        hp: 1,
+        maxHp: 1,
+        isToro: true,
+        toroDmg: Math.round(this.finalBoss.totalDamageTaken),
+        toroStatus: this.finalBoss.getDashStatusText(),
+      };
+    } else if (activeWaveBoss) {
+      bossHud = {
+        name: activeWaveBoss.bossName,
+        color: activeWaveBoss.bossColor || '#f43f5e',
+        hp: Math.max(0, Math.ceil(activeWaveBoss.hp)),
+        maxHp: Math.max(1, Math.ceil(activeWaveBoss.maxHp)),
+        alertTimer: Number(this.spawner.activeBossAlertTimer.toFixed(2)),
+      };
+    } else if (this.spawner.activeBossAlertTimer > 0) {
+      bossHud = {
+        name: this.spawner.lastBossSpawnedName || 'BOSS',
+        color: this.spawner.lastBossSpawnedColor || '#f43f5e',
+        hp: 0,
+        maxHp: 1,
+        alertTimer: Number(this.spawner.activeBossAlertTimer.toFixed(2)),
+      };
+    }
 
     this.mpClient.sendSnapshot({
       seq: ++this.coopSnapshotSeq,
@@ -1294,8 +1477,12 @@ export class Game {
       pickups,
       zones,
       arcs: arcs.slice(0, 12),
-      pulses: pulses.slice(0, 8),
+      pulses: pulses.slice(0, 14),
       oasis: this.worldEnv.exportOasisStates(),
+      drones: drones.slice(0, 32),
+      pets: pets.slice(0, 20),
+      rings: rings.slice(0, 48),
+      boss: bossHud,
     });
   }
 
@@ -1325,14 +1512,16 @@ export class Game {
             color: pr.slotColor,
           })),
         ].sort((a, b) => a.slot - b.slot)
-      : (this.coopSnapshot?.players || []).map((sp) => ({
-          slot: sp.slot,
-          name: sp.name,
-          hp: sp.hp,
-          maxHp: sp.maxHp,
-          downed: sp.downed,
-          color: sp.color,
-        }));
+      : (this.coopSnapshot?.players || [])
+          .map((sp) => ({
+            slot: sp.slot,
+            name: sp.name,
+            hp: sp.hp,
+            maxHp: sp.maxHp,
+            downed: sp.downed,
+            color: sp.color,
+          }))
+          .sort((a, b) => a.slot - b.slot);
 
     const panelH = 34 + Math.max(1, list.length) * 30;
     this.ctx.save();
@@ -1905,6 +2094,7 @@ export class Game {
       this.hoveredRerollBtn = false;
 
       if (this.isCoopMode && this.isCoopHost && this.coopWaitingUpgrade) {
+        this.upgradeSystem.currentChoices = [];
         this.coopUpgradePickedIds.add(this.mpClient.myId);
         this.tryResumeCoopUpgrade();
       }
@@ -2361,9 +2551,16 @@ export class Game {
     this.spawner.isInfiniteMap = this.isMovingMap();
     this.worldEnv.reset(Math.floor(Math.random() * 0xffffffff) >>> 0, this.isMovingMap());
     const cam = this.getCameraOrigin();
-    this.spawner.spawnOpeningWave(this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, cam.x, cam.y);
+    this.spawner.spawnOpeningWave(
+      this.enemies,
+      LOGICAL_WIDTH,
+      LOGICAL_HEIGHT,
+      cam.x,
+      cam.y,
+      this.worldEnv
+    );
     if (this.isNightmareRun) {
-      this.terrainEvents.reset(this.player.x, this.player.y);
+      this.terrainEvents.reset(this.player.x, this.player.y, this.worldEnv);
     }
     this.particleSystem.clear();
     this.elapsedTime = 0;
@@ -2673,13 +2870,46 @@ export class Game {
 
     // Actualizar origen tras mover jugador para spawns y proyectiles centrados en Pesadilla
     const activeCam = this.getCameraOrigin();
+    const alivePeerPlayers: Player[] = [];
+    const allAlivePlayers: Player[] = [];
+    if (!this.coopSelfDowned && this.player.active) {
+      allAlivePlayers.push(this.player);
+    }
+    if (this.isCoopMode && this.isCoopHost) {
+      for (const peer of this.coopPeers.values()) {
+        if (!peer.downed && peer.player.active) {
+          alivePeerPlayers.push(peer.player);
+          allAlivePlayers.push(peer.player);
+        }
+      }
+    }
+
+    const markPeerDownedIfDead = (peer: CoopPeerRuntime) => {
+      if (!peer.downed && !peer.player.active) {
+        peer.downed = true;
+        peer.reviveProgress = 0;
+        peer.player.hp = 0;
+        this.mpClient.sendGameEvent({
+          type: 'DOWNED',
+          text: `ALERT: ${peer.name} cayó — ¡acércate para reanimarlo!`,
+        });
+      }
+    };
 
     // Eventos de terreno en Modo Pesadilla
     if (this.isNightmareRun) {
-      const tRes = this.terrainEvents.update(dt, this.player, this.elapsedTime);
+      const tRes = this.terrainEvents.update(
+        dt,
+        this.player,
+        this.elapsedTime,
+        alivePeerPlayers,
+        this.worldEnv
+      );
       if (tRes.coolingActivated) {
         this.thermalOverclockTimer = Math.max(this.thermalOverclockTimer, 10.0);
-        this.player.heal(20);
+        for (const ap of allAlivePlayers) {
+          ap.heal(20);
+        }
         this.sound.playCoinPickup();
         this.particleSystem.spawnFloatingText(
           this.player.x,
@@ -2757,10 +2987,21 @@ export class Game {
         for (const sk of stormKilled) {
           this.spawnCodeFragment(sk.x, sk.y, sk.xpValue);
         }
-        if (sb.hitPlayer && this.player.takeDamage(22)) {
-          this.particleSystem.triggerShake(9, 0.25);
-          this.damageVignetteAlpha = 0.6;
-          this.addTerminalLog('ALERT: Hit by Data Storm (-22 HP)!');
+        for (const hitPl of sb.hitPlayers) {
+          if (hitPl.takeDamage(22)) {
+            if (hitPl === this.player) {
+              this.particleSystem.triggerShake(9, 0.25);
+              this.damageVignetteAlpha = 0.6;
+              this.addTerminalLog('ALERT: Hit by Data Storm (-22 HP)!');
+            } else {
+              for (const peer of this.coopPeers.values()) {
+                if (peer.player === hitPl) {
+                  markPeerDownedIfDead(peer);
+                  break;
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -2851,7 +3092,8 @@ export class Game {
       LOGICAL_HEIGHT,
       activeCam.x,
       activeCam.y,
-      aliveOrigins
+      aliveOrigins,
+      this.worldEnv
     );
 
     if (this.spawner.currentThreatLevel > prevThreat) {
@@ -2916,24 +3158,57 @@ export class Game {
         const prevEx = enemy.x;
         const prevEy = enemy.y;
         enemy.update(dt, targetPlayer);
-        if (
-          !(enemy instanceof Evasor) &&
-          enemy.malwareType !== 'HARDWARE_BOX' &&
-          !(enemy instanceof CryptoMiner) &&
-          (!(enemy instanceof ElToroBoss) || enemy.state === 'CHASE')
-        ) {
-          const eRes = this.worldEnv.moveEntityAvoidingObstacles(
-            prevEx,
-            prevEy,
-            enemy.x,
-            enemy.y,
-            targetPlayer.x,
-            targetPlayer.y,
-            enemy.size * 0.44,
-            (enemy.netId & 1) === 0 ? 1 : -1
-          );
-          enemy.x = eRes.x;
-          enemy.y = eRes.y;
+        if (enemy.malwareType !== 'HARDWARE_BOX') {
+          if (enemy instanceof CryptoMiner) {
+            const fleeRes = this.worldEnv.moveEntityAvoidingObstacles(
+              prevEx,
+              prevEy,
+              enemy.x,
+              enemy.y,
+              enemy.x + (enemy.x - prevEx) * 12,
+              enemy.y + (enemy.y - prevEy) * 12,
+              enemy.size * 0.44,
+              (enemy.netId & 1) === 0 ? 1 : -1
+            );
+            enemy.x = fleeRes.x;
+            enemy.y = fleeRes.y;
+          } else if (enemy instanceof Evasor || (enemy instanceof ElToroBoss && enemy.state !== 'CHASE')) {
+            if (this.worldEnv.isInfinite) {
+              const clamped = this.worldEnv.resolveCircleCollision(enemy.x, enemy.y, enemy.size * 0.44);
+              enemy.x = clamped.x;
+              enemy.y = clamped.y;
+            }
+          } else {
+            const eRes = this.worldEnv.moveEntityAvoidingObstacles(
+              prevEx,
+              prevEy,
+              enemy.x,
+              enemy.y,
+              targetPlayer.x,
+              targetPlayer.y,
+              enemy.size * 0.44,
+              (enemy.netId & 1) === 0 ? 1 : -1
+            );
+            enemy.x = eRes.x;
+            enemy.y = eRes.y;
+          }
+        }
+      }
+      if (enemy instanceof WormPrimeBoss && enemy.active) {
+        const puddleHits = enemy.applyPuddleDamageToPlayers(allAlivePlayers);
+        for (const hitPl of puddleHits) {
+          if (hitPl === this.player) {
+            this.particleSystem.triggerShake(5, 0.16);
+            this.damageVignetteAlpha = Math.max(this.damageVignetteAlpha, 0.45);
+            this.addTerminalLog(`ALERT: Acid Puddle damaged kernel! HP: ${Math.ceil(this.player.hp)}/${this.player.maxHp}`);
+          } else {
+            for (const peer of this.coopPeers.values()) {
+              if (peer.player === hitPl) {
+                markPeerDownedIfDead(peer);
+                break;
+              }
+            }
+          }
         }
       }
       if (enemy instanceof CryptoMiner && enemy.escaped) {
@@ -2968,8 +3243,21 @@ export class Game {
       LOGICAL_HEIGHT,
       activeCam.x,
       activeCam.y,
-      this.worldEnv
+      this.worldEnv,
+      true,
+      allAlivePlayers
     );
+
+    if (combatEvents.peerPlayersHit && combatEvents.peerPlayersHit.length > 0) {
+      for (const hitPeerPlayer of combatEvents.peerPlayersHit) {
+        for (const peer of this.coopPeers.values()) {
+          if (peer.player === hitPeerPlayer) {
+            markPeerDownedIfDead(peer);
+            break;
+          }
+        }
+      }
+    }
 
     if (this.player.companion && this.player.active) {
       const compEvents = this.player.companion.update(
@@ -2983,6 +3271,9 @@ export class Game {
         activeCam.y,
         this.worldEnv
       );
+      if (compEvents.screenShakeIntensity && compEvents.screenShakeIntensity > 0) {
+        this.particleSystem.triggerShake(compEvents.screenShakeIntensity, 0.16);
+      }
       combatEvents.enemiesKilled += compEvents.killedEnemies.length;
       combatEvents.damagedEnemies.push(...compEvents.damagedEnemies);
       for (const d of compEvents.damagedEnemies) {
@@ -3034,7 +3325,10 @@ export class Game {
     // Simular combate y compañeros de los aliados Co-op en el Host
     if (this.isCoopMode && this.isCoopHost) {
       for (const peer of this.coopPeers.values()) {
-        if (peer.downed || !peer.player.active) continue;
+        if (peer.downed || !peer.player.active) {
+          peer.combatSystem.decayWhenDowned(dt);
+          continue;
+        }
         const pBaseRof = peer.player.fireRateMultiplier;
         const pBaseCrit = peer.player.critChance;
         if (isFrenzy) {
@@ -3052,7 +3346,8 @@ export class Game {
           LOGICAL_HEIGHT,
           peer.player.x - LOGICAL_WIDTH / 2,
           peer.player.y - LOGICAL_HEIGHT / 2,
-          this.worldEnv
+          this.worldEnv,
+          false
         );
         if (isFrenzy) {
           peer.player.fireRateMultiplier = pBaseRof;
@@ -3095,14 +3390,17 @@ export class Game {
           }
         }
 
-        if (!peer.player.active) {
-          peer.downed = true;
-          peer.reviveProgress = 0;
-          peer.player.hp = 0;
-          this.mpClient.sendGameEvent({
-            type: 'DOWNED',
-            text: `ALERT: ${peer.name} cayó — ¡acércate para reanimarlo!`,
-          });
+        markPeerDownedIfDead(peer);
+      }
+    }
+
+    // Evitar que SpywareSpecterBoss se teletransporte dentro de un muro al recibir daño
+    if (this.worldEnv.isInfinite) {
+      for (const enemy of this.enemies) {
+        if (enemy.active && enemy instanceof SpywareSpecterBoss) {
+          const safe = this.worldEnv.resolveCircleCollision(enemy.x, enemy.y, enemy.size * 0.45);
+          enemy.x = safe.x;
+          enemy.y = safe.y;
         }
       }
     }
@@ -3126,19 +3424,21 @@ export class Game {
       }
     }
     const killMilestone = Math.floor(this.killCount / 25);
-    if (killMilestone > this.lastOverclockTier && this.player.active) {
+    if (killMilestone > this.lastOverclockTier) {
       this.lastOverclockTier = killMilestone;
-      if (this.player.characterId === 'OVERCLOCK') {
-        this.player.triggerOverclockAdrenaline();
-        this.particleSystem.spawnFloatingText(
-          this.player.x,
-          this.player.y - 34,
-          '⚡ ¡SOBRECARGA ADRENALINA!',
-          '#f97316',
-          1.15
-        );
-      } else if (this.player.characterId === 'STANDARD') {
-        this.player.heal(1);
+      for (const ap of allAlivePlayers) {
+        if (ap.characterId === 'OVERCLOCK') {
+          ap.triggerOverclockAdrenaline();
+          this.particleSystem.spawnFloatingText(
+            ap.x,
+            ap.y - 34,
+            '⚡ ¡SOBRECARGA ADRENALINA!',
+            '#f97316',
+            1.15
+          );
+        } else if (ap.characterId === 'STANDARD') {
+          ap.heal(1);
+        }
       }
     }
 
@@ -3281,7 +3581,9 @@ export class Game {
       if (drop.malwareType === 'HARDWARE_BOX') {
         this.achievementSystem.reportProgress('hardware_collector', 1);
         this.achievementSystem.reportProgress('hardware_hoarder', 1);
-        this.player.heal(25);
+        for (const ap of allAlivePlayers) {
+          ap.heal(25);
+        }
         for (let c = 0; c < 3; c++) {
           this.spawnCryptoCoin(
             drop.x + (Math.random() - 0.5) * 28,
@@ -3373,7 +3675,13 @@ export class Game {
           const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
           this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
         }
-        const dropChance = 0.06 + this.player.bonusCoinDropChance;
+        let maxBonusCoinDrop = this.player.bonusCoinDropChance;
+        for (const peerPl of alivePeerPlayers) {
+          if (peerPl.bonusCoinDropChance > maxBonusCoinDrop) {
+            maxBonusCoinDrop = peerPl.bonusCoinDropChance;
+          }
+        }
+        const dropChance = 0.06 + maxBonusCoinDrop;
         if (Math.random() < dropChance) {
           this.spawnCryptoCoin(drop.x + 8, drop.y - 8, 1);
         }
@@ -3413,22 +3721,23 @@ export class Game {
       this.particleSystem.triggerShake(8, 0.28);
       this.damageVignetteAlpha = 0.65;
       this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#ff1e42', 16, false);
-      this.addTerminalLog(`ALERT: Kernel integrity damaged! HP: ${this.player.hp}/${this.player.maxHp}`);
+      this.addTerminalLog(`ALERT: Kernel integrity damaged! HP: ${Math.ceil(this.player.hp)}/${this.player.maxHp}`);
+    }
 
-      if (!this.player.active) {
-        if (this.isCoopMode && this.isCoopHost && this.getCoopAliveCount() > 1) {
-          this.coopSelfDowned = true;
-          this.coopSelfReviveProgress = 0;
-          this.player.hp = 0;
-          this.sound.playExplosion(false);
-          this.mpClient.sendGameEvent({
-            type: 'DOWNED',
-            text: `ALERT: ${this.player.profileName} cayó — ¡acércate para reanimarlo!`,
-          });
-        } else {
-          this.triggerGameOverSequence();
-          return;
-        }
+    // Comprobar muerte/caída fuera de playerHit para evitar soft-lock por charcos o tormentas de datos
+    if (!this.player.active && !this.coopSelfDowned) {
+      if (this.isCoopMode && this.isCoopHost && this.getCoopAliveCount() > 1) {
+        this.coopSelfDowned = true;
+        this.coopSelfReviveProgress = 0;
+        this.player.hp = 0;
+        this.sound.playExplosion(false);
+        this.mpClient.sendGameEvent({
+          type: 'DOWNED',
+          text: `ALERT: ${this.player.profileName} cayó — ¡acércate para reanimarlo!`,
+        });
+      } else {
+        this.triggerGameOverSequence();
+        return;
       }
     }
 
@@ -3637,10 +3946,13 @@ export class Game {
   }
 
   private resolveEnemyCrowd(): void {
+    const useWallClamp = this.worldEnv.isInfinite;
     for (let i = 0; i < this.enemies.length; i++) {
       const a = this.enemies[i];
+      if (!a.active || a.malwareType === 'HARDWARE_BOX') continue;
       for (let j = i + 1; j < this.enemies.length; j++) {
         const b = this.enemies[j];
+        if (!b.active || b.malwareType === 'HARDWARE_BOX') continue;
         const minDistance = (a.size + b.size) * 0.46;
         const dx = b.x - a.x;
         if (Math.abs(dx) >= minDistance) continue;
@@ -3658,14 +3970,32 @@ export class Game {
           if (a instanceof ElToroBoss) {
             b.x += nx * overlap * 2;
             b.y += ny * overlap * 2;
+            if (useWallClamp) {
+              const rb = this.worldEnv.resolveCircleCollision(b.x, b.y, b.size * 0.44);
+              b.x = rb.x;
+              b.y = rb.y;
+            }
           } else if (b instanceof ElToroBoss) {
             a.x -= nx * overlap * 2;
             a.y -= ny * overlap * 2;
+            if (useWallClamp) {
+              const ra = this.worldEnv.resolveCircleCollision(a.x, a.y, a.size * 0.44);
+              a.x = ra.x;
+              a.y = ra.y;
+            }
           } else {
             a.x -= nx * overlap;
             a.y -= ny * overlap;
             b.x += nx * overlap;
             b.y += ny * overlap;
+            if (useWallClamp) {
+              const ra = this.worldEnv.resolveCircleCollision(a.x, a.y, a.size * 0.44);
+              a.x = ra.x;
+              a.y = ra.y;
+              const rb = this.worldEnv.resolveCircleCollision(b.x, b.y, b.size * 0.44);
+              b.x = rb.x;
+              b.y = rb.y;
+            }
           }
         }
       }
@@ -4167,21 +4497,10 @@ export class Game {
     const edgePadding = 26;
     const flashAlpha = 0.45 + 0.55 * Math.abs(Math.sin(Date.now() * 0.007));
 
-    for (const enemy of this.enemies) {
-      if (!enemy.active) continue;
-      const isMiner = enemy instanceof CryptoMiner || enemy.malwareType === 'CRYPTO_MINER';
-      const isElite =
-        enemy.malwareType === 'RANSOMWARE' ||
-        enemy.malwareType === 'FINAL_BOSS' ||
-        enemy instanceof ArmoredWorm ||
-        enemy instanceof Evasor;
-
-      if (!isMiner && !isElite) continue;
-
-      const screenX = enemy.x - camX;
-      const screenY = enemy.y - camY;
-      const isOffScreen = screenX < 0 || screenX > w || screenY < 0 || screenY > h;
-      if (!isOffScreen) continue;
+    const drawMarkerArrow = (worldX: number, worldY: number, isMiner: boolean) => {
+      const screenX = worldX - camX;
+      const screenY = worldY - camY;
+      if (screenX >= 0 && screenX <= w && screenY >= 0 && screenY <= h) return;
 
       const cx = w / 2;
       const cy = h / 2;
@@ -4215,6 +4534,29 @@ export class Game {
       this.ctx.stroke();
 
       this.ctx.restore();
+    };
+
+    if (this.isCoopMode && !this.isCoopHost && this.coopSnapshot) {
+      for (const e of this.coopSnapshot.enemies) {
+        const typeCode = e[0];
+        const isMiner = typeCode === 5;
+        const isBoss = typeCode >= 8;
+        if (!isMiner && !isBoss) continue;
+        drawMarkerArrow(e[1], e[2], isMiner);
+      }
+    } else {
+      for (const enemy of this.enemies) {
+        if (!enemy.active) continue;
+        const isMiner = enemy instanceof CryptoMiner || enemy.malwareType === 'CRYPTO_MINER';
+        const isElite =
+          enemy.malwareType === 'RANSOMWARE' ||
+          enemy.malwareType === 'FINAL_BOSS' ||
+          enemy instanceof ArmoredWorm ||
+          enemy instanceof Evasor;
+
+        if (!isMiner && !isElite) continue;
+        drawMarkerArrow(enemy.x, enemy.y, isMiner);
+      }
     }
 
     // Flechas direccionales en los bordes hacia los aliados Co-op fuera de cámara
@@ -7357,7 +7699,14 @@ export class Game {
     );
 
     // Armas activas con auto-fit
-    const weaponsStatus = this.combatSystem.getActiveWeaponsList(this.player).join(' • ');
+    let weaponsList = this.combatSystem.getActiveWeaponsList(this.player);
+    if (this.isCoopMode && !this.isCoopHost && this.coopSnapshot) {
+      const meSnap = this.coopSnapshot.players.find((p) => p.id === this.mpClient.myId);
+      if (meSnap && meSnap.activeWeapons.length > 0) {
+        weaponsList = meSnap.activeWeapons;
+      }
+    }
+    const weaponsStatus = weaponsList.join(' • ');
     const weaponsLabel = `${i18n.t('ARMAS', 'WEAPONS')}: ${weaponsStatus}`;
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#7dd3fc';
@@ -7545,6 +7894,86 @@ export class Game {
   private drawBossHUD(): void {
     this.ctx.save();
     this.ctx.textAlign = 'center';
+
+    // Cliente Invitado Co-op: renderiza barra/alerta de Jefe y El Toro desde el snapshot del Host
+    if (this.isCoopMode && !this.isCoopHost) {
+      const remoteBoss = this.coopSnapshot?.boss;
+      if (!remoteBoss) {
+        this.ctx.restore();
+        return;
+      }
+      if (remoteBoss.isToro) {
+        const panelW = Math.min(640, LOGICAL_WIDTH * 0.72);
+        const panelH = 68;
+        const px = (LOGICAL_WIDTH - panelW) / 2;
+        const py = LOGICAL_HEIGHT - 84;
+        this.drawCyberPanel(
+          px,
+          py,
+          panelW,
+          panelH,
+          12,
+          'rgba(22, 10, 18, 0.94)',
+          remoteBoss.color || '#f43f5e',
+          2.2
+        );
+        this.ctx.fillStyle = '#fda4af';
+        this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
+        this.ctx.fillText(
+          i18n.t(
+            `JEFE FINAL: EL TORO [INVENCIBLE // CONTACTO: 50% HP MÁX] | ${remoteBoss.toroStatus || ''}`,
+            `FINAL BOSS: EL TORO [INVINCIBLE // CONTACT: 50% MAX HP] | ${remoteBoss.toroStatus || ''}`
+          ),
+          LOGICAL_WIDTH / 2,
+          py + 24
+        );
+        this.ctx.fillStyle = '#fbbf24';
+        this.ctx.font = `bold 19px ${FONT_MONO}`;
+        this.ctx.fillText(
+          `${i18n.t('DAÑO TOTAL ACUMULADO', 'TOTAL DAMAGE DEALT')}: ${(remoteBoss.toroDmg || 0).toLocaleString('en-US')}`,
+          LOGICAL_WIDTH / 2,
+          py + 52
+        );
+        this.ctx.restore();
+        return;
+      }
+
+      if (remoteBoss.alertTimer && remoteBoss.alertTimer > 0) {
+        const pulse = Math.floor(remoteBoss.alertTimer * 8) % 2 === 0;
+        if (pulse) {
+          this.ctx.fillStyle = remoteBoss.color || '#f43f5e';
+          this.ctx.font = `bold 20px ${FONT_DISPLAY}`;
+          this.ctx.fillText(`ALERTA // ${remoteBoss.name} DETECTED`, LOGICAL_WIDTH / 2, 104);
+        }
+      }
+
+      if (remoteBoss.hp > 0) {
+        const barWidth = Math.min(540, LOGICAL_WIDTH * 0.56);
+        const barHeight = 14;
+        const x = (LOGICAL_WIDTH - barWidth) / 2;
+        const y = LOGICAL_HEIGHT - 46;
+        const ratio = Math.max(0, remoteBoss.hp / Math.max(1, remoteBoss.maxHp));
+        this.ctx.fillStyle = '#f8fafc';
+        this.ctx.font = `bold 13px ${FONT_MONO}`;
+        this.ctx.fillText(
+          `${remoteBoss.name} // INTEGRITY: ${remoteBoss.hp.toLocaleString('en-US')} / ${remoteBoss.maxHp.toLocaleString('en-US')}`,
+          LOGICAL_WIDTH / 2,
+          y - 8
+        );
+        this.drawCyberPanel(x, y, barWidth, barHeight, 4, 'rgba(11, 19, 34, 0.94)', 'rgba(226, 232, 240, 0.75)', 1.4);
+        if (ratio > 0) {
+          this.ctx.save();
+          this.traceChamferRect(x + 1, y + 1, barWidth - 2, barHeight - 2, 3);
+          this.ctx.clip();
+          this.ctx.fillStyle = remoteBoss.color || '#f43f5e';
+          this.ctx.fillRect(x, y, barWidth * ratio, barHeight);
+          this.ctx.restore();
+        }
+      }
+
+      this.ctx.restore();
+      return;
+    }
 
     // UI Dedicada exclusivamente al Jefe Final ("El Toro") cuando está activo
     if (this.finalBoss && this.finalBoss.active) {

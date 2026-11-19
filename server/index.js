@@ -142,7 +142,7 @@ app.get('/', (_req, res) => {
   res.json({
     ok: true,
     service: 'daw-survivor-coop',
-    version: '1.5.5',
+    version: '1.6.0',
     activeRooms: rooms.size,
     connectedPlayers: io.engine.clientsCount,
   });
@@ -152,7 +152,7 @@ app.get('/health', (_req, res) => {
   res.json({
     ok: true,
     service: 'daw-survivor-coop',
-    version: '1.5.5',
+    version: '1.6.0',
     activeRooms: rooms.size,
     connectedPlayers: io.engine.clientsCount,
     uptimeSec: Math.round(process.uptime()),
@@ -220,6 +220,10 @@ io.on('connection', (socket) => {
       if (typeof cb === 'function') cb({ ok: false, error: 'ROOM_NOT_FOUND' });
       return;
     }
+    if (socketToRoom.get(socket.id) === rawCode) {
+      if (typeof cb === 'function') cb({ ok: true, room: serializeRoom(room) });
+      return;
+    }
     if (room.status !== 'LOBBY') {
       if (typeof cb === 'function') cb({ ok: false, error: 'MATCH_ALREADY_STARTED' });
       return;
@@ -271,7 +275,7 @@ io.on('connection', (socket) => {
   socket.on('room:update_loadout', (payload) => {
     const code = socketToRoom.get(socket.id);
     const room = code ? rooms.get(code) : null;
-    if (!room) return;
+    if (!room || room.status !== 'LOBBY') return;
 
     const member = room.players.find((p) => p.id === socket.id);
     if (!member) return;
@@ -344,13 +348,22 @@ io.on('connection', (socket) => {
     const room = code ? rooms.get(code) : null;
     if (!room || room.status !== 'IN_GAME' || room.hostId === socket.id) return;
 
+    const rawX = Number(payload?.moveX);
+    const rawY = Number(payload?.moveY);
+    const rawAngle = Number(payload?.facingAngle);
+    const rawSeq = Number(payload?.seq);
+    const moveX = Number.isFinite(rawX) ? Math.max(-1, Math.min(1, rawX)) : 0;
+    const moveY = Number.isFinite(rawY) ? Math.max(-1, Math.min(1, rawY)) : 0;
+    const facingAngle = Number.isFinite(rawAngle) ? rawAngle : 0;
+    const seq = Number.isFinite(rawSeq) && rawSeq >= 0 ? Math.floor(rawSeq) : 0;
+
     io.to(room.hostId).emit('game:peer_input', {
       playerId: socket.id,
-      moveX: Number(payload?.moveX) || 0,
-      moveY: Number(payload?.moveY) || 0,
-      facingAngle: Number(payload?.facingAngle) || 0,
+      moveX,
+      moveY,
+      facingAngle,
       isMoving: Boolean(payload?.isMoving),
-      seq: Number(payload?.seq) || 0,
+      seq,
     });
   });
 
@@ -396,6 +409,7 @@ io.on('connection', (socket) => {
     const code = socketToRoom.get(socket.id);
     const room = code ? rooms.get(code) : null;
     if (!room || room.hostId !== socket.id || !payload?.targetId) return;
+    if (!room.players.some((p) => p.id === payload.targetId)) return;
     io.to(payload.targetId).emit('game:reroll_result', payload);
   });
 
@@ -443,6 +457,11 @@ setInterval(() => {
   const cutoff = Date.now() - 2 * 60 * 60 * 1000;
   for (const [code, room] of rooms.entries()) {
     if (room.updatedAt < cutoff || room.players.length === 0) {
+      for (const p of room.players) {
+        if (socketToRoom.get(p.id) === code) {
+          socketToRoom.delete(p.id);
+        }
+      }
       rooms.delete(code);
     }
   }

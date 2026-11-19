@@ -4,10 +4,13 @@ import { i18n } from '../utils/i18n';
 import type { WorldEnvironment } from '../systems/WorldEnvironment';
 import type {
   CoopWorldSnapshot,
+  SnapshotDroneTuple,
   SnapshotEnemyTuple,
+  SnapshotPetTuple,
   SnapshotPickupTuple,
   SnapshotPlayer,
   SnapshotProjTuple,
+  SnapshotRingTuple,
   SnapshotZoneTuple,
 } from './MultiplayerTypes';
 
@@ -41,19 +44,24 @@ function lerpAngle(a: number, b: number, t: number): number {
 export const ENEMY_CODE_MAP: Record<MalwareType, number> = {
   ADWARE: 0,
   WORM: 1,
-  TROJAN: 1,
   ARMORED_WORM: 2,
   TROJAN_SHOOTER: 3,
   EVASOR: 4,
   CRYPTO_MINER: 5,
   HARDWARE_BOX: 6,
-  RANSOMWARE: 7,
+  TROJAN: 7,
+  RANSOMWARE: 8,
   FINAL_BOSS: 9,
 };
 
 export function encodeEnemyType(enemy: Adware): number {
-  if (enemy.malwareType === 'RANSOMWARE') {
-    return enemy.constructor.name === 'RansomwareBoss' ? 8 : 7;
+  const bossTitle = (enemy as { bossTitle?: string }).bossTitle;
+  if (bossTitle) {
+    if (bossTitle === 'RANSOMWARE') return 8;
+    if (bossTitle === 'ROOTKIT_TITAN') return 10;
+    if (bossTitle === 'TROJAN_OVERLORD') return 11;
+    if (bossTitle === 'WORM_PRIME') return 12;
+    if (bossTitle === 'SPYWARE_SPECTER') return 13;
   }
   return ENEMY_CODE_MAP[enemy.malwareType] ?? 0;
 }
@@ -172,6 +180,15 @@ export class CoopRenderer {
       this.drawZone(ctx, z, now);
     }
 
+    // 1b. Charcos corrosivos (Worm Prime) y estelas Root en el suelo
+    if (snap.rings && snap.rings.length > 0) {
+      for (const ring of snap.rings) {
+        if (ring[3] === 2 || ring[3] === 3) {
+          this.drawRing(ctx, ring, now);
+        }
+      }
+    }
+
     // 2. Recogibles (XP, CryptoCoins, PowerUps)
     for (const p of snap.pickups) {
       this.drawPickup(ctx, p, now);
@@ -248,6 +265,15 @@ export class CoopRenderer {
       }
     }
 
+    // 4b. Anillos expansivos (Crio, Explosión de Drones, Ondas de Mascota)
+    if (snap.rings && snap.rings.length > 0) {
+      for (const ring of snap.rings) {
+        if (ring[3] !== 2 && ring[3] !== 3) {
+          this.drawRing(ctx, ring, now);
+        }
+      }
+    }
+
     // 5. Proyectiles "Pro" aliados y enemigos (extrapolación suave + recorte contra muros)
     for (const proj of snap.projectiles) {
       const [kind, px, py, vx, vy, evolved, size] = proj;
@@ -261,6 +287,18 @@ export class CoopRenderer {
         continue;
       }
       this.drawProjectile(ctx, [kind, ex, ey, vx, vy, evolved, size], now);
+    }
+
+    // 5b. Mascotas invocadas (Morcillita y ramas) y Drones orbitales del escuadrón
+    if (snap.pets && snap.pets.length > 0) {
+      for (const pet of snap.pets) {
+        this.drawPet(ctx, pet, now);
+      }
+    }
+    if (snap.drones && snap.drones.length > 0) {
+      for (const drone of snap.drones) {
+        this.drawDrone(ctx, drone, now);
+      }
     }
 
     // 6. Todos los jugadores del escuadrón (local sin lag, aliados interpolados)
@@ -503,14 +541,208 @@ export class CoopRenderer {
     ctx.restore();
   }
 
+  private static drawRing(ctx: CanvasRenderingContext2D, ring: SnapshotRingTuple, now: number): void {
+    const [x, y, radius, kind] = ring;
+    ctx.save();
+    if (kind === 2) {
+      // Charco tóxico de Worm Prime
+      const pulse = 0.85 + Math.sin(now * 0.008 + x * 0.05) * 0.15;
+      ctx.fillStyle = `rgba(16, 185, 129, ${0.22 * pulse})`;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(52, 211, 153, 0.78)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([7, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (kind === 3) {
+      // Estela eléctrica pasiva de Root
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.18)';
+      ctx.strokeStyle = 'rgba(96, 165, 250, 0.72)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else if (kind === 1) {
+      // Explosión AoE de Dron Antivirus
+      ctx.strokeStyle = 'rgba(255, 30, 66, 0.85)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (kind === 4) {
+      // Onda de choque de Morcillita Brute
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.78)';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      // Anillo Criogénico
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private static drawDrone(ctx: CanvasRenderingContext2D, drone: SnapshotDroneTuple, now: number): void {
+    const [x, y, durability, evolved] = drone;
+    const droneColor = evolved
+      ? '#fbbf24'
+      : durability >= 3
+      ? '#00ff66'
+      : durability === 2
+      ? '#facc15'
+      : '#ff1e42';
+    const hexR = evolved ? 12 : 10;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(now * 0.005);
+    ctx.fillStyle = evolved ? '#1e1005' : '#06131a';
+    ctx.strokeStyle = droneColor;
+    ctx.lineWidth = evolved ? 2.8 : 2.2;
+    ctx.beginPath();
+    for (let v = 0; v < 6; v++) {
+      const a = (v * Math.PI) / 3;
+      const px = Math.cos(a) * hexR;
+      const py = Math.sin(a) * hexR;
+      if (v === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = droneColor;
+    ctx.beginPath();
+    ctx.arc(0, 0, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private static drawPet(ctx: CanvasRenderingContext2D, pet: SnapshotPetTuple, now: number): void {
+    const [x, y, branchCode, size] = pet;
+    const r = Math.max(9, size * 0.5);
+    const pulse = 1 + Math.sin(now * 0.01) * 0.06;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(pulse, pulse);
+
+    if (branchCode === 1) {
+      // BRUTE: acorazado carmesí octogonal
+      ctx.fillStyle = '#4c0519';
+      ctx.strokeStyle = '#f43f5e';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4;
+        const px = Math.cos(a) * r;
+        const py = Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fda4af';
+      ctx.fillRect(-r * 0.42, -3, r * 0.3, 4);
+      ctx.fillRect(r * 0.12, -3, r * 0.3, 4);
+    } else if (branchCode === 2) {
+      // VIRAL: enjambre esmeralda tóxico
+      ctx.rotate(now * 0.004);
+      ctx.fillStyle = '#064e3b';
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI) / 3;
+        const rad = i % 2 === 0 ? r * 1.08 : r * 0.74;
+        if (i === 0) ctx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+        else ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#a7f3d0';
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (branchCode === 3) {
+      // PINBALL: disco cinético dorado-cian
+      ctx.rotate(now * 0.015);
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.62, 0, Math.PI * 1.4);
+      ctx.stroke();
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.28, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // BASE: Morcillita ciber-mascota rosa neón
+      ctx.fillStyle = '#3b0764';
+      ctx.strokeStyle = '#ec4899';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Orejas triangulares
+      ctx.fillStyle = '#ec4899';
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.72, -r * 0.5);
+      ctx.lineTo(-r * 0.92, -r * 1.2);
+      ctx.lineTo(-r * 0.2, -r * 0.85);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(r * 0.72, -r * 0.5);
+      ctx.lineTo(r * 0.92, -r * 1.2);
+      ctx.lineTo(r * 0.2, -r * 0.85);
+      ctx.closePath();
+      ctx.fill();
+      // Ojos brillantes
+      ctx.fillStyle = '#fdf2f8';
+      ctx.beginPath();
+      ctx.arc(-r * 0.32, -1, 2.5, 0, Math.PI * 2);
+      ctx.arc(r * 0.32, -1, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   private static drawEnemy(ctx: CanvasRenderingContext2D, e: SnapshotEnemyTuple, now: number): void {
     const [typeCode, x, y, size, hp, maxHp, angle, flags] = e;
     const isElite = (flags & 1) !== 0;
     const isFrozen = (flags & 2) !== 0;
     const isFlashing = (flags & 4) !== 0;
+    const isSpecialFlag = (flags & 8) !== 0;
+    const isAltFlag = (flags & 16) !== 0;
     const half = size / 2;
+    const isBoss = typeCode >= 8;
 
     ctx.save();
+    if (typeCode === 10 && isAltFlag && !isFlashing) {
+      // Rootkit Titan en camuflaje sigiloso
+      ctx.globalAlpha = 0.24;
+    }
+
     ctx.fillStyle = 'rgba(2, 6, 14, 0.45)';
     ctx.beginPath();
     ctx.ellipse(x, y + half * 0.72, half * 0.9, half * 0.36, 0, 0, Math.PI * 2);
@@ -526,23 +758,33 @@ export class CoopRenderer {
       ctx.stroke();
     }
 
+    // --- 9: EL TORO BOSS ---
     if (typeCode === 9) {
-      // EL TORO BOSS (+ indicador de telegrafiado de embestida en flags bit 3)
-      if ((flags & 8) !== 0) {
+      if (isSpecialFlag) {
+        // Corredor de telegrafiado solo durante TELEGRAPH (flags bit 3)
         ctx.save();
         ctx.rotate(angle);
         ctx.fillStyle = 'rgba(255, 20, 50, 0.2)';
         ctx.fillRect(0, -half * 0.85, 620, half * 1.7);
-        ctx.strokeStyle = 'rgba(250, 204, 21, 0.8)';
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.85)';
         ctx.lineWidth = 2.6;
         ctx.setLineDash([14, 8]);
         ctx.strokeRect(0, -half * 0.85, 620, half * 1.7);
         ctx.setLineDash([]);
         ctx.restore();
+      } else if (isAltFlag) {
+        // Estela ígnea solo durante DASH (flags bit 4)
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.fillStyle = 'rgba(249, 115, 22, 0.28)';
+        ctx.beginPath();
+        ctx.ellipse(-half * 0.55, 0, half * 1.55, half * 0.9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
-      const bodyColor = isFlashing ? '#ffffff' : '#991b1b';
+      const bodyColor = isFlashing ? '#ffffff' : isAltFlag ? '#dc2626' : '#991b1b';
       ctx.fillStyle = bodyColor;
-      ctx.strokeStyle = '#f87171';
+      ctx.strokeStyle = isAltFlag ? '#fbbf24' : '#f87171';
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(0, -half);
@@ -554,7 +796,6 @@ export class CoopRenderer {
       ctx.fill();
       ctx.stroke();
 
-      // Cuernos cibernéticos dorados
       ctx.strokeStyle = '#fbbf24';
       ctx.lineWidth = 4;
       ctx.beginPath();
@@ -571,9 +812,9 @@ export class CoopRenderer {
       return;
     }
 
+    // --- 5: CRYPTO MINER ---
     if (typeCode === 5) {
-      // CRYPTO MINER
-      ctx.fillStyle = isFlashing ? '#ffffff' : '#f59e0b';
+      ctx.fillStyle = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : '#f59e0b';
       ctx.strokeStyle = '#fef08a';
       ctx.lineWidth = 2;
       const cut = 5;
@@ -598,84 +839,347 @@ export class CoopRenderer {
       return;
     }
 
+    // --- 6: HARDWARE BOX ---
     if (typeCode === 6) {
-      // HARDWARE BOX
-      ctx.fillStyle = isFlashing ? '#ffffff' : '#475569';
+      ctx.fillStyle = isFlashing ? '#ffffff' : '#334155';
       ctx.strokeStyle = '#fbbf24';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.2;
       ctx.fillRect(-half, -half, size, size);
       ctx.strokeRect(-half, -half, size, size);
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(-half + 4, -half + 4);
+      ctx.lineTo(half - 4, half - 4);
+      ctx.moveTo(half - 4, -half + 4);
+      ctx.lineTo(-half + 4, half - 4);
+      ctx.stroke();
+      ctx.fillStyle = '#10b981';
+      ctx.fillRect(-2.2, -6, 4.4, 12);
+      ctx.fillRect(-6, -2.2, 12, 4.4);
       ctx.restore();
       return;
     }
 
-    ctx.rotate(angle);
     const t = now * 0.01;
-    const baseColor = isFlashing
-      ? '#ffffff'
-      : isFrozen
-      ? '#38bdf8'
-      : typeCode === 1
-      ? '#8b5cf6'
-      : typeCode === 2
-      ? '#14b8a6'
-      : typeCode === 3
-      ? '#f97316'
-      : typeCode === 4
-      ? '#22d3ee'
-      : typeCode >= 7
-      ? '#dc2626'
-      : '#ff1e42';
 
-    // Patas o alerones cyber
-    ctx.strokeStyle = baseColor;
-    ctx.lineWidth = typeCode >= 7 ? 2.6 : 1.8;
-    ctx.beginPath();
-    for (let i = -1; i <= 1; i++) {
-      const lx = i * half * 0.45;
-      const w = Math.sin(t + i * 2) * 2.2;
-      ctx.moveTo(lx, -half * 0.55);
-      ctx.lineTo(lx - 3 + w, -half - 4);
-      ctx.moveTo(lx, half * 0.55);
-      ctx.lineTo(lx - 3 - w, half + 4);
-    }
-    ctx.stroke();
-
-    ctx.fillStyle = baseColor;
-    ctx.beginPath();
-    ctx.moveTo(half + 4, 0);
-    ctx.lineTo(half * 0.25, -half * 0.85);
-    ctx.lineTo(-half * 0.85, -half * 0.65);
-    ctx.lineTo(-half * 0.45, 0);
-    ctx.lineTo(-half * 0.85, half * 0.65);
-    ctx.lineTo(half * 0.25, half * 0.85);
-    ctx.closePath();
-    ctx.fill();
-
-    if (!isFlashing) {
-      ctx.fillStyle = '#090d16';
+    // --- 1: WORM (Microchip morado con pines dorados) ---
+    if (typeCode === 1) {
+      const chipCol = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : '#7c3aed';
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 1.6;
+      for (let i = -1; i <= 1; i++) {
+        const p = i * half * 0.48;
+        ctx.beginPath();
+        ctx.moveTo(p, -half - 3.5);
+        ctx.lineTo(p, half + 3.5);
+        ctx.moveTo(-half - 3.5, p);
+        ctx.lineTo(half + 3.5, p);
+        ctx.stroke();
+      }
+      ctx.fillStyle = chipCol;
+      ctx.strokeStyle = '#c4b5fd';
+      ctx.lineWidth = 1.8;
+      ctx.fillRect(-half * 0.82, -half * 0.82, size * 0.82, size * 0.82);
+      ctx.strokeRect(-half * 0.82, -half * 0.82, size * 0.82, size * 0.82);
+      if (!isFlashing) {
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(-half * 0.45, -half * 0.45, size * 0.45, size * 0.45);
+        ctx.fillStyle = isFrozen ? '#bae6fd' : '#34d399';
+        ctx.fillRect(-half * 0.22, -half * 0.22, size * 0.22, size * 0.22);
+      }
+      ctx.restore();
+    } else if (typeCode === 7) {
+      // --- 7: TROJAN (Dardo amarillo afilado de alta velocidad) ---
+      ctx.rotate(angle);
+      const col = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : '#eab308';
+      ctx.fillStyle = col;
+      ctx.strokeStyle = isFlashing ? '#ffffff' : '#fef08a';
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.moveTo(half * 0.65, 0);
-      ctx.lineTo(-half * 0.1, -half * 0.44);
+      ctx.moveTo(half * 1.35, 0);
+      ctx.lineTo(-half * 0.55, -half * 0.92);
+      ctx.lineTo(-half * 0.25, 0);
+      ctx.lineTo(-half * 0.55, half * 0.92);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      if (!isFlashing) {
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.moveTo(half * 0.6, 0);
+        ctx.lineTo(-half * 0.15, -half * 0.35);
+        ctx.lineTo(-half * 0.15, half * 0.35);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (typeCode === 2) {
+      // --- 2: ARMORED WORM (Chasis blindado + escudo frontal cian + núcleo rojo trasero) ---
+      ctx.rotate(angle);
+      const bodyCol = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : '#0f766e';
+      ctx.fillStyle = bodyCol;
+      ctx.strokeStyle = '#5eead4';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(half * 0.9, -half * 0.55);
+      ctx.lineTo(half * 0.9, half * 0.55);
+      ctx.lineTo(-half * 0.85, half * 0.85);
+      ctx.lineTo(-half * 0.85, -half * 0.85);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // Núcleo vulnerable rojo en la retaguardia
+      if (!isFlashing) {
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(-half * 0.52, 0, half * 0.32, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Escudo frontal de energía cian (140°)
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 4.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, half * 1.15, -Math.PI * 0.38, Math.PI * 0.38);
+      ctx.stroke();
+      ctx.restore();
+    } else if (typeCode === 3) {
+      // --- 3: TROJAN SHOOTER (Torreta naranja de cañones gemelos rotativa) ---
+      ctx.rotate(angle);
+      const col = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : '#f97316';
+      // Cañones gemelos frontales
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(half * 0.25, -half * 0.48, half * 0.95, 4);
+      ctx.fillRect(half * 0.25, half * 0.48 - 4, half * 0.95, 4);
+      // Cuerpo hexagonal naranja
+      ctx.fillStyle = col;
+      ctx.strokeStyle = '#fed7aa';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(half * 0.72, -half * 0.52);
+      ctx.lineTo(half * 0.72, half * 0.52);
+      ctx.lineTo(-half * 0.2, half * 0.92);
+      ctx.lineTo(-half * 0.9, half * 0.45);
+      ctx.lineTo(-half * 0.9, -half * 0.45);
+      ctx.lineTo(-half * 0.2, -half * 0.92);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      if (!isFlashing) {
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(0, 0, half * 0.32, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (typeCode === 4) {
+      // --- 4: EVASOR (Caza fantasma cian con alas en flecha) ---
+      ctx.rotate(angle);
+      const col = isFlashing ? '#ffffff' : isFrozen ? '#7dd3fc' : '#06b6d4';
+      ctx.fillStyle = col;
+      ctx.strokeStyle = '#cffafe';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(half * 1.2, 0);
+      ctx.lineTo(half * 0.1, -half * 1.05);
+      ctx.lineTo(-half * 0.9, -half * 0.45);
       ctx.lineTo(-half * 0.4, 0);
-      ctx.lineTo(-half * 0.1, half * 0.44);
+      ctx.lineTo(-half * 0.9, half * 0.45);
+      ctx.lineTo(half * 0.1, half * 1.05);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      if (!isFlashing) {
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.ellipse(half * 0.18, 0, half * 0.36, half * 0.22, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (typeCode === 8) {
+      // --- 8: RANSOMWARE BOSS (Fortaleza encriptadora carmesí con candado) ---
+      const col = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : '#b91c1c';
+      ctx.fillStyle = col;
+      ctx.strokeStyle = '#fca5a5';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI) / 3 + Math.PI / 6;
+        const px = Math.cos(a) * half;
+        const py = Math.sin(a) * half;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      if (!isFlashing) {
+        // Candado central dorado
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, -half * 0.16, half * 0.24, Math.PI, 0);
+        ctx.stroke();
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(-half * 0.3, -half * 0.14, half * 0.6, half * 0.48);
+        ctx.fillStyle = '#111827';
+        ctx.beginPath();
+        ctx.arc(0, half * 0.08, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (typeCode === 10) {
+      // --- 10: ROOTKIT TITAN BOSS (Diamante táctico violeta sigiloso) ---
+      ctx.rotate(now * 0.0018);
+      const col = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : '#6d28d9';
+      ctx.fillStyle = col;
+      ctx.strokeStyle = '#d8b4fe';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, -half * 1.15);
+      ctx.lineTo(half * 0.95, 0);
+      ctx.lineTo(0, half * 1.15);
+      ctx.lineTo(-half * 0.95, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      if (!isFlashing) {
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(0, 0, half * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#c084fc';
+        ctx.beginPath();
+        ctx.arc(0, 0, half * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (typeCode === 11) {
+      // --- 11: TROJAN OVERLORD BOSS (Acorazado naranja artillado) ---
+      ctx.rotate(angle);
+      const col = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : '#ea580c';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(half * 0.3, -half * 0.68, half * 0.95, 7);
+      ctx.fillRect(half * 0.3, half * 0.68 - 7, half * 0.95, 7);
+      ctx.fillStyle = col;
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(half * 1.05, 0);
+      ctx.lineTo(half * 0.25, -half * 0.95);
+      ctx.lineTo(-half * 0.95, -half * 0.68);
+      ctx.lineTo(-half * 0.72, 0);
+      ctx.lineTo(-half * 0.95, half * 0.68);
+      ctx.lineTo(half * 0.25, half * 0.95);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      if (!isFlashing) {
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(half * 0.1, 0, half * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (typeCode === 12) {
+      // --- 12: WORM PRIME BOSS (Coloso esmeralda segmentado) ---
+      ctx.rotate(angle);
+      const col = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : '#059669';
+      // Anillos traseros segmentados
+      ctx.fillStyle = isFlashing ? '#ffffff' : '#047857';
+      ctx.strokeStyle = '#6ee7b7';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(-half * 0.65, 0, half * 0.56, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(0, 0, half * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      if (!isFlashing) {
+        ctx.fillStyle = '#a7f3d0';
+        ctx.fillRect(half * 0.22, -half * 0.32, 7, 5);
+        ctx.fillRect(half * 0.22, half * 0.32 - 5, 7, 5);
+      }
+      ctx.restore();
+    } else if (typeCode === 13) {
+      // --- 13: SPYWARE SPECTER BOSS (Ojo holográfico cian-glitch) ---
+      const col = isFlashing ? '#ffffff' : '#0891b2';
+      ctx.fillStyle = col;
+      ctx.strokeStyle = '#67e8f9';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(0, -half * 0.72);
+      ctx.quadraticCurveTo(half * 1.15, 0, 0, half * 0.72);
+      ctx.quadraticCurveTo(-half * 1.15, 0, 0, -half * 0.72);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      if (!isFlashing) {
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(0, 0, half * 0.38, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f43f5e';
+        ctx.beginPath();
+        ctx.arc(Math.cos(angle) * 4, Math.sin(angle) * 4, half * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else {
+      // --- 0: ADWARE (Araña mecánica roja clásica con 6 patas) ---
+      ctx.rotate(angle);
+      const baseColor = isFlashing ? '#ffffff' : isFrozen ? '#38bdf8' : '#ff1e42';
+      ctx.strokeStyle = baseColor;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      for (let i = -1; i <= 1; i++) {
+        const lx = i * half * 0.45;
+        const w = Math.sin(t + i * 2) * 2.2;
+        ctx.moveTo(lx, -half * 0.55);
+        ctx.lineTo(lx - 3 + w, -half - 4);
+        ctx.moveTo(lx, half * 0.55);
+        ctx.lineTo(lx - 3 - w, half + 4);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = baseColor;
+      ctx.beginPath();
+      ctx.moveTo(half + 4, 0);
+      ctx.lineTo(half * 0.25, -half * 0.85);
+      ctx.lineTo(-half * 0.85, -half * 0.65);
+      ctx.lineTo(-half * 0.45, 0);
+      ctx.lineTo(-half * 0.85, half * 0.65);
+      ctx.lineTo(half * 0.25, half * 0.85);
       ctx.closePath();
       ctx.fill();
 
-      ctx.fillStyle = isFrozen ? '#bae6fd' : '#fef08a';
-      ctx.fillRect(half * 0.16, -half * 0.26, 3.2, 2.6);
-      ctx.fillRect(half * 0.16, half * 0.26 - 2.6, 3.2, 2.6);
+      if (!isFlashing) {
+        ctx.fillStyle = '#090d16';
+        ctx.beginPath();
+        ctx.moveTo(half * 0.65, 0);
+        ctx.lineTo(-half * 0.1, -half * 0.44);
+        ctx.lineTo(-half * 0.4, 0);
+        ctx.lineTo(-half * 0.1, half * 0.44);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = isFrozen ? '#bae6fd' : '#fef08a';
+        ctx.fillRect(half * 0.16, -half * 0.26, 3.2, 2.6);
+        ctx.fillRect(half * 0.16, half * 0.26 - 2.6, 3.2, 2.6);
+      }
+      ctx.restore();
     }
 
-    ctx.restore();
-
     // Barra de vida sobre élites y jefes
-    if ((isElite || typeCode >= 7) && maxHp > 0 && hp < maxHp) {
+    if ((isElite || isBoss) && maxHp > 0 && hp < maxHp) {
       const bw = Math.max(34, size * 1.05);
       const ratio = Math.max(0, Math.min(1, hp / maxHp));
       ctx.fillStyle = 'rgba(0,0,0,0.82)';
       ctx.fillRect(x - bw / 2, y - half - 14, bw, 5);
-      ctx.fillStyle = typeCode >= 7 ? '#f43f5e' : '#38bdf8';
+      ctx.fillStyle = isBoss ? '#f43f5e' : '#38bdf8';
       ctx.fillRect(x - bw / 2, y - half - 14, bw * ratio, 5);
     }
   }
@@ -716,6 +1220,23 @@ export class CoopRenderer {
     }
 
     ctx.rotate(angle);
+
+    if (kind === 6) {
+      // PetShrapnel (fragmento viral de Morcillita)
+      ctx.fillStyle = '#34d399';
+      ctx.strokeStyle = '#ec4899';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(8, 0);
+      ctx.lineTo(-3, -4.5);
+      ctx.lineTo(-6, 0);
+      ctx.lineTo(-3, 4.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
 
     if (kind === 5) {
       // EnemyProjectile

@@ -295,14 +295,9 @@ export class HatRenderer {
       ctx.fillStyle = cupColor;
       ctx.strokeStyle = rgbGlow || '#0f172a';
       ctx.lineWidth = 1.5;
-      if (rgbGlow) {
-        ctx.shadowColor = rgbGlow;
-        ctx.shadowBlur = 6;
-      }
       this.traceRoundedBox(ctx, side * 12.2 - 2.6, -5.5, 5.2, 10, 2.2);
       ctx.fill();
       ctx.stroke();
-      ctx.shadowBlur = 0;
 
       if (rgbGlow) {
         ctx.fillStyle = rgbGlow;
@@ -528,8 +523,6 @@ export class HatRenderer {
         ctx.fillStyle = '#0f172a';
         ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 1.5;
-        ctx.shadowColor = '#00f0ff';
-        ctx.shadowBlur = 8;
         this.traceRoundedBox(ctx, -11.5, -3.5, 23, 7, 3);
         ctx.fill();
         ctx.stroke();
@@ -655,10 +648,7 @@ export class HatRenderer {
         ctx.stroke();
         // Visor angular neón
         ctx.fillStyle = '#00f0ff';
-        ctx.shadowColor = '#00f0ff';
-        ctx.shadowBlur = 8;
         ctx.fillRect(-9.5, -2.5, 19, 3.6);
-        ctx.shadowBlur = 0;
         // Antena
         ctx.strokeStyle = '#f0abfc';
         ctx.beginPath();
@@ -735,8 +725,6 @@ export class HatRenderer {
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = '#00ff88';
-        ctx.shadowColor = '#00ff88';
-        ctx.shadowBlur = 8;
         for (const [px, py] of [[-12, -10], [0, -13], [12, -10]]) {
           ctx.beginPath();
           ctx.arc(px, py, 2.1, 0, Math.PI * 2);
@@ -875,8 +863,6 @@ export class HatRenderer {
         ctx.fillStyle = '#1e293b';
         ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 1.5;
-        ctx.shadowColor = '#38bdf8';
-        ctx.shadowBlur = 10;
         ctx.beginPath();
         ctx.moveTo(-11, 1);
         ctx.lineTo(-13, -12);
@@ -894,14 +880,11 @@ export class HatRenderer {
         ctx.beginPath();
         ctx.arc(0, -3.5, 2.3, 0, Math.PI * 2);
         ctx.fill();
-        ctx.shadowBlur = 0;
         break;
 
       case 'leg_2': // Aureola de Superusuario Root
         ctx.strokeStyle = '#fbbf24';
         ctx.lineWidth = 2.4;
-        ctx.shadowColor = '#fbbf24';
-        ctx.shadowBlur = 10;
         ctx.beginPath();
         ctx.ellipse(0, isIcon ? -2 : -5.5, 13, 4.2, 0, 0, Math.PI * 2);
         ctx.stroke();
@@ -910,7 +893,6 @@ export class HatRenderer {
         ctx.beginPath();
         ctx.ellipse(0, isIcon ? -2 : -5.5, 9, 2.5, Math.sin(t) * 0.25, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.shadowBlur = 0;
         break;
 
       case 'leg_3': // Yelmo Valquiria de Cobalto
@@ -1004,13 +986,10 @@ export class HatRenderer {
         const orbX = Math.cos(t * 2) * 4;
         ctx.fillStyle = '#090d16';
         ctx.strokeStyle = '#38bdf8';
-        ctx.shadowColor = '#a855f7';
-        ctx.shadowBlur = 10;
         ctx.beginPath();
         ctx.arc(orbX, -8.5, 4.5, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        ctx.shadowBlur = 0;
         break;
       }
 
@@ -1061,8 +1040,6 @@ export class HatRenderer {
         ctx.fillStyle = '#fbbf24';
         ctx.strokeStyle = '#92400e';
         ctx.lineWidth = 1.4;
-        ctx.shadowColor = '#fbbf24';
-        ctx.shadowBlur = 10;
         ctx.beginPath();
         ctx.moveTo(-12, 1);
         ctx.lineTo(-10, -10);
@@ -1078,7 +1055,6 @@ export class HatRenderer {
         ctx.beginPath();
         ctx.arc(0, -4.5, 2.5, 0, Math.PI * 2);
         ctx.fill();
-        ctx.shadowBlur = 0;
         break;
 
       // ================= MÍTICAS (10) =================
@@ -1175,11 +1151,8 @@ export class HatRenderer {
         ctx.fill();
         // Ojos brillantes cian
         ctx.fillStyle = '#00f0ff';
-        ctx.shadowColor = '#00f0ff';
-        ctx.shadowBlur = 7;
         ctx.fillRect(-6.2, -1.2, 4.2, 2);
         ctx.fillRect(2, -1.2, 4.2, 2);
-        ctx.shadowBlur = 0;
         ctx.restore();
         break;
 

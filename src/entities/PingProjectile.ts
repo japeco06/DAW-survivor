@@ -13,6 +13,8 @@ export class PingProjectile extends Entity {
   private lifeTime: number = 3.2;
   private turnSpeed: number = 7.5; // Capacidad de giro para perseguir objetivos
   private trail: { x: number; y: number }[] = [];
+  private retargetTimer: number = 0;
+  private cachedTarget: Adware | null = null;
 
   public isEvolved: boolean;
 
@@ -45,9 +47,14 @@ export class PingProjectile extends Entity {
     worldEnv?: WorldEnvironment
   ): void {
     this.lifeTime -= dt;
+    this.retargetTimer -= dt;
 
-    // Buscar el enemigo activo con línea de visión clara (o el más cercano si todos están cubiertos)
-    const target = this.findNearestTarget(enemies, worldEnv);
+    // Buscar objetivo solo cada 0.12s o cuando el actual muere (evita cientos de ray-marches por frame)
+    if (!this.cachedTarget || !this.cachedTarget.active || this.retargetTimer <= 0) {
+      this.retargetTimer = 0.12;
+      this.cachedTarget = this.findNearestTarget(enemies, worldEnv);
+    }
+    const target = this.cachedTarget;
     if (target) {
       const desiredDx = target.x - this.x;
       const desiredDy = target.y - this.y;
@@ -87,27 +94,32 @@ export class PingProjectile extends Entity {
   }
 
   private findNearestTarget(enemies: Adware[], worldEnv?: WorldEnvironment): Adware | null {
-    let nearestVisible: Adware | null = null;
-    let minVisibleDist = Infinity;
-    let nearestAny: Adware | null = null;
-    let minAnyDist = Infinity;
+    // Recoger los 4 enemigos más cercanos por distancia² antes de probar línea de visión
+    const top: { enemy: Adware; d2: number }[] = [];
 
-    for (const enemy of enemies) {
+    for (let i = 0; i < enemies.length; i++) {
+      const enemy = enemies[i];
       if (!enemy.active) continue;
-      const d = Math.hypot(enemy.x - this.x, enemy.y - this.y);
-      if (d < minAnyDist) {
-        minAnyDist = d;
-        nearestAny = enemy;
-      }
-      if (
-        (!worldEnv?.isInfinite || !worldEnv.segmentHitsObstacle(this.x, this.y, enemy.x, enemy.y, 3)) &&
-        d < minVisibleDist
-      ) {
-        minVisibleDist = d;
-        nearestVisible = enemy;
+      const dx = enemy.x - this.x;
+      const dy = enemy.y - this.y;
+      const d2 = dx * dx + dy * dy;
+      if (top.length < 4 || d2 < top[top.length - 1].d2) {
+        let pos = top.length;
+        while (pos > 0 && d2 < top[pos - 1].d2) pos--;
+        top.splice(pos, 0, { enemy, d2 });
+        if (top.length > 4) top.pop();
       }
     }
-    return nearestVisible ?? nearestAny;
+    if (top.length === 0) return null;
+    if (!worldEnv?.isInfinite) return top[0].enemy;
+
+    for (let i = 0; i < top.length; i++) {
+      const cand = top[i].enemy;
+      if (!worldEnv.segmentHitsObstacle(this.x, this.y, cand.x, cand.y, 3)) {
+        return cand;
+      }
+    }
+    return top[0].enemy;
   }
 
   public override draw(ctx: CanvasRenderingContext2D): void {

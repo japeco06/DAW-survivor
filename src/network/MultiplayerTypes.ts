@@ -79,14 +79,15 @@ export interface SnapshotPlayer {
   activeWeapons: string[];
   ackSeq?: number;
   spd?: number;
+  xpM?: number;
 }
 
 // [typeCode, x, y, size, hp, maxHp, angle, flags, netId?]
-// flags: bit0=elite, bit1=frozen, bit2=flash, bit3=shield/warning(Toro telegraph/dash)
+// flags: bit0=elite, bit1=frozen, bit2=flash, bit3=shield/Toro telegraph, bit4=Toro dash / Rootkit stealth
 export type SnapshotEnemyTuple = [number, number, number, number, number, number, number, number, number?];
 
 // [kind, x, y, vx, vy, evolved(0|1), size]
-// kind: 0=Projectile, 1=PingProjectile, 2=CryoShard, 3=SqlBeam, 4=SawDisc, 5=EnemyProjectile
+// kind: 0=Projectile, 1=PingProjectile, 2=CryoShard, 3=SqlBeam, 4=SawDisc, 5=EnemyProjectile, 6=PetShrapnel
 export type SnapshotProjTuple = [number, number, number, number, number, number, number];
 
 // [kind, x, y, value]
@@ -99,6 +100,26 @@ export type SnapshotZoneTuple = [number, number, number, number, number, number,
 
 // [x, y, radius, evolved(0|1)]
 export type SnapshotPulseTuple = [number, number, number, number];
+
+// [x, y, durability, evolved(0|1)]
+export type SnapshotDroneTuple = [number, number, number, number];
+
+// [x, y, branchCode(0..3), size]
+export type SnapshotPetTuple = [number, number, number, number];
+
+// [x, y, radius, kind(0=Cryo, 1=DroneBlast, 2=WormPuddle, 3=RootTrail, 4=PetShockwave)]
+export type SnapshotRingTuple = [number, number, number, number];
+
+export interface SnapshotBossHUD {
+  name: string;
+  color: string;
+  hp: number;
+  maxHp: number;
+  isToro?: boolean;
+  toroDmg?: number;
+  toroStatus?: string;
+  alertTimer?: number;
+}
 
 export interface CoopWorldSnapshot {
   seq: number;
@@ -122,6 +143,10 @@ export interface CoopWorldSnapshot {
   arcs: [number, number][][];
   pulses: SnapshotPulseTuple[];
   oasis?: [string, number, number, number][];
+  drones?: SnapshotDroneTuple[];
+  pets?: SnapshotPetTuple[];
+  rings?: SnapshotRingTuple[];
+  boss?: SnapshotBossHUD | null;
 }
 
 export interface CoopLevelUpPayload {

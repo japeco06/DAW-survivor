@@ -129,8 +129,6 @@ export class RansomwareBoss extends WaveBoss {
 
     // Cuerpo blindado
     ctx.fillStyle = drawColor;
-    ctx.shadowColor = '#ff0055';
-    ctx.shadowBlur = isFlashing ? 26 : 14;
     ctx.fillRect(this.x - half, this.y - half, this.size, this.size);
 
     // Símbolo de candado de cifrado
@@ -162,6 +160,10 @@ export class RootkitTitanBoss extends WaveBoss {
   private isStealthed: boolean = false;
   private baseSpeed: number;
   private runeAngle: number = 0;
+
+  public getIsStealthed(): boolean {
+    return this.isStealthed;
+  }
 
   constructor(x: number, y: number, scaling: number | WaveBossScalingContext = 1) {
     const ctx = typeof scaling === 'number' ? { bossLevel: scaling } : scaling;
@@ -225,8 +227,6 @@ export class RootkitTitanBoss extends WaveBoss {
     // Cuerpo en forma de rombo de sombras
     ctx.rotate(Math.PI / 4);
     ctx.fillStyle = drawColor;
-    ctx.shadowColor = '#a855f7';
-    ctx.shadowBlur = isFlashing ? 24 : 12;
     ctx.fillRect(-half * 0.85, -half * 0.85, half * 1.7, half * 1.7);
 
     // Núcleo de sombra
@@ -314,8 +314,6 @@ export class TrojanOverlordBoss extends WaveBoss {
 
     // Cuerpo de crucero de batalla triangular
     ctx.fillStyle = drawColor;
-    ctx.shadowColor = '#f97316';
-    ctx.shadowBlur = isFlashing ? 28 : 12;
 
     ctx.beginPath();
     ctx.moveTo(half + 10, 0); // Punta delantera
@@ -378,6 +376,32 @@ export class WormPrimeBoss extends WaveBoss {
     }
   }
 
+  public getPuddles(): readonly ToxicPuddle[] {
+    return this.puddles;
+  }
+
+  public applyPuddleDamageToPlayers(players: Player[]): Player[] {
+    const hitPlayers: Player[] = [];
+    if (this.puddleDamageCooldown > 0 || this.puddles.length === 0) return hitPlayers;
+    for (const pl of players) {
+      if (!pl.active) continue;
+      for (const p of this.puddles) {
+        const dx = pl.x - p.x;
+        const dy = pl.y - p.y;
+        if (Math.hypot(dx, dy) < p.radius + pl.size * 0.4) {
+          if (pl.takeDamage(5)) {
+            hitPlayers.push(pl);
+          }
+          break;
+        }
+      }
+    }
+    if (hitPlayers.length > 0) {
+      this.puddleDamageCooldown = 0.4;
+    }
+    return hitPlayers;
+  }
+
   public override update(dt: number, player: Player): void {
     this.sinPhase += dt * 4.5;
     const isEnraged = this.hp < this.maxHp * 0.5;
@@ -406,18 +430,10 @@ export class WormPrimeBoss extends WaveBoss {
       }
     }
 
-    // Actualizar charcos y verificar daño al jugador con tick de 0.4s
+    // Actualizar duración de charcos (el daño a jugadores se resuelve desde Game.ts para Host + Invitados)
     this.puddleDamageCooldown = Math.max(0, this.puddleDamageCooldown - dt);
     for (const p of this.puddles) {
       p.lifetime -= dt;
-      if (this.puddleDamageCooldown <= 0) {
-        const dx = player.x - p.x;
-        const dy = player.y - p.y;
-        if (Math.hypot(dx, dy) < p.radius + player.size * 0.4) {
-          player.takeDamage(5);
-          this.puddleDamageCooldown = 0.4;
-        }
-      }
     }
     this.puddles = this.puddles.filter((p) => p.lifetime > 0);
 
@@ -473,8 +489,6 @@ export class WormPrimeBoss extends WaveBoss {
 
     // 3. Cabeza blindada del Gusano
     ctx.fillStyle = bodyColor;
-    ctx.shadowColor = '#10b981';
-    ctx.shadowBlur = isFlashing ? 28 : 14;
     const half = this.size / 2;
     ctx.beginPath();
     ctx.arc(this.x, this.y, half, 0, Math.PI * 2);
@@ -582,8 +596,6 @@ export class SpywareSpecterBoss extends WaveBoss {
 
     // Núcleo principal cian
     ctx.fillStyle = isFlashing ? '#ffffff' : this.bossColor;
-    ctx.shadowColor = '#06b6d4';
-    ctx.shadowBlur = isFlashing ? 28 : 12;
     ctx.fillRect(this.x - half + glitchOffset, this.y - half, this.size, this.size);
 
     // Ojo de intercepción central

@@ -67,8 +67,6 @@ class MalwareShrapnelFragment {
     ctx.rotate(this.angle);
     ctx.fillStyle = '#fde047';
     ctx.strokeStyle = '#f97316';
-    ctx.shadowColor = '#facc15';
-    ctx.shadowBlur = 12;
     ctx.beginPath();
     ctx.moveTo(this.size * 0.8, 0);
     ctx.lineTo(-this.size * 0.6, -this.size * 0.45);
@@ -109,8 +107,6 @@ class PinballCorruptionTrail {
     ctx.fillStyle = `rgba(236, 72, 153, ${alpha * 0.42})`;
     ctx.strokeStyle = `rgba(0, 240, 255, ${alpha * 0.85})`;
     ctx.lineWidth = 1.5;
-    ctx.shadowColor = '#ec4899';
-    ctx.shadowBlur = 8 * alpha;
     ctx.fillRect(this.x - half, this.y - half, half * 2, half * 2);
     ctx.strokeRect(this.x - half, this.y - half, half * 2, half * 2);
     ctx.restore();
@@ -299,8 +295,6 @@ class BruteShockwave {
     ctx.save();
     ctx.strokeStyle = `rgba(251, 191, 36, ${alpha})`;
     ctx.fillStyle = `rgba(217, 119, 6, ${alpha * 0.18})`;
-    ctx.shadowColor = '#f59e0b';
-    ctx.shadowBlur = 18;
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
@@ -361,6 +355,35 @@ export class CompanionPet {
 
   public getUnits(): { x: number; y: number; size: number }[] {
     return this.units;
+  }
+
+  public getBranchCode(): number {
+    if (this.branch === 'BRUTE') return 1;
+    if (this.branch === 'BOTNET') return 2;
+    if (this.branch === 'PINBALL') return 3;
+    return 0;
+  }
+
+  public getSnapshotProjectiles(): { x: number; y: number; vx: number; vy: number; size: number }[] {
+    const out: { x: number; y: number; vx: number; vy: number; size: number }[] = [];
+    for (const p of this.pinballProjectiles) {
+      if (p.active) out.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, size: p.size });
+    }
+    for (const f of this.shrapnelFragments) {
+      if (f.active) out.push({ x: f.x, y: f.y, vx: f.vx, vy: f.vy, size: f.size });
+    }
+    return out;
+  }
+
+  public getSnapshotShockwaves(): { x: number; y: number; radius: number }[] {
+    const out: { x: number; y: number; radius: number }[] = [];
+    for (const sw of this.shockwaves) {
+      if (sw.active) out.push({ x: sw.x, y: sw.y, radius: sw.radius });
+    }
+    for (const c of this.craters) {
+      if (c.active) out.push({ x: c.x, y: c.y, radius: c.radius });
+    }
+    return out;
   }
 
   private spawnUnits(
@@ -740,8 +763,9 @@ export class CompanionPet {
           unit.vy = (nextVy / norm) * unit.speed;
         }
 
-        // Lvl 10 (Explosión Cinética): al rebotar en un borde dispara 4 proyectiles (arriba, abajo, izquierda, derecha)
-        if ((bouncedEdge || bouncedWall) && playerLevel >= 10) {
+        // Lvl 10 (Explosión Cinética): al rebotar en un borde dispara 4 proyectiles (con cooldown anti-spam en mapa móvil)
+        if ((bouncedEdge || bouncedWall) && playerLevel >= 10 && unit.burstCooldown <= 0) {
+          unit.burstCooldown = 0.35;
           spawnKineticBurst(
             unit.x,
             unit.y,
@@ -834,6 +858,16 @@ export class CompanionPet {
             enemy,
             this.branch === 'BOTNET' ? 0.18 : this.branch === 'PINBALL' ? 0.2 : 0.24
           );
+
+          if (enemy.isHitBlockedByShield(unit.x, unit.y)) {
+            damagedEnemies.push({
+              x: enemy.x,
+              y: enemy.y,
+              damage: 0,
+              color: '#38bdf8',
+            });
+            continue;
+          }
 
           const pushForce =
             this.branch === 'BRUTE'
@@ -1028,8 +1062,6 @@ export class CompanionPet {
           ? '#00f0ff'
           : '#f59e0b';
       ctx.lineWidth = 2;
-      ctx.shadowColor = this.branch === 'PINBALL' ? '#ec4899' : '#d97706';
-      ctx.shadowBlur = 12;
 
       const half = unit.size / 2;
       ctx.fillRect(unit.x - half, unit.y - half, unit.size, unit.size);

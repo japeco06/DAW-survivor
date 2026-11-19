@@ -52,7 +52,7 @@ export class Evasor extends Adware {
       const dy = this.y - proj.y;
       const dist = Math.hypot(dx, dy);
 
-      if (dist <= this.proximityRadius) {
+      if (dist <= this.proximityRadius && dx * proj.vx + dy * proj.vy > 0) {
         const pLen = Math.hypot(proj.vx, proj.vy) || 1;
         const pDirX = proj.vx / pLen;
         const pDirY = proj.vy / pLen;
@@ -116,6 +116,7 @@ export class Evasor extends Adware {
     this.afterimages = this.afterimages.filter((img) => img.alpha > 0);
 
     if (this.dashTimer > 0) {
+      this.tickSpeedMultiplier(dt);
       this.dashTimer = Math.max(0, this.dashTimer - dt);
       this.x += this.dashVx * dt;
       this.y += this.dashVy * dt;

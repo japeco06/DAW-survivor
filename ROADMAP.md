@@ -337,16 +337,42 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │   ├── Complejos de obstáculos menos numerosos (~48% de sectores), dispuestos de forma más orgánica/aleatoria con `2–3` piezas pegadas sin grietas
 │   └── Mayor frecuencia de lagos viscosos grandes (~72% de sectores con `1–2` lagos de `142–188 px`)
 │
-└── v1.5.5 — El Toro Libre en Co-op, Co-op Fluido para Invitados, Esquiva de Enemigos y Recorte Frontal de Proyectiles (ACTUAL)
-    ├── `ElToroBoss` con `unbounded = isMovingMap()` en Co-op para que no regrese al respawn en `0..1920 x 0..1080` tras cada embestida
-    ├── Clientes invitados Co-op sin tirones ni congelación: interpolación 60/144 FPS por `netId`, reconciliación por `ackSeq`, sincronización de velocidad (`spd`), priorización de enemigos/balas por jugador y `25 Hz / 50 Hz` sin compresión `perMessageDeflate`
-    ├── Esquiva activa de obstáculos (`moveEntityAvoidingObstacles`) para que los enemigos rodeen los muros en lugar de atascarse de frente
-    └── Colisión frontal extendida hasta la punta de haces/proyectiles y extrapolación en invitados recortada contra muros
+├── v1.5.5 — El Toro Libre en Co-op, Co-op Fluido para Invitados, Esquiva de Enemigos y Recorte Frontal de Proyectiles
+│   ├── `ElToroBoss` con `unbounded = isMovingMap()` en Co-op para que no regrese al respawn en `0..1920 x 0..1080` tras cada embestida
+│   ├── Clientes invitados Co-op sin tirones ni congelación: interpolación 60/144 FPS por `netId`, reconciliación por `ackSeq`, sincronización de velocidad (`spd`), priorización de enemigos/balas por jugador y `25 Hz / 50 Hz` sin compresión `perMessageDeflate`
+│   ├── Esquiva activa de obstáculos (`moveEntityAvoidingObstacles`) para que los enemigos rodeen los muros en lugar de atascarse de frente
+│   └── Colisión frontal extendida hasta la punta de haces/proyectiles y extrapolación en invitados recortada contra muros
+│
+└── v1.6.0 — Corrección Visual de Enemigos, Combate/IA Robusto, Paridad Co-op Completa y Rendimiento Sin Pausas (ACTUAL)
+    ├── Siluetas e identidades visuales únicas para los 14 tipos de enemigos y 5 Jefes en Co-op (`CoopRenderer.ts` sin `constructor.name` minificado) + micro-oleadas mixtas en Modo Normal (`Spawner.ts`)
+    ├── Combate & IA: cero *soft-locks* al morir por charcos/tormentas, `SqlInjectionBeam` con colisión por segmento sin *tunneling*, `SawDisc` bloqueado antes de herir tras muro, ralentización/hielo efectivo en `ArmoredWorm`/`CryptoMiner`/`Evasor`, spawns siempre fuera de muros y `resolveEnemyCrowd` seguro
+    ├── Paridad total Co-op + Servidor endurecido (`server/index.js`): proyectiles enemigos y eventos de terreno golpean a Invitados, simulación única (`1x`) de arrays compartidos, Drones/Morcillita/Anillos/Barra y música de Jefes/Feedback de daño/Guardado en la nube en Invitados, cámara espectadora al caer y cola íntegra de múltiples subidas de nivel
+    └── Rendimiento: consultas de obstáculos *zero-allocation* con caché LRU (`WorldEnvironment.ts`), `ParticleSystem` con arrastre independiente del FPS y sin `save/restore` por partícula, eliminación de `shadowBlur` en jefes/mascota/sombreros y `PingProjectile` con recálculo amortiguado
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.6.0] - 2026-11-19
+- **Apariencia Única para Todos los Enemigos en Co-op y Normal (`CoopRenderer.ts`, `TrojanShooter.ts`, `Spawner.ts`, `Game.ts`)**:
+  - Reescrito `encodeEnemyType` usando `bossTitle` (resistente a la minificación de producción) con códigos independientes (`0..13`), separando `TROJAN` (dardo amarillo), `WORM` (microchip morado con pines dorados), `ARMORED_WORM` (escudo frontal cian + núcleo rojo trasero), `TROJAN_SHOOTER` (torreta naranja con cañones gemelos rotativos sincronizados por `facingAngle`), `EVASOR` (caza cian), `RANSOMWARE` (fortaleza candado), `ROOTKIT_TITAN` (diamante violeta con camuflaje sigiloso `flags & 16`), `TROJAN_OVERLORD` (acorazado naranja), `WORM_PRIME` (coloso esmeralda), `SPYWARE_SPECTER` (ojo holográfico) y `EL TORO` (separando `TELEGRAPH` en bit 3 y `DASH` ígneo en bit 4).
+  - Variadas las micro-oleadas de flanqueo en `Spawner.ts` para mezclar `Trojan` y `Worm` pasados 20–35s en lugar de generar siempre 100% `Adware` rojo.
+- **Combate, IA y Spawns Críticos (`CombatSystem.ts`, `Game.ts`, `WorldEnvironment.ts`, `WaveBoss.ts`, `ArmoredWorm.ts`, `CryptoMiner.ts`, `Evasor.ts`, `CompanionPet.ts`, `TerrainEventSystem.ts`)**:
+  - Corregido el *soft-lock* por muerte causada por charcos ácidos de `WormPrimeBoss` o Tormentas de Datos al sacar la comprobación `!player.active` fuera de `combatEvents.playerHit`.
+  - Actualizada la detección de `SqlInjectionBeam` a segmento barrido (`84–114 px`) sin *tunneling*, y reordenado `SawDiscProjectile` para bloquear impactos contra muros antes de herir objetivos tras cobertura.
+  - Aplicada la ralentización criogénica y congelación EMP a `ArmoredWorm`, `CryptoMiner` y `Evasor` (que además ya no esquiva balas que se alejan).
+  - Añadido `findClearSpawnPosition` para que ningún enemigo, jefe, caja o baliza de terreno nazca dentro de muros; protegidos `CryptoMiner`, `Evasor`, `ElToroBoss`, `SpywareSpecterBoss` y `resolveEnemyCrowd` contra atascos en muros y empuje de `HARDWARE_BOX`.
+  - Habilitado vampirismo en `Zona Cuarentena` y `Drones Antivirus`, enfriamiento anti-spam en `spawnKineticBurst` y comprobación de escudo frontal en golpes de `Morcillita`.
+- **Paridad Completa Co-op y Servidor Endurecido (`Game.ts`, `CombatSystem.ts`, `MultiplayerTypes.ts`, `CoopRenderer.ts`, `server/index.js`)**:
+  - Corregido el bug crítico que hacía inmunes a los Invitados frente a proyectiles enemigos y eventos de terreno, y evitada la cuádruple simulación (`4x`) de `projectiles`, `pingProjectiles` y `quarantineZones` mediante `isSharedWorldOwner`.
+  - Sincronizados en los snapshots del Host: Drones orbitales, Mascotas Morcillita (+ fragmentos virales y ondas), anillos Crio/explosiones/charcos/estelas Root, pulsos Cortafuegos de aliados, hasta 6 armas activas, `xpMultiplier`, barra/alerta/música de Jefes y El Toro, flechas de borde para jefes/mineros, feedback de daño (viñeta, sacudida, SFX), cámara espectadora al caer, cola completa de múltiples subidas de nivel, limpieza de disparos de aliados caídos y guardado de récords/nube/misiones al terminar la partida en Invitados.
+  - Endurecido `server/index.js`: protección contra auto-rejoin destructivo, bloqueo de `room:update_loadout` en partida, saneamiento finito `[-1, 1]` de `game:input`, validación de pertenencia en `game:reroll_result` y limpieza de `socketToRoom` en purga de salas.
+- **Rendimiento y Fluidez (`WorldEnvironment.ts`, `ParticleSystem.ts`, `PingProjectile.ts`, `SoundSystem.ts`, `ElToroBoss.ts`, `WaveBoss.ts`, `CompanionPet.ts`, `HatRenderer.ts`)**:
+  - Eliminadas miles de asignaciones temporales por fotograma en `WorldEnvironment` (buffer scratch y caché LRU de sectores), `CombatSystem.checkAABBCollision`, `Spawner.spawnScaledMalware` y `ParticleSystem` (compactación in-place, drag independiente del FPS y sin `save/restore` por partícula).
+  - Eliminados los `ctx.shadowBlur` costosos en jefes, mascota y sombreros, optimizado el re-apuntado de `PingProjectile` con intervalos de `0.12s` y detenido `scheduleMusic` cuando el audio está silenciado.
+- **Sincronización de Versión (`v1.6.0`)**:
+  - Actualizados `GAME_VERSION` en `src/core/Game.ts`, `package.json`, `package-lock.json`, `server/package.json`, `server/package-lock.json`, `server/index.js` y `ROADMAP.md` a `1.6.0`.
 
 ### [v1.5.5] - 2026-11-19
 - **El Toro Libre en Cooperativo (`Game.ts`, `ElToroBoss.ts`)**:

@@ -7,6 +7,7 @@ import { Evasor } from '../entities/Evasor';
 import { HardwareBox } from '../entities/HardwareBox';
 import { CryptoMiner } from '../entities/CryptoMiner';
 import { WaveBoss, createWaveBoss } from '../entities/WaveBoss';
+import type { WorldEnvironment } from './WorldEnvironment';
 
 export class Spawner {
   private timer: number = 0;
@@ -45,7 +46,8 @@ export class Spawner {
     canvasWidth: number,
     canvasHeight: number,
     originX: number = 0,
-    originY: number = 0
+    originY: number = 0,
+    worldEnv?: WorldEnvironment
   ): void {
     const initialCount = this.isNightmareMode ? 12 : 8;
     const cx = originX + canvasWidth / 2;
@@ -56,9 +58,10 @@ export class Spawner {
 
     for (let i = 0; i < initialCount; i++) {
       const ang = (i / initialCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
-      const sx = cx + Math.cos(ang) * radiusX;
-      const sy = cy + Math.sin(ang) * radiusY;
-      enemies.push(this.createScaledRedAdware(sx, sy, 0, mult));
+      const rawX = cx + Math.cos(ang) * radiusX;
+      const rawY = cy + Math.sin(ang) * radiusY;
+      const pos = worldEnv?.isInfinite ? worldEnv.findClearSpawnPosition(rawX, rawY, 18) : { x: rawX, y: rawY };
+      enemies.push(this.createScaledRedAdware(pos.x, pos.y, 0, mult));
     }
   }
 
@@ -163,7 +166,8 @@ export class Spawner {
     canvasHeight: number,
     originX: number = 0,
     originY: number = 0,
-    extraOrigins?: { x: number; y: number }[]
+    extraOrigins?: { x: number; y: number }[],
+    worldEnv?: WorldEnvironment
   ): void {
     this.swarmTriggeredJustNow = false;
     this.minerSpawnedJustNow = false;
@@ -230,9 +234,10 @@ export class Spawner {
         (e) => e.active && e instanceof HardwareBox
       ).length;
       if (activeBoxes < this.maxActiveHardwareBoxes && Math.random() < 0.48) {
-        const bx = sOrigX + 110 + Math.random() * Math.max(120, canvasWidth - 220);
-        const by = sOrigY + 110 + Math.random() * Math.max(120, canvasHeight - 220);
-        enemies.push(new HardwareBox(bx, by, hpMultiplier));
+        const rawBx = sOrigX + 110 + Math.random() * Math.max(120, canvasWidth - 220);
+        const rawBy = sOrigY + 110 + Math.random() * Math.max(120, canvasHeight - 220);
+        const pos = worldEnv?.isInfinite ? worldEnv.findClearSpawnPosition(rawBx, rawBy, 28) : { x: rawBx, y: rawBy };
+        enemies.push(new HardwareBox(pos.x, pos.y, hpMultiplier));
       }
     }
 
@@ -244,9 +249,10 @@ export class Spawner {
         (e) => e.active && e instanceof CryptoMiner
       ).length;
       if (activeMiners === 0 && Math.random() < (this.isNightmareMode ? 0.22 : 0.14)) {
-        const mx = sOrigX + 140 + Math.random() * Math.max(120, canvasWidth - 280);
-        const my = sOrigY + 140 + Math.random() * Math.max(120, canvasHeight - 280);
-        const miner = new CryptoMiner(mx, my, hpMultiplier);
+        const rawMx = sOrigX + 140 + Math.random() * Math.max(120, canvasWidth - 280);
+        const rawMy = sOrigY + 140 + Math.random() * Math.max(120, canvasHeight - 280);
+        const pos = worldEnv?.isInfinite ? worldEnv.findClearSpawnPosition(rawMx, rawMy, 26) : { x: rawMx, y: rawMy };
+        const miner = new CryptoMiner(pos.x, pos.y, hpMultiplier);
         miner.unbounded = infiniteActive;
         enemies.push(miner);
         this.minerSpawnedJustNow = true;
@@ -277,7 +283,7 @@ export class Spawner {
       this.flankWaveTimer = 0;
       const timeMinutes = elapsedTime / 60;
       this.nextFlankWaveInterval = Math.max(8.5, (14 + Math.random() * 4) - timeMinutes * 0.65);
-      this.spawnFlankMicroWave(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight, sOrigX, sOrigY);
+      this.spawnFlankMicroWave(elapsedTime, hpMultiplier, enemies, canvasWidth, canvasHeight, sOrigX, sOrigY, worldEnv);
     }
 
     const baseInterval = Math.max(0.20, 0.55 * Math.pow(0.92, elapsedTime / 16));
@@ -294,7 +300,8 @@ export class Spawner {
         canvasWidth,
         canvasHeight,
         loopOrig.x,
-        loopOrig.y
+        loopOrig.y,
+        worldEnv
       );
       if (spawned) {
         enemies.push(spawned);
@@ -309,7 +316,8 @@ export class Spawner {
           canvasWidth,
           canvasHeight,
           loopOrig.x,
-          loopOrig.y
+          loopOrig.y,
+          worldEnv
         );
         if (extra) {
           enemies.push(extra);
@@ -320,7 +328,8 @@ export class Spawner {
     if (elapsedTime >= this.nextBossTime) {
       this.bossCount++;
       this.nextBossTime = elapsedTime + this.bossSpawnInterval;
-      const pos = this.getRandomOutsidePosition(canvasWidth, canvasHeight, sOrigX, sOrigY);
+      const rawPos = this.getRandomOutsidePosition(canvasWidth, canvasHeight, sOrigX, sOrigY);
+      const pos = worldEnv?.isInfinite ? worldEnv.findClearSpawnPosition(rawPos.x, rawPos.y, 44) : rawPos;
       const boss = createWaveBoss(
         pos.x,
         pos.y,
@@ -347,29 +356,31 @@ export class Spawner {
     width: number,
     height: number,
     originX: number = 0,
-    originY: number = 0
+    originY: number = 0,
+    worldEnv?: WorldEnvironment
   ): Adware | null {
-    const pos = this.getRandomOutsidePosition(width, height, originX, originY);
+    const rawPos = this.getRandomOutsidePosition(width, height, originX, originY);
+    const pos = worldEnv?.isInfinite ? worldEnv.findClearSpawnPosition(rawPos.x, rawPos.y, 24) : rawPos;
     const roll = Math.random();
 
-    const activeArmoredCount = enemies.filter(
-      (e) => e.active && e instanceof ArmoredWorm
-    ).length;
-    const activeEvasorCount = enemies.filter(
-      (e) => e.active && e instanceof Evasor
-    ).length;
-    const activeShooterCount = enemies.filter(
-      (e) => e.active && e instanceof TrojanShooter
-    ).length;
-    const activeTrojanCount = enemies.filter(
-      (e) => e.active && e instanceof Trojan
-    ).length;
-    const activeWormCount = enemies.filter(
-      (e) => e.active && e instanceof Worm
-    ).length;
-    const activeRedAdwareCount = enemies.filter(
-      (e) => e.active && e.malwareType === 'ADWARE'
-    ).length;
+    // Conteo en una sola pasada (en lugar de 6 .filter() con asignaciones por cada enemigo)
+    let activeArmoredCount = 0;
+    let activeEvasorCount = 0;
+    let activeShooterCount = 0;
+    let activeTrojanCount = 0;
+    let activeWormCount = 0;
+    let activeRedAdwareCount = 0;
+    for (let i = 0; i < enemies.length; i++) {
+      const e = enemies[i];
+      if (!e.active) continue;
+      const mt = e.malwareType;
+      if (mt === 'ADWARE') activeRedAdwareCount++;
+      else if (mt === 'TROJAN') activeTrojanCount++;
+      else if (mt === 'WORM') activeWormCount++;
+      else if (mt === 'TROJAN_SHOOTER') activeShooterCount++;
+      else if (mt === 'ARMORED_WORM') activeArmoredCount++;
+      else if (mt === 'EVASOR') activeEvasorCount++;
+    }
 
     const dmgMult = this.getGlobalDamageMultiplier(elapsedTime);
     const spdMult = this.getGlobalSpeedMultiplier(elapsedTime);
@@ -474,12 +485,15 @@ export class Spawner {
     width: number,
     height: number,
     originX: number = 0,
-    originY: number = 0
+    originY: number = 0,
+    worldEnv?: WorldEnvironment
   ): void {
     const edge = Math.floor(Math.random() * 4); // 0=Arriba, 1=Derecha, 2=Abajo, 3=Izquierda
     const timeMinutes = elapsedTime / 60;
     const count = Math.min(11, 5 + Math.floor(Math.random() * 2) + Math.floor(timeMinutes * 0.6));
     const centerNorm = 0.2 + Math.random() * 0.6; // Entre 20% y 80% del borde
+    const dmgMult = this.getGlobalDamageMultiplier(elapsedTime);
+    const spdMult = this.getGlobalSpeedMultiplier(elapsedTime);
 
     for (let i = 0; i < count; i++) {
       const spread = (i - (count - 1) / 2) * 36;
@@ -503,8 +517,20 @@ export class Spawner {
           y = originY + Math.max(35, Math.min(height - 35, height * centerNorm + spread));
           break;
       }
-      const adware = this.createScaledRedAdware(x, y, elapsedTime, hpMultiplier);
-      enemies.push(adware);
+      const pos = worldEnv?.isInfinite ? worldEnv.findClearSpawnPosition(x, y, 22) : { x, y };
+      let unit: Adware;
+      if (elapsedTime >= 35 && i === 0) {
+        unit = new Worm(pos.x, pos.y, hpMultiplier, false);
+        unit.damage = Math.round(unit.damage * dmgMult);
+        unit.speed = Math.round(unit.speed * spdMult);
+      } else if (elapsedTime >= 20 && i % 3 === 1) {
+        unit = new Trojan(pos.x, pos.y, hpMultiplier);
+        unit.damage = Math.round(unit.damage * dmgMult);
+        unit.speed = Math.round(unit.speed * spdMult);
+      } else {
+        unit = this.createScaledRedAdware(pos.x, pos.y, elapsedTime, hpMultiplier);
+      }
+      enemies.push(unit);
     }
   }
 

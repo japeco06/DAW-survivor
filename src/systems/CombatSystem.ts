@@ -30,6 +30,7 @@ export interface CombatEvents {
   destroyedEnemies: DestroyedEnemyInfo[];
   damagedEnemies: DamagedEnemyInfo[];
   playerHit: boolean;
+  peerPlayersHit?: Player[];
   shotsFired: number;
   homingShotsFired: number;
   vampirismHeals: number;
@@ -209,6 +210,8 @@ export class SqlInjectionBeam {
     viewOriginX: number = 0,
     viewOriginY: number = 0
   ): { enemy: Adware; damage: number; blocked: boolean }[] {
+    const prevX = this.x;
+    const prevY = this.y;
     this.lifeTime -= dt;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
@@ -227,14 +230,30 @@ export class SqlInjectionBeam {
 
     const hits: { enemy: Adware; damage: number; blocked: boolean }[] = [];
     const hitRadius = this.thickness * 0.55;
+    const cosA = Math.cos(this.angle);
+    const sinA = Math.sin(this.angle);
+    const halfL = this.length * 0.5;
+    // Segmento barrido desde la cola anterior hasta la punta actual (sin tunneling)
+    const segAx = prevX - cosA * halfL;
+    const segAy = prevY - sinA * halfL;
+    const segBx = this.x + cosA * halfL;
+    const segBy = this.y + sinA * halfL;
+    const abX = segBx - segAx;
+    const abY = segBy - segAy;
+    const abLenSq = abX * abX + abY * abY || 1;
 
     for (const enemy of enemies) {
       if (!enemy.active || this.hitEnemies.has(enemy)) continue;
-      const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
-      if (dist <= hitRadius + enemy.size * 0.5) {
+      const t = Math.max(0, Math.min(1, ((enemy.x - segAx) * abX + (enemy.y - segAy) * abY) / abLenSq));
+      const closestX = segAx + abX * t;
+      const closestY = segAy + abY * t;
+      const dx = enemy.x - closestX;
+      const dy = enemy.y - closestY;
+      const maxR = hitRadius + enemy.size * 0.5;
+      if (dx * dx + dy * dy <= maxR * maxR) {
         this.hitEnemies.add(enemy);
-        const sourceX = this.x - this.vx * 0.04;
-        const sourceY = this.y - this.vy * 0.04;
+        const sourceX = prevX - cosA * 18;
+        const sourceY = prevY - sinA * 18;
         if (enemy.isHitBlockedByShield(sourceX, sourceY)) {
           hits.push({ enemy, damage: 0, blocked: true });
         } else {
@@ -483,7 +502,13 @@ export class SawDiscProjectile extends Entity {
 
   public update(_dt: number): void {}
 
-  public updateDisc(dt: number, player: Player, enemies: Adware[]): Adware[] {
+  public updateDisc(
+    dt: number,
+    player: Player,
+    enemies: Adware[],
+    worldEnv?: WorldEnvironment,
+    wallImpacts?: { x: number; y: number; color: string }[]
+  ): Adware[] {
     this.elapsed += dt;
     this.spinAngle += dt * (this.isEvolved ? 20 : 14);
     if (this.elapsed >= this.maxDuration) {
@@ -491,6 +516,8 @@ export class SawDiscProjectile extends Entity {
       return [];
     }
 
+    const prevX = this.x;
+    const prevY = this.y;
     const halfLife = this.maxDuration * 0.5;
     if (this.elapsed < halfLife) {
       const progress = this.elapsed / halfLife;
@@ -506,6 +533,15 @@ export class SawDiscProjectile extends Entity {
       this.y += (dy / dist) * returnSpd * dt;
       if (dist <= 20 && this.elapsed > halfLife + 0.15) {
         this.active = false;
+      }
+    }
+
+    if (worldEnv?.isInfinite) {
+      const hitWall = worldEnv.findSegmentObstacleImpact(prevX, prevY, this.x, this.y, this.size * 0.25);
+      if (hitWall) {
+        this.active = false;
+        wallImpacts?.push({ x: hitWall.x, y: hitWall.y, color: this.isEvolved ? '#fbbf24' : '#fb923c' });
+        return [];
       }
     }
 
@@ -761,7 +797,9 @@ export class CombatSystem {
     canvasHeight: number = 1080,
     viewOriginX: number = 0,
     viewOriginY: number = 0,
-    worldEnv?: WorldEnvironment
+    worldEnv?: WorldEnvironment,
+    isSharedWorldOwner: boolean = true,
+    allCoopTargets?: Player[]
   ): CombatEvents {
     this.fireTimer += dt;
     this.pingTimer += dt;
@@ -776,6 +814,7 @@ export class CombatSystem {
     const destroyedEnemies: DestroyedEnemyInfo[] = [];
     const damagedEnemies: DamagedEnemyInfo[] = [];
     const wallImpacts: { x: number; y: number; color: string }[] = [];
+    const peerPlayersHit: Player[] = [];
     let enemiesKilled = 0;
     let playerHit = false;
     let shotsFired = 0;
@@ -1141,124 +1180,126 @@ export class CombatSystem {
     this.cryoRings = this.cryoRings.filter((r) => r.alpha > 0.03);
 
     // --- ESQUIVA LATERAL DEL ENEMIGO 'EVASOR' (Ghost Script) ---
-    const incomingProjectiles: { x: number; y: number; vx: number; vy: number }[] = [];
-    for (const p of projectiles) {
-      if (p.active) incomingProjectiles.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy });
-    }
-    for (const p of pingProjectiles) {
-      if (p.active) incomingProjectiles.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy });
-    }
-    if (incomingProjectiles.length > 0) {
-      for (const enemy of enemies) {
-        if (enemy.active && enemy instanceof Evasor) {
-          enemy.tryDodgeIncomingProjectiles(
-            incomingProjectiles,
-            canvasWidth,
-            canvasHeight,
-            viewOriginX,
-            viewOriginY
-          );
+    if (isSharedWorldOwner) {
+      const incomingProjectiles: { x: number; y: number; vx: number; vy: number }[] = [];
+      for (const p of projectiles) {
+        if (p.active) incomingProjectiles.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy });
+      }
+      for (const p of pingProjectiles) {
+        if (p.active) incomingProjectiles.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy });
+      }
+      if (incomingProjectiles.length > 0) {
+        for (const enemy of enemies) {
+          if (enemy.active && enemy instanceof Evasor) {
+            enemy.tryDodgeIncomingProjectiles(
+              incomingProjectiles,
+              canvasWidth,
+              canvasHeight,
+              viewOriginX,
+              viewOriginY
+            );
+          }
         }
       }
-    }
 
-    // --- COLISIONES: Ráfaga de Firewall vs Enemigos ---
-    for (const proj of projectiles) {
-      if (!proj.active) continue;
+      // --- COLISIONES: Ráfaga de Firewall vs Enemigos ---
+      for (const proj of projectiles) {
+        if (!proj.active) continue;
 
-      for (const enemy of enemies) {
-        if (!enemy.active || proj.hasHit(enemy)) continue;
+        for (const enemy of enemies) {
+          if (!enemy.active || proj.hasHit(enemy)) continue;
 
-        if (CombatSystem.checkAABBCollision(proj, enemy)) {
-          proj.markHit(enemy);
-          const sourceX = proj.x - proj.vx * 0.045;
-          const sourceY = proj.y - proj.vy * 0.045;
+          if (CombatSystem.checkAABBCollision(proj, enemy)) {
+            proj.markHit(enemy);
+            const sourceX = proj.x - proj.vx * 0.045;
+            const sourceY = proj.y - proj.vy * 0.045;
 
-          if (enemy.isHitBlockedByShield(sourceX, sourceY)) {
+            if (enemy.isHitBlockedByShield(sourceX, sourceY)) {
+              damagedEnemies.push({
+                x: enemy.x,
+                y: enemy.y,
+                damage: 0,
+                color: '#38bdf8',
+              });
+              if (!proj.active) break;
+              continue;
+            }
+
+            const dx = enemy.x - sourceX;
+            const dy = enemy.y - sourceY;
+            const dist = Math.hypot(dx, dy) || 1;
+            const critRoll = rollCritHit(proj.damage);
+            enemy.takeDamage(critRoll.dmg, (dx / dist) * 6, (dy / dist) * 6);
+            this.weaponDamageStats['Ráfaga Firewall'] += critRoll.dmg;
+            tryTriggerVampirism();
+
             damagedEnemies.push({
               x: enemy.x,
               y: enemy.y,
-              damage: 0,
-              color: '#38bdf8',
+              damage: critRoll.dmg,
+              color: proj.isEvolved ? '#fde047' : enemy.color,
+              isCrit: critRoll.isCrit,
             });
+
+            registerEnemyKillIfDead(enemy);
             if (!proj.active) break;
-            continue;
           }
-
-          const dx = enemy.x - player.x;
-          const dy = enemy.y - player.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          const critRoll = rollCritHit(proj.damage);
-          enemy.takeDamage(critRoll.dmg, (dx / dist) * 6, (dy / dist) * 6);
-          this.weaponDamageStats['Ráfaga Firewall'] += critRoll.dmg;
-          tryTriggerVampirism();
-
-          damagedEnemies.push({
-            x: enemy.x,
-            y: enemy.y,
-            damage: critRoll.dmg,
-            color: proj.isEvolved ? '#fde047' : enemy.color,
-            isCrit: critRoll.isCrit,
-          });
-
-          registerEnemyKillIfDead(enemy);
-          if (!proj.active) break;
         }
       }
-    }
 
-    // --- COLISIONES: Ping Tracker vs Enemigos ---
-    for (const ping of pingProjectiles) {
-      if (!ping.active) continue;
+      // --- COLISIONES: Ping Tracker vs Enemigos ---
+      for (const ping of pingProjectiles) {
+        if (!ping.active) continue;
 
-      for (const enemy of enemies) {
-        if (!enemy.active) continue;
+        for (const enemy of enemies) {
+          if (!enemy.active) continue;
 
-        if (CombatSystem.checkAABBCollision(ping, enemy)) {
-          ping.active = false;
-          const sourceX = ping.x - ping.vx * 0.045;
-          const sourceY = ping.y - ping.vy * 0.045;
+          if (CombatSystem.checkAABBCollision(ping, enemy)) {
+            ping.active = false;
+            const sourceX = ping.x - ping.vx * 0.045;
+            const sourceY = ping.y - ping.vy * 0.045;
 
-          if (enemy.isHitBlockedByShield(sourceX, sourceY)) {
+            if (enemy.isHitBlockedByShield(sourceX, sourceY)) {
+              damagedEnemies.push({
+                x: enemy.x,
+                y: enemy.y,
+                damage: 0,
+                color: '#38bdf8',
+              });
+              break;
+            }
+
+            const dx = enemy.x - sourceX;
+            const dy = enemy.y - sourceY;
+            const dist = Math.hypot(dx, dy) || 1;
+            const critRoll = rollCritHit(ping.damage);
+            enemy.takeDamage(critRoll.dmg, (dx / dist) * 8, (dy / dist) * 8);
+            this.weaponDamageStats['Ping Tracker'] += critRoll.dmg;
+            tryTriggerVampirism();
+
             damagedEnemies.push({
               x: enemy.x,
               y: enemy.y,
-              damage: 0,
-              color: '#38bdf8',
+              damage: critRoll.dmg,
+              color: ping.isEvolved ? '#60a5fa' : '#0088ff',
+              isCrit: critRoll.isCrit,
             });
-            break;
-          }
+            registerEnemyKillIfDead(enemy);
 
-          const dx = enemy.x - player.x;
-          const dy = enemy.y - player.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          const critRoll = rollCritHit(ping.damage);
-          enemy.takeDamage(critRoll.dmg, (dx / dist) * 8, (dy / dist) * 8);
-          this.weaponDamageStats['Ping Tracker'] += critRoll.dmg;
-          tryTriggerVampirism();
-
-          damagedEnemies.push({
-            x: enemy.x,
-            y: enemy.y,
-            damage: critRoll.dmg,
-            color: ping.isEvolved ? '#60a5fa' : '#0088ff',
-            isCrit: critRoll.isCrit,
-          });
-          registerEnemyKillIfDead(enemy);
-
-          // Evolución Enjambre DDoS: micro-explosión AoE al impactar
-          if (ping.isEvolved) {
-            const splashDmg = Math.round(ping.damage * 0.65);
-            for (const nearby of enemies) {
-              if (!nearby.active || nearby === enemy) continue;
-              if (Math.hypot(nearby.x - ping.x, nearby.y - ping.y) <= 68) {
-                nearby.takeDamage(splashDmg, 0, 0);
-                this.weaponDamageStats['Ping Tracker'] += splashDmg;
-                registerEnemyKillIfDead(nearby);
+            // Evolución Enjambre DDoS: micro-explosión AoE al impactar
+            if (ping.isEvolved) {
+              const splashDmg = Math.round(ping.damage * 0.65);
+              for (const nearby of enemies) {
+                if (!nearby.active || nearby === enemy) continue;
+                if (Math.hypot(nearby.x - ping.x, nearby.y - ping.y) <= 68) {
+                  nearby.takeDamage(splashDmg, 0, 0);
+                  this.weaponDamageStats['Ping Tracker'] += splashDmg;
+                  registerEnemyKillIfDead(nearby);
+                }
               }
             }
+            break;
           }
-          break;
         }
       }
     }
@@ -1337,17 +1378,8 @@ export class CombatSystem {
     // --- ACTUALIZACIÓN Y DAÑO: Disco Kernel Rotativo ---
     for (const disc of this.sawDiscs) {
       if (!disc.active) continue;
-      const prevX = disc.x;
-      const prevY = disc.y;
-      const hits = disc.updateDisc(dt, player, enemies);
-      if (worldEnv?.isInfinite) {
-        const hitWall = worldEnv.findSegmentObstacleImpact(prevX, prevY, disc.x, disc.y, disc.size * 0.25);
-        if (hitWall) {
-          disc.active = false;
-          wallImpacts.push({ x: hitWall.x, y: hitWall.y, color: disc.isEvolved ? '#fbbf24' : '#fb923c' });
-          continue;
-        }
-      }
+      const hits = disc.updateDisc(dt, player, enemies, worldEnv, wallImpacts);
+      if (!disc.active) continue;
       for (const hitEnemy of hits) {
         const critRoll = rollCritHit(disc.damage);
         hitEnemy.takeDamage(critRoll.dmg, 0, 0);
@@ -1366,25 +1398,28 @@ export class CombatSystem {
     this.sawDiscs = this.sawDiscs.filter((d) => d.active);
 
     // --- ACTUALIZACIÓN Y DAÑO CONTINUO: Zonas de Cuarentena ---
-    for (const zone of quarantineZones) {
-      if (!zone.active) continue;
-      const zoneHits = zone.update(dt, enemies);
+    if (isSharedWorldOwner) {
+      for (const zone of quarantineZones) {
+        if (!zone.active) continue;
+        const zoneHits = zone.update(dt, enemies);
 
-      for (const hit of zoneHits) {
-        if (!hit.enemy.active) continue;
-        const critRoll = rollCritHit(hit.damage);
-        hit.enemy.takeDamage(critRoll.dmg, 0, 0);
-        this.weaponDamageStats['Zona Cuarentena'] += critRoll.dmg;
+        for (const hit of zoneHits) {
+          if (!hit.enemy.active) continue;
+          const critRoll = rollCritHit(hit.damage);
+          hit.enemy.takeDamage(critRoll.dmg, 0, 0);
+          this.weaponDamageStats['Zona Cuarentena'] += critRoll.dmg;
+          tryTriggerVampirism();
 
-        damagedEnemies.push({
-          x: hit.enemy.x,
-          y: hit.enemy.y,
-          damage: critRoll.dmg,
-          color: zone.isEvolved ? '#fbbf24' : '#10b981',
-          isCrit: critRoll.isCrit,
-        });
+          damagedEnemies.push({
+            x: hit.enemy.x,
+            y: hit.enemy.y,
+            damage: critRoll.dmg,
+            color: zone.isEvolved ? '#fbbf24' : '#10b981',
+            isCrit: critRoll.isCrit,
+          });
 
-        registerEnemyKillIfDead(hit.enemy);
+          registerEnemyKillIfDead(hit.enemy);
+        }
       }
     }
 
@@ -1556,6 +1591,7 @@ export class CombatSystem {
               const critRoll = rollCritHit(baseAoeDamage);
               target.takeDamage(critRoll.dmg, kx, ky);
               this.weaponDamageStats['Drones Antivirus'] += critRoll.dmg;
+              tryTriggerVampirism();
               damagedEnemies.push({
                 x: target.x,
                 y: target.y,
@@ -1598,6 +1634,7 @@ export class CombatSystem {
               (dy / dist) * pushDist
             );
             this.weaponDamageStats['Drones Antivirus'] += critRoll.dmg;
+            tryTriggerVampirism();
             this.firewallHitCooldowns.set(enemy, this.evolvedDrones ? 0.16 : 0.28);
 
             damagedEnemies.push({
@@ -1622,48 +1659,31 @@ export class CombatSystem {
       }
     }
 
-    // --- PROYECTILES ENEMIGOS (Troyano Tirador y Jefes de Oleada) ---
-    for (const enemy of enemies) {
-      const pProj = (enemy as any).pendingProjectiles as EnemyProjectile[] | undefined;
-      if (enemy.active && pProj && pProj.length > 0) {
-        if (worldEnv?.isInfinite) {
-          for (const ep of pProj) {
-            if (!worldEnv.isPointInsideObstacle(ep.x, ep.y, ep.size * 0.25)) {
-              this.enemyProjectiles.push(ep);
-            }
-          }
-        } else {
-          this.enemyProjectiles.push(...pProj);
-        }
-        (enemy as any).pendingProjectiles = [];
-      }
-    }
-
-    const triggerHitOutcomeFeedback = () => {
-      if (player.lastHitOutcome === 'SHIELD_BLOCKED') {
-        shieldBlocked = true;
+    const triggerHitOutcomeFeedback = (targetPlayer: Player) => {
+      if (targetPlayer.lastHitOutcome === 'SHIELD_BLOCKED') {
+        if (targetPlayer === player) shieldBlocked = true;
         for (const foe of enemies) {
           if (!foe.active) continue;
-          const dist = Math.hypot(foe.x - player.x, foe.y - player.y);
+          const dist = Math.hypot(foe.x - targetPlayer.x, foe.y - targetPlayer.y);
           if (dist <= 185) {
-            const dx = (foe.x - player.x) / (dist || 1);
-            const dy = (foe.y - player.y) / (dist || 1);
-            foe.takeDamage(Math.round(35 * player.damageMultiplier), dx * 44, dy * 44);
+            const dx = (foe.x - targetPlayer.x) / (dist || 1);
+            const dy = (foe.y - targetPlayer.y) / (dist || 1);
+            foe.takeDamage(Math.round(35 * targetPlayer.damageMultiplier), dx * 44, dy * 44);
             registerEnemyKillIfDead(foe);
           }
         }
-      } else if (player.lastHitOutcome === 'DODGED') {
-        dodgedHit = true;
-      } else if (player.surgePulsePending) {
-        player.surgePulsePending = false;
-        surgeTriggered = true;
-        const surgeDmg = Math.round(45 * player.damageMultiplier);
+      } else if (targetPlayer.lastHitOutcome === 'DODGED') {
+        if (targetPlayer === player) dodgedHit = true;
+      } else if (targetPlayer.surgePulsePending) {
+        targetPlayer.surgePulsePending = false;
+        if (targetPlayer === player) surgeTriggered = true;
+        const surgeDmg = Math.round(45 * targetPlayer.damageMultiplier);
         for (const foe of enemies) {
           if (!foe.active) continue;
-          const dist = Math.hypot(foe.x - player.x, foe.y - player.y);
+          const dist = Math.hypot(foe.x - targetPlayer.x, foe.y - targetPlayer.y);
           if (dist <= 175) {
-            const dx = (foe.x - player.x) / (dist || 1);
-            const dy = (foe.y - player.y) / (dist || 1);
+            const dx = (foe.x - targetPlayer.x) / (dist || 1);
+            const dy = (foe.y - targetPlayer.y) / (dist || 1);
             foe.takeDamage(surgeDmg, dx * 38, dy * 38);
             registerEnemyKillIfDead(foe);
           }
@@ -1671,30 +1691,59 @@ export class CombatSystem {
       }
     };
 
-    for (const eProj of this.enemyProjectiles) {
-      if (!eProj.active) continue;
-      const prevX = eProj.x;
-      const prevY = eProj.y;
-      eProj.update(dt, canvasWidth, canvasHeight, viewOriginX, viewOriginY);
-
-      if (eProj.active && worldEnv?.isInfinite) {
-        const hitWall = worldEnv.findSegmentObstacleImpact(prevX, prevY, eProj.x, eProj.y, eProj.size * 0.28);
-        if (hitWall) {
-          eProj.active = false;
-          wallImpacts.push({ x: hitWall.x, y: hitWall.y, color: '#ef4444' });
-          continue;
+    // --- PROYECTILES ENEMIGOS (Troyano Tirador y Jefes de Oleada) ---
+    if (isSharedWorldOwner) {
+      for (const enemy of enemies) {
+        const pProj = (enemy as any).pendingProjectiles as EnemyProjectile[] | undefined;
+        if (enemy.active && pProj && pProj.length > 0) {
+          if (worldEnv?.isInfinite) {
+            for (const ep of pProj) {
+              if (!worldEnv.isPointInsideObstacle(ep.x, ep.y, ep.size * 0.25)) {
+                this.enemyProjectiles.push(ep);
+              }
+            }
+          } else {
+            this.enemyProjectiles.push(...pProj);
+          }
+          (enemy as any).pendingProjectiles = [];
         }
       }
 
-      if (eProj.active && player.active && CombatSystem.checkAABBCollision(player, eProj)) {
-        eProj.active = false;
-        if (player.takeDamage(eProj.damage)) {
-          playerHit = true;
+      const projTargets = allCoopTargets && allCoopTargets.length > 0 ? allCoopTargets : [player];
+      for (const eProj of this.enemyProjectiles) {
+        if (!eProj.active) continue;
+        const prevX = eProj.x;
+        const prevY = eProj.y;
+        eProj.update(dt, canvasWidth, canvasHeight, viewOriginX, viewOriginY);
+
+        if (eProj.active && worldEnv?.isInfinite) {
+          const hitWall = worldEnv.findSegmentObstacleImpact(prevX, prevY, eProj.x, eProj.y, eProj.size * 0.28);
+          if (hitWall) {
+            eProj.active = false;
+            wallImpacts.push({ x: hitWall.x, y: hitWall.y, color: '#ef4444' });
+            continue;
+          }
         }
-        triggerHitOutcomeFeedback();
+
+        if (!eProj.active) continue;
+        for (const targetPlayer of projTargets) {
+          if (!targetPlayer.active) continue;
+          if (CombatSystem.checkAABBCollision(targetPlayer, eProj)) {
+            eProj.active = false;
+            if (targetPlayer.takeDamage(eProj.damage)) {
+              if (targetPlayer === player) {
+                playerHit = true;
+              } else {
+                peerPlayersHit.push(targetPlayer);
+              }
+            }
+            triggerHitOutcomeFeedback(targetPlayer);
+            break;
+          }
+        }
       }
+      this.enemyProjectiles = this.enemyProjectiles.filter((p) => p.active);
     }
-    this.enemyProjectiles = this.enemyProjectiles.filter((p) => p.active);
 
     // --- COLISIONES: Enemigos vs Jugador ---
     if (player.active) {
@@ -1707,7 +1756,7 @@ export class CombatSystem {
             if (tookDamage) {
               playerHit = true;
             }
-            triggerHitOutcomeFeedback();
+            triggerHitOutcomeFeedback(player);
           } else if (enemy.malwareType === 'HARDWARE_BOX') {
             const dx = player.x - enemy.x;
             const dy = player.y - enemy.y;
@@ -1734,6 +1783,7 @@ export class CombatSystem {
       destroyedEnemies,
       damagedEnemies,
       playerHit,
+      peerPlayersHit,
       shotsFired,
       homingShotsFired,
       vampirismHeals,
@@ -2090,15 +2140,65 @@ export class CombatSystem {
     return candidates.slice(0, count).map((c) => c.enemy);
   }
 
-  public static checkAABBCollision(a: Entity, b: Entity): boolean {
-    const boxA = a.getBounds();
-    const boxB = b.getBounds();
+  public decayWhenDowned(dt: number): void {
+    for (const arc of this.teslaArcs) {
+      arc.life -= dt;
+    }
+    this.teslaArcs = this.teslaArcs.filter((a) => a.life > 0);
 
-    return (
-      boxA.left < boxB.right &&
-      boxA.right > boxB.left &&
-      boxA.top < boxB.bottom &&
-      boxA.bottom > boxB.top
-    );
+    for (const ring of this.cryoRings) {
+      ring.radius += (ring.maxRadius - ring.radius) * 10 * dt;
+      ring.alpha -= dt * 3.2;
+    }
+    this.cryoRings = this.cryoRings.filter((r) => r.alpha > 0.03);
+
+    for (const exp of this.droneExplosions) {
+      exp.update(dt);
+    }
+    this.droneExplosions = this.droneExplosions.filter((e) => e.active);
+
+    // Vacía proyectiles propios del aliado abatido para que no queden congelados en el aire
+    this.firewallPulses = [];
+    this.cryoShards = [];
+    this.sqlBeams = [];
+    this.sawDiscs = [];
+  }
+
+  public getSnapshotDrones(player: Player): [number, number, number, number][] {
+    const activeCount = this.evolvedDrones ? Math.max(6, this.firewallCount) : this.firewallCount;
+    if (activeCount <= 0 || !player.active) return [];
+    const nodes = this.getFirewallNodePositions(player);
+    const out: [number, number, number, number][] = [];
+    for (let i = 0; i < nodes.length; i++) {
+      const slot = this.droneSlots[i];
+      if (!slot || slot.durability <= 0) continue;
+      out.push([
+        Math.round(nodes[i].x),
+        Math.round(nodes[i].y),
+        slot.durability,
+        this.evolvedDrones ? 1 : 0,
+      ]);
+    }
+    return out;
+  }
+
+  public getSnapshotRings(): [number, number, number, number][] {
+    const out: [number, number, number, number][] = [];
+    for (const ring of this.cryoRings) {
+      if (ring.alpha > 0.06) {
+        out.push([Math.round(ring.x), Math.round(ring.y), Math.round(ring.radius), 0]);
+      }
+    }
+    for (const exp of this.droneExplosions) {
+      if (exp.active) {
+        out.push([Math.round(exp.x), Math.round(exp.y), Math.round(exp.radius), 1]);
+      }
+    }
+    return out;
+  }
+
+  public static checkAABBCollision(a: Entity, b: Entity): boolean {
+    const halfW = (a.size + b.size) * 0.5;
+    return Math.abs(a.x - b.x) < halfW && Math.abs(a.y - b.y) < halfW;
   }
 }

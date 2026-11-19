@@ -6,6 +6,7 @@
 import { Player } from '../entities/Player';
 import { Adware } from '../entities/Adware';
 import { i18n } from '../utils/i18n';
+import type { WorldEnvironment } from './WorldEnvironment';
 
 export type TerrainEventType =
   | 'COOLING_SERVER'
@@ -31,7 +32,14 @@ export interface TerrainUpdateResult {
   coolingActivated: boolean;
   empDetonation: { x: number; y: number; radius: number; damage: number } | null;
   vaultReward: { x: number; y: number; coins: number; xp: number } | null;
-  stormBlast: { x: number; y: number; radius: number; damageToEnemies: number; hitPlayer: boolean } | null;
+  stormBlast: {
+    x: number;
+    y: number;
+    radius: number;
+    damageToEnemies: number;
+    hitPlayer: boolean;
+    hitPlayers: Player[];
+  } | null;
 }
 
 export class TerrainEventSystem {
@@ -40,15 +48,14 @@ export class TerrainEventSystem {
   private spawnTimer: number = 4.0;
   private stormTimer: number = 9.0;
 
-  public reset(playerX: number, playerY: number): void {
+  public reset(playerX: number, playerY: number, worldEnv?: WorldEnvironment): void {
     this.nodes = [];
     this.nextId = 1;
     this.spawnTimer = 3.0;
     this.stormTimer = 9.5;
-    // Desplegar 3 balizas iniciales alrededor del punto de inicio para dar orientación inmediata en el minimapa
-    this.spawnRandomEventAround(playerX, playerY, 'COOLING_SERVER', 480, 760);
-    this.spawnRandomEventAround(playerX, playerY, 'CORRUPTED_VAULT', 640, 980);
-    this.spawnRandomEventAround(playerX, playerY, 'EMP_PYLON', 520, 860);
+    this.spawnRandomEventAround(playerX, playerY, 'COOLING_SERVER', 480, 760, worldEnv);
+    this.spawnRandomEventAround(playerX, playerY, 'CORRUPTED_VAULT', 640, 980, worldEnv);
+    this.spawnRandomEventAround(playerX, playerY, 'EMP_PYLON', 520, 860, worldEnv);
   }
 
   private spawnRandomEventAround(
@@ -56,12 +63,13 @@ export class TerrainEventSystem {
     py: number,
     forcedType?: TerrainEventType,
     minDist: number = 580,
-    maxDist: number = 1280
+    maxDist: number = 1280,
+    worldEnv?: WorldEnvironment
   ): void {
     const angle = Math.random() * Math.PI * 2;
     const dist = minDist + Math.random() * (maxDist - minDist);
-    const x = px + Math.cos(angle) * dist;
-    const y = py + Math.sin(angle) * dist;
+    let x = px + Math.cos(angle) * dist;
+    let y = py + Math.sin(angle) * dist;
 
     let type: TerrainEventType = forcedType ?? 'COOLING_SERVER';
     if (!forcedType) {
@@ -79,6 +87,12 @@ export class TerrainEventSystem {
         : type === 'CORRUPTED_VAULT'
         ? { radius: 102, duration: 2.6, life: 55 }
         : { radius: 128, duration: 1.85, life: 4 };
+
+    if (worldEnv?.isInfinite && type !== 'DATA_STORM') {
+      const clearPos = worldEnv.findClearSpawnPosition(x, y, config.radius * 0.55);
+      x = clearPos.x;
+      y = clearPos.y;
+    }
 
     this.nodes.push({
       id: this.nextId++,
@@ -98,7 +112,9 @@ export class TerrainEventSystem {
   public update(
     dt: number,
     player: Player,
-    elapsedTime: number
+    elapsedTime: number,
+    extraPlayers?: Player[],
+    worldEnv?: WorldEnvironment
   ): TerrainUpdateResult {
     const result: TerrainUpdateResult = {
       coolingActivated: false,
@@ -107,30 +123,40 @@ export class TerrainEventSystem {
       stormBlast: null,
     };
 
-    const activeObjectiveCount = this.nodes.filter(
-      (n) => n.active && n.type !== 'DATA_STORM'
-    ).length;
+    const allAlive: Player[] = [];
+    if (player.active) allAlive.push(player);
+    if (extraPlayers) {
+      for (const ep of extraPlayers) {
+        if (ep.active) allAlive.push(ep);
+      }
+    }
+    const anchor = allAlive.length > 0 ? allAlive[Math.floor(Math.random() * allAlive.length)] : player;
+
+    let activeObjectiveCount = 0;
+    for (const n of this.nodes) {
+      if (n.active && n.type !== 'DATA_STORM') activeObjectiveCount++;
+    }
 
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       this.spawnTimer = 8.5;
       if (activeObjectiveCount < 5) {
-        this.spawnRandomEventAround(player.x, player.y);
+        this.spawnRandomEventAround(anchor.x, anchor.y, undefined, 580, 1280, worldEnv);
       }
     }
 
     this.stormTimer -= dt;
     if (this.stormTimer <= 0 && elapsedTime >= 20) {
       this.stormTimer = Math.max(6.5, 12.5 - elapsedTime / 140);
-      // Generar tormenta telegrafiada cerca del jugador
       const offsetDist = 60 + Math.random() * 190;
       const offsetAng = Math.random() * Math.PI * 2;
       this.spawnRandomEventAround(
-        player.x + Math.cos(offsetAng) * offsetDist,
-        player.y + Math.sin(offsetAng) * offsetDist,
+        anchor.x + Math.cos(offsetAng) * offsetDist,
+        anchor.y + Math.sin(offsetAng) * offsetDist,
         'DATA_STORM',
         0,
-        24
+        24,
+        worldEnv
       );
     }
 
@@ -138,8 +164,16 @@ export class TerrainEventSystem {
       if (!node.active) continue;
       node.pulsePhase += dt * 3.5;
 
-      const distToPlayer = Math.hypot(player.x - node.x, player.y - node.y);
-      if (distToPlayer > 2500 && node.type !== 'DATA_STORM') {
+      let minDist = Infinity;
+      for (const pl of allAlive) {
+        const d = Math.hypot(pl.x - node.x, pl.y - node.y);
+        if (d < minDist) minDist = d;
+      }
+      if (allAlive.length === 0) {
+        minDist = Math.hypot(player.x - node.x, player.y - node.y);
+      }
+
+      if (minDist > 2500 && node.type !== 'DATA_STORM') {
         node.active = false;
         continue;
       }
@@ -149,12 +183,19 @@ export class TerrainEventSystem {
         if (node.progress >= node.duration && !node.detonated) {
           node.detonated = true;
           node.active = false;
+          const hitPlayers: Player[] = [];
+          for (const pl of allAlive) {
+            if (Math.hypot(pl.x - node.x, pl.y - node.y) <= node.radius) {
+              hitPlayers.push(pl);
+            }
+          }
           result.stormBlast = {
             x: node.x,
             y: node.y,
             radius: node.radius,
             damageToEnemies: Math.round(140 * (1 + elapsedTime / 240)),
-            hitPlayer: distToPlayer <= node.radius,
+            hitPlayer: hitPlayers.includes(player),
+            hitPlayers,
           };
         }
         continue;
@@ -166,7 +207,7 @@ export class TerrainEventSystem {
         continue;
       }
 
-      if (distToPlayer <= node.radius) {
+      if (minDist <= node.radius) {
         node.progress += dt;
         if (node.progress >= node.duration) {
           node.active = false;

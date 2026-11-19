@@ -164,6 +164,7 @@ export class SoundSystem {
 
   private scheduleMusic(): void {
     if (!this.ctx || !this.musicGain || this.currentTrack === 'NONE') return;
+    if (this.muted || this.musicVolume <= 0 || this.masterVolume <= 0) return;
     if (typeof document !== 'undefined' && document.hidden) return;
     if (this.ctx.state !== 'running') return;
 

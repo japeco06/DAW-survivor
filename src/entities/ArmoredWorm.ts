@@ -30,6 +30,7 @@ export class ArmoredWorm extends Adware {
     if (this.shieldBlockFlashTimer > 0) {
       this.shieldBlockFlashTimer = Math.max(0, this.shieldBlockFlashTimer - dt);
     }
+    const slowFactor = this.tickSpeedMultiplier(dt);
 
     const dx = player.x - this.x;
     const dy = player.y - this.y;
@@ -40,13 +41,13 @@ export class ArmoredWorm extends Adware {
       this.initializedFacing = true;
     } else {
       const diff = this.normalizeSignedAngle(desiredAngle - this.facingAngle);
-      const maxTurn = this.turnRate * dt;
+      const maxTurn = this.turnRate * Math.max(0.35, slowFactor) * dt;
       this.facingAngle += Math.max(-maxTurn, Math.min(maxTurn, diff));
       this.facingAngle = this.normalizeSignedAngle(this.facingAngle);
     }
 
-    this.x += Math.cos(this.facingAngle) * this.speed * dt;
-    this.y += Math.sin(this.facingAngle) * this.speed * dt;
+    this.x += Math.cos(this.facingAngle) * this.speed * slowFactor * dt;
+    this.y += Math.sin(this.facingAngle) * this.speed * slowFactor * dt;
   }
 
   public override isHitBlockedByShield(sourceX: number, sourceY: number): boolean {

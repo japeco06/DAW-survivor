@@ -165,73 +165,100 @@ export class ParticleSystem {
       }
     }
 
-    for (const p of this.particles) {
+    const drag = Math.pow(0.94, dt * 60);
+    let pWrite = 0;
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.vx *= 0.94;
-      p.vy *= 0.94;
+      p.vx *= drag;
+      p.vy *= drag;
       p.life -= dt;
-      p.alpha = Math.max(0, p.life / p.maxLife);
+      if (p.life > 0) {
+        p.alpha = Math.max(0, p.life / p.maxLife);
+        this.particles[pWrite++] = p;
+      }
     }
+    this.particles.length = pWrite;
 
-    for (const sw of this.shockwaves) {
-      sw.radius += (sw.maxRadius - sw.radius) * 8 * dt;
+    let swWrite = 0;
+    for (let i = 0; i < this.shockwaves.length; i++) {
+      const sw = this.shockwaves[i];
+      sw.radius += (sw.maxRadius - sw.radius) * Math.min(1, 8 * dt);
       sw.alpha -= dt * 2.2;
+      if (sw.alpha > 0.02) {
+        this.shockwaves[swWrite++] = sw;
+      }
     }
+    this.shockwaves.length = swWrite;
 
-    for (const ft of this.floatingTexts) {
+    let ftWrite = 0;
+    for (let i = 0; i < this.floatingTexts.length; i++) {
+      const ft = this.floatingTexts[i];
       ft.y += ft.vy * dt;
       ft.life -= dt;
+      if (ft.life > 0) {
+        this.floatingTexts[ftWrite++] = ft;
+      }
     }
-
-    this.particles = this.particles.filter((p) => p.life > 0);
-    this.shockwaves = this.shockwaves.filter((sw) => sw.alpha > 0.02);
-    this.floatingTexts = this.floatingTexts.filter((ft) => ft.life > 0);
+    this.floatingTexts.length = ftWrite;
   }
 
   public draw(ctx: CanvasRenderingContext2D): void {
+    if (
+      this.shockwaves.length === 0 &&
+      this.particles.length === 0 &&
+      this.floatingTexts.length === 0
+    ) {
+      return;
+    }
+
     ctx.save();
+    ctx.shadowBlur = 0;
 
     // 1. Dibujar ondas expansivas
-    for (const sw of this.shockwaves) {
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, sw.alpha);
-      ctx.strokeStyle = sw.color;
-      ctx.shadowBlur = 0;
+    if (this.shockwaves.length > 0) {
       ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // 2. Dibujar partículas y dígitos binarios (Optimizado sin shadowBlur)
-    for (const p of this.particles) {
-      ctx.save();
-      ctx.globalAlpha = p.alpha;
-      ctx.fillStyle = p.color;
-      ctx.shadowBlur = 0;
-
-      if (p.char) {
-        ctx.font = `bold ${p.size}px "Courier New", monospace`;
-        ctx.fillText(p.char, p.x, p.y);
-      } else {
-        ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      for (let i = 0; i < this.shockwaves.length; i++) {
+        const sw = this.shockwaves[i];
+        ctx.globalAlpha = Math.max(0, sw.alpha);
+        ctx.strokeStyle = sw.color;
+        ctx.beginPath();
+        ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+        ctx.stroke();
       }
-      ctx.restore();
     }
 
-    // 3. Dibujar textos flotantes de daño / eventos (Optimizado sin shadowBlur)
-    ctx.textAlign = 'center';
-    for (const ft of this.floatingTexts) {
-      ctx.save();
-      const alpha = Math.max(0, ft.life / ft.maxLife);
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = ft.color;
-      ctx.shadowBlur = 0;
-      ctx.font = `bold ${Math.round(13 * ft.scale)}px "Courier New", monospace`;
-      ctx.fillText(ft.text, ft.x, ft.y);
-      ctx.restore();
+    // 2. Dibujar partículas y dígitos binarios sin save/restore por partícula
+    if (this.particles.length > 0) {
+      ctx.font = 'bold 12px "Courier New", monospace';
+      for (let i = 0; i < this.particles.length; i++) {
+        const p = this.particles[i];
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        if (p.char) {
+          ctx.fillText(p.char, p.x, p.y);
+        } else {
+          ctx.fillRect(p.x - p.size * 0.5, p.y - p.size * 0.5, p.size, p.size);
+        }
+      }
+    }
+
+    // 3. Dibujar textos flotantes de daño / eventos
+    if (this.floatingTexts.length > 0) {
+      ctx.textAlign = 'center';
+      let lastFontSize = -1;
+      for (let i = 0; i < this.floatingTexts.length; i++) {
+        const ft = this.floatingTexts[i];
+        ctx.globalAlpha = Math.max(0, ft.life / ft.maxLife);
+        ctx.fillStyle = ft.color;
+        const fSize = Math.round(13 * ft.scale);
+        if (fSize !== lastFontSize) {
+          ctx.font = `bold ${fSize}px "Courier New", monospace`;
+          lastFontSize = fSize;
+        }
+        ctx.fillText(ft.text, ft.x, ft.y);
+      }
     }
 
     ctx.restore();

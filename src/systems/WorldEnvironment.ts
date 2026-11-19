@@ -85,20 +85,24 @@ export class WorldEnvironment {
   public isInfinite: boolean = false;
 
   private sectorCache: Map<string, SectorData> = new Map();
+  private scratchObstacles: WorldObstacle[] = [];
   private activeOases: OasisZone[] = [];
   private nextOasisSpawnTimer: number = 12;
   private oasisSeq: number = 0;
   private lastQuadrant: number = -1;
 
-  public reset(seed: number = 1337, isInfinite: boolean = false): void {
+  public reset(seed: number = 1337, isInfinite: boolean = false, spawnInitialOasis: boolean = true): void {
     this.seed = seed >>> 0 || 1337;
     this.isInfinite = isInfinite;
     this.sectorCache.clear();
+    this.scratchObstacles.length = 0;
     this.activeOases = [];
     this.oasisSeq = 0;
     this.lastQuadrant = -1;
 
-    this.spawnDynamicOasis([{ x: SPAWN_CX, y: SPAWN_CY }], 0);
+    if (spawnInitialOasis) {
+      this.spawnDynamicOasis([{ x: SPAWN_CX, y: SPAWN_CY }], 0);
+    }
     this.nextOasisSpawnTimer = this.isInfinite ? 15 : 12;
   }
 
@@ -245,9 +249,14 @@ export class WorldEnvironment {
   private getOrCreateSector(sx: number, sy: number): SectorData {
     const key = `${sx}_${sy}`;
     const cached = this.sectorCache.get(key);
-    if (cached) return cached;
+    if (cached) {
+      // Refresco LRU ligero
+      this.sectorCache.delete(key);
+      this.sectorCache.set(key, cached);
+      return cached;
+    }
 
-    if (this.sectorCache.size > 140) {
+    if (this.sectorCache.size > 220) {
       const firstKey = this.sectorCache.keys().next().value;
       if (firstKey !== undefined) this.sectorCache.delete(firstKey);
     }
@@ -490,15 +499,144 @@ export class WorldEnvironment {
     return this.pointHitsRect(x, y, radius, obs.x, obs.y, obs.width, obs.height);
   }
 
+  private collectObstaclesIntoScratch(
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+    pad: number = 360
+  ): number {
+    this.scratchObstacles.length = 0;
+    if (!this.isInfinite) return 0;
+
+    const sMinX = Math.floor((minX - pad) / SECTOR_SIZE);
+    const sMaxX = Math.floor((maxX + pad) / SECTOR_SIZE);
+    const sMinY = Math.floor((minY - pad) / SECTOR_SIZE);
+    const sMaxY = Math.floor((maxY + pad) / SECTOR_SIZE);
+
+    for (let sx = sMinX; sx <= sMaxX; sx++) {
+      for (let sy = sMinY; sy <= sMaxY; sy++) {
+        const obsList = this.getOrCreateSector(sx, sy).obstacles;
+        for (let i = 0; i < obsList.length; i++) {
+          this.scratchObstacles.push(obsList[i]);
+        }
+      }
+    }
+    return this.scratchObstacles.length;
+  }
+
+  private findSegmentImpactInList(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    radius: number,
+    list: WorldObstacle[],
+    count: number
+  ): { x: number; y: number } | null {
+    if (count === 0) return null;
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const steps = Math.max(2, Math.ceil(dist / 6));
+
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      const px = x0 + (x1 - x0) * t;
+      const py = y0 + (y1 - y0) * t;
+      for (let i = 0; i < count; i++) {
+        if (this.pointHitsObstacle(px, py, radius, list[i])) {
+          return { x: px, y: py };
+        }
+      }
+    }
+    return null;
+  }
+
+  private resolveAgainstList(
+    x: number,
+    y: number,
+    radius: number,
+    list: WorldObstacle[],
+    count: number
+  ): { x: number; y: number } {
+    if (count === 0) return { x, y };
+    let rx = x;
+    let ry = y;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < count; i++) {
+        const obs = list[i];
+        if (obs.kind === 'DATA_PILLAR' && obs.radius) {
+          const res = this.pushOutCircle(rx, ry, radius, obs.x + obs.radius, obs.y + obs.radius, obs.radius);
+          rx = res.x;
+          ry = res.y;
+        } else if (obs.kind === 'HEX_BUNKER') {
+          const res = this.pushOutOctagon(rx, ry, radius, obs);
+          rx = res.x;
+          ry = res.y;
+        } else if (obs.kind === 'L_BASTION') {
+          const [hRect, vRect] = this.getLBastionRects(obs);
+          const r1 = this.pushOutRect(rx, ry, radius, hRect.x, hRect.y, hRect.w, hRect.h);
+          const r2 = this.pushOutRect(r1.x, r1.y, radius, vRect.x, vRect.y, vRect.w, vRect.h);
+          rx = r2.x;
+          ry = r2.y;
+        } else {
+          const res = this.pushOutRect(rx, ry, radius, obs.x, obs.y, obs.width, obs.height);
+          rx = res.x;
+          ry = res.y;
+        }
+      }
+    }
+    return { x: rx, y: ry };
+  }
+
   public isPointInsideObstacle(x: number, y: number, radius: number = 0): boolean {
     if (!this.isInfinite) return false;
-    const area = this.queryArea(
-      x - radius - 360,
-      y - radius - 360,
-      x + radius + 360,
-      y + radius + 360
-    );
-    return area.obstacles.some((obs) => this.pointHitsObstacle(x, y, radius, obs));
+    const pad = radius + 360;
+    const sMinX = Math.floor((x - pad) / SECTOR_SIZE);
+    const sMaxX = Math.floor((x + pad) / SECTOR_SIZE);
+    const sMinY = Math.floor((y - pad) / SECTOR_SIZE);
+    const sMaxY = Math.floor((y + pad) / SECTOR_SIZE);
+
+    for (let sx = sMinX; sx <= sMaxX; sx++) {
+      for (let sy = sMinY; sy <= sMaxY; sy++) {
+        const obsList = this.getOrCreateSector(sx, sy).obstacles;
+        for (let i = 0; i < obsList.length; i++) {
+          if (this.pointHitsObstacle(x, y, radius, obsList[i])) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  public findClearSpawnPosition(x: number, y: number, radius: number): { x: number; y: number } {
+    if (!this.isInfinite) return { x, y };
+    const count = this.collectObstaclesIntoScratch(x - 240, y - 240, x + 240, y + 240, 360);
+    if (count === 0) return { x, y };
+
+    const isFree = (px: number, py: number): boolean => {
+      for (let i = 0; i < count; i++) {
+        if (this.pointHitsObstacle(px, py, radius + 6, this.scratchObstacles[i])) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    if (isFree(x, y)) return { x, y };
+    const pushed = this.resolveAgainstList(x, y, radius + 8, this.scratchObstacles, count);
+    if (isFree(pushed.x, pushed.y)) return pushed;
+
+    const ringRadii = [95, 180, 270];
+    for (const r of ringRadii) {
+      for (let k = 0; k < 8; k++) {
+        const ang = (k / 8) * Math.PI * 2;
+        const cx = x + Math.cos(ang) * r;
+        const cy = y + Math.sin(ang) * r;
+        if (isFree(cx, cy)) return { x: cx, y: cy };
+      }
+    }
+    return pushed;
   }
 
   public findSegmentObstacleImpact(
@@ -514,23 +652,8 @@ export class WorldEnvironment {
     const minY = Math.min(y0, y1) - radius;
     const maxX = Math.max(x0, x1) + radius;
     const maxY = Math.max(y0, y1) + radius;
-    const area = this.queryArea(minX, minY, maxX, maxY);
-    if (area.obstacles.length === 0) return null;
-
-    const dist = Math.hypot(x1 - x0, y1 - y0);
-    const steps = Math.max(2, Math.ceil(dist / 6));
-
-    for (let s = 0; s <= steps; s++) {
-      const t = s / steps;
-      const px = x0 + (x1 - x0) * t;
-      const py = y0 + (y1 - y0) * t;
-      for (const obs of area.obstacles) {
-        if (this.pointHitsObstacle(px, py, radius, obs)) {
-          return { x: px, y: py };
-        }
-      }
-    }
-    return null;
+    const count = this.collectObstaclesIntoScratch(minX, minY, maxX, maxY, 360);
+    return this.findSegmentImpactInList(x0, y0, x1, y1, radius, this.scratchObstacles, count);
   }
 
   public segmentHitsObstacle(
@@ -546,6 +669,7 @@ export class WorldEnvironment {
   /**
    * Permite que los enemigos rodeen suavemente los muros y complejos pegados
    * sin quedarse atascados chocando de frente contra una pared plana.
+   * Recolecta obstáculos cercanos UNA sola vez en scratchObstacles (0 asignaciones por rayo).
    */
   public moveEntityAvoidingObstacles(
     prevX: number,
@@ -564,8 +688,20 @@ export class WorldEnvironment {
     const stepDx = nextX - prevX;
     const stepDy = nextY - prevY;
     const stepDist = Math.hypot(stepDx, stepDy);
+    const searchPad = Math.max(stepDist, radius * 2.5 + 75);
+    const count = this.collectObstaclesIntoScratch(
+      prevX - searchPad,
+      prevY - searchPad,
+      prevX + searchPad,
+      prevY + searchPad,
+      360
+    );
+    if (count === 0) {
+      return { x: nextX, y: nextY };
+    }
+
     if (stepDist < 0.01) {
-      return this.resolveCircleCollision(nextX, nextY, radius);
+      return this.resolveAgainstList(nextX, nextY, radius, this.scratchObstacles, count);
     }
 
     const toTargetDx = targetX - prevX;
@@ -579,26 +715,41 @@ export class WorldEnvironment {
     const aheadX = prevX + dirX * lookAhead;
     const aheadY = prevY + dirY * lookAhead;
 
-    if (!this.segmentHitsObstacle(prevX, prevY, aheadX, aheadY, radius + 2)) {
-      return this.resolveCircleCollision(nextX, nextY, radius);
+    if (
+      this.findSegmentImpactInList(
+        prevX,
+        prevY,
+        aheadX,
+        aheadY,
+        radius + 2,
+        this.scratchObstacles,
+        count
+      ) === null
+    ) {
+      return this.resolveAgainstList(nextX, nextY, radius, this.scratchObstacles, count);
     }
 
-    // Decidir si el flanco izquierdo o derecho está más libre; preferSide desempata en simetría
     const sideCheckDist = radius * 2.1 + 52;
-    const posBlocked = this.segmentHitsObstacle(
-      prevX,
-      prevY,
-      prevX + Math.cos(baseAngle + 0.85) * sideCheckDist,
-      prevY + Math.sin(baseAngle + 0.85) * sideCheckDist,
-      radius + 1
-    );
-    const negBlocked = this.segmentHitsObstacle(
-      prevX,
-      prevY,
-      prevX + Math.cos(baseAngle - 0.85) * sideCheckDist,
-      prevY + Math.sin(baseAngle - 0.85) * sideCheckDist,
-      radius + 1
-    );
+    const posBlocked =
+      this.findSegmentImpactInList(
+        prevX,
+        prevY,
+        prevX + Math.cos(baseAngle + 0.85) * sideCheckDist,
+        prevY + Math.sin(baseAngle + 0.85) * sideCheckDist,
+        radius + 1,
+        this.scratchObstacles,
+        count
+      ) !== null;
+    const negBlocked =
+      this.findSegmentImpactInList(
+        prevX,
+        prevY,
+        prevX + Math.cos(baseAngle - 0.85) * sideCheckDist,
+        prevY + Math.sin(baseAngle - 0.85) * sideCheckDist,
+        radius + 1,
+        this.scratchObstacles,
+        count
+      ) !== null;
 
     const firstSign = !posBlocked && negBlocked ? 1 : !negBlocked && posBlocked ? -1 : preferSide >= 0 ? 1 : -1;
     const secondSign = -firstSign;
@@ -614,18 +765,28 @@ export class WorldEnvironment {
     ];
 
     const rayLen = Math.max(stepDist + 10, radius * 1.85 + 32);
-    for (const off of offsets) {
-      const ang = baseAngle + off;
+    for (let i = 0; i < offsets.length; i++) {
+      const ang = baseAngle + offsets[i];
       const rx = prevX + Math.cos(ang) * rayLen;
       const ry = prevY + Math.sin(ang) * rayLen;
-      if (!this.segmentHitsObstacle(prevX, prevY, rx, ry, radius + 1)) {
+      if (
+        this.findSegmentImpactInList(
+          prevX,
+          prevY,
+          rx,
+          ry,
+          radius + 1,
+          this.scratchObstacles,
+          count
+        ) === null
+      ) {
         const candX = prevX + Math.cos(ang) * stepDist;
         const candY = prevY + Math.sin(ang) * stepDist;
-        return this.resolveCircleCollision(candX, candY, radius);
+        return this.resolveAgainstList(candX, candY, radius, this.scratchObstacles, count);
       }
     }
 
-    return this.resolveCircleCollision(nextX, nextY, radius);
+    return this.resolveAgainstList(nextX, nextY, radius, this.scratchObstacles, count);
   }
 
   private pushOutRect(
@@ -731,63 +892,39 @@ export class WorldEnvironment {
     if (!this.isInfinite) {
       return { x, y };
     }
-
-    const area = this.queryArea(
-      x - radius - 360,
-      y - radius - 360,
-      x + radius + 360,
-      y + radius + 360
+    const count = this.collectObstaclesIntoScratch(
+      x - radius,
+      y - radius,
+      x + radius,
+      y + radius,
+      360
     );
-    let rx = x;
-    let ry = y;
-
-    // 2 iteraciones aseguran resolución limpia cuando varias piezas están pegadas entre sí
-    for (let pass = 0; pass < 2; pass++) {
-      for (const obs of area.obstacles) {
-        if (obs.kind === 'DATA_PILLAR' && obs.radius) {
-          const res = this.pushOutCircle(
-            rx,
-            ry,
-            radius,
-            obs.x + obs.radius,
-            obs.y + obs.radius,
-            obs.radius
-          );
-          rx = res.x;
-          ry = res.y;
-        } else if (obs.kind === 'HEX_BUNKER') {
-          const res = this.pushOutOctagon(rx, ry, radius, obs);
-          rx = res.x;
-          ry = res.y;
-        } else if (obs.kind === 'L_BASTION') {
-          const [hRect, vRect] = this.getLBastionRects(obs);
-          const r1 = this.pushOutRect(rx, ry, radius, hRect.x, hRect.y, hRect.w, hRect.h);
-          const r2 = this.pushOutRect(r1.x, r1.y, radius, vRect.x, vRect.y, vRect.w, vRect.h);
-          rx = r2.x;
-          ry = r2.y;
-        } else {
-          const res = this.pushOutRect(rx, ry, radius, obs.x, obs.y, obs.width, obs.height);
-          rx = res.x;
-          ry = res.y;
-        }
-      }
-    }
-
-    return { x: rx, y: ry };
+    return this.resolveAgainstList(x, y, radius, this.scratchObstacles, count);
   }
 
   public isInSlowLiquid(x: number, y: number, _timeSec: number = 0): boolean {
     if (!this.isInfinite) return false;
 
-    const area = this.queryArea(x - 240, y - 240, x + 240, y + 240);
-    for (const pool of area.liquids) {
-      const dx = x - pool.x;
-      const dy = y - pool.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist <= pool.radius * 1.15) {
-        const theta = Math.atan2(dy, dx);
-        if (dist <= this.getLakeContourRadius(pool, theta, 0.96)) {
-          return true;
+    const pad = 260;
+    const sMinX = Math.floor((x - pad) / SECTOR_SIZE);
+    const sMaxX = Math.floor((x + pad) / SECTOR_SIZE);
+    const sMinY = Math.floor((y - pad) / SECTOR_SIZE);
+    const sMaxY = Math.floor((y + pad) / SECTOR_SIZE);
+
+    for (let sx = sMinX; sx <= sMaxX; sx++) {
+      for (let sy = sMinY; sy <= sMaxY; sy++) {
+        const pools = this.getOrCreateSector(sx, sy).liquids;
+        for (let i = 0; i < pools.length; i++) {
+          const pool = pools[i];
+          const dx = x - pool.x;
+          const dy = y - pool.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist <= pool.radius * 1.15) {
+            const theta = Math.atan2(dy, dx);
+            if (dist <= this.getLakeContourRadius(pool, theta, 0.96)) {
+              return true;
+            }
+          }
         }
       }
     }
