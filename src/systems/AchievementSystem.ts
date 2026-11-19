@@ -463,19 +463,23 @@ export class AchievementSystem {
     this.activeToasts = this.activeToasts.filter((t) => t.timer > 0);
   }
 
-  public drawToasts(ctx: CanvasRenderingContext2D, canvasWidth: number): void {
-    if (this.activeToasts.length === 0) return;
+  public drawToasts(
+    ctx: CanvasRenderingContext2D,
+    canvasWidth: number,
+    canvasHeight: number = 1080
+  ): number {
+    if (this.activeToasts.length === 0) return 0;
 
     ctx.save();
-    let currentY = 24;
+    const toastW = 408;
+    const toastH = 62;
+    const toastGap = 10;
+    const toastX = canvasWidth - toastW - 18;
+    let currentY = canvasHeight - 40 - toastH;
+    let usedHeight = 0;
 
     for (const toast of this.activeToasts) {
-      const toastW = 440;
-      const toastH = 64;
-      const toastX = (canvasWidth - toastW) / 2;
-
       // Animación suave de entrada y salida
-      const progress = toast.timer / toast.maxDuration;
       let alpha = 1.0;
       if (toast.timer < 0.5) {
         alpha = toast.timer / 0.5;
@@ -485,16 +489,13 @@ export class AchievementSystem {
 
       ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
 
-      // Fondo hardware táctico slate
+      // Fondo hardware táctico slate en esquina inferior derecha (sin solapar el HUD superior)
       ctx.fillStyle = 'rgba(11, 19, 34, 0.96)';
       ctx.strokeStyle = '#fbbf24';
       ctx.lineWidth = 1.8;
-      ctx.shadowColor = '#fbbf24';
-      ctx.shadowBlur = 12;
 
       ctx.fillRect(toastX, currentY, toastW, toastH);
       ctx.strokeRect(toastX, currentY, toastW, toastH);
-      ctx.shadowBlur = 0;
       ctx.fillStyle = '#fbbf24';
       ctx.fillRect(toastX, currentY, 4, toastH);
 
@@ -503,47 +504,52 @@ export class AchievementSystem {
       ctx.strokeStyle = '#fbbf24';
       ctx.lineWidth = 1.4;
       ctx.beginPath();
-      ctx.moveTo(toastX + 32, currentY + toastH / 2 - 14);
-      ctx.lineTo(toastX + 46, currentY + toastH / 2);
-      ctx.lineTo(toastX + 32, currentY + toastH / 2 + 14);
-      ctx.lineTo(toastX + 18, currentY + toastH / 2);
+      ctx.moveTo(toastX + 30, currentY + toastH / 2 - 13);
+      ctx.lineTo(toastX + 43, currentY + toastH / 2);
+      ctx.lineTo(toastX + 30, currentY + toastH / 2 + 13);
+      ctx.lineTo(toastX + 17, currentY + toastH / 2);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = '#fef08a';
-      ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+      ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('★', toastX + 32, currentY + toastH / 2 + 1);
+      ctx.fillText('★', toastX + 30, currentY + toastH / 2 + 1);
 
       // Texto de Hito bilingüe
       ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 11.5px "JetBrains Mono", Consolas, monospace';
+      ctx.font = 'bold 11px "JetBrains Mono", Consolas, monospace';
       ctx.fillText(
         i18n.t('HITO DESBLOQUEADO // KERNEL', 'MILESTONE UNLOCKED // KERNEL'),
-        toastX + 58,
-        currentY + 22
+        toastX + 54,
+        currentY + 23
       );
 
       ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
+      ctx.font = 'bold 14.5px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(
         i18n.currentLang === 'EN' ? toast.titleEn : toast.title,
-        toastX + 58,
-        currentY + 44
+        toastX + 54,
+        currentY + 45,
+        toastW - 134
       );
 
       // Recompensa en monedas a la derecha
       ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
       ctx.fillStyle = '#10b981';
-      ctx.font = 'bold 14px "JetBrains Mono", Consolas, monospace';
-      ctx.fillText(`+${toast.rewardCoins} CR`, toastX + toastW - 16, currentY + toastH / 2);
+      ctx.font = 'bold 13.5px "JetBrains Mono", Consolas, monospace';
+      ctx.fillText(`+${toast.rewardCoins} CR`, toastX + toastW - 14, currentY + toastH / 2);
 
-      currentY += toastH + 12;
+      currentY -= toastH + toastGap;
+      usedHeight += toastH + toastGap;
     }
 
     ctx.restore();
+    return usedHeight;
   }
 
   public getUnlockedCount(): number {

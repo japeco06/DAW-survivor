@@ -113,7 +113,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.6.0';
+const GAME_VERSION = 'v1.6.1';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v1';
@@ -188,6 +188,10 @@ export class Game {
   private hoveredDailyMissionsBtn: boolean = false;
   private showDailyMissionsOverlay: boolean = false;
   private hoveredRerollBtn: boolean = false;
+  private hoveredInGameBtn: 'PAUSE' | 'MUTE' | null = null;
+  private statusToastText: string = '';
+  private statusToastColor: string = '#38bdf8';
+  private statusToastExpiresAt: number = 0;
   private hoveredModeBtn: GameMode | null = null;
   private selectedGameMode: GameMode = 'CLASSIC';
   private isNightmareRun: boolean = false;
@@ -1600,6 +1604,26 @@ export class Game {
     this.ctx.restore();
   }
 
+  private showStatusToast(text: string, color: string = '#38bdf8', durationMs: number = 2100): void {
+    this.statusToastText = text;
+    this.statusToastColor = color;
+    this.statusToastExpiresAt = performance.now() + durationMs;
+  }
+
+  private toggleAudioMute(): void {
+    this.sound.muted = !this.sound.muted;
+    if (!this.sound.muted) {
+      this.sound.playShoot(false);
+    }
+    this.addTerminalLog(`Audio Synthesizer: ${this.sound.muted ? 'MUTED' : 'ONLINE'}`);
+    this.showStatusToast(
+      this.sound.muted
+        ? i18n.t('🔇 AUDIO SILENCIADO [M]', '🔇 AUDIO MUTED [M]')
+        : i18n.t('🔊 AUDIO ACTIVADO [M]', '🔊 AUDIO ONLINE [M]'),
+      this.sound.muted ? '#fb7185' : '#10b981'
+    );
+  }
+
   private toggleLightGraphics(): void {
     this.lightGraphicsEnabled = !this.lightGraphicsEnabled;
     this.particleSystem.lightMode = this.lightGraphicsEnabled;
@@ -1609,6 +1633,12 @@ export class Game {
       // Ignorar errores de almacenamiento
     }
     this.resize();
+    this.showStatusToast(
+      this.lightGraphicsEnabled
+        ? i18n.t('⚡ GRÁFICOS LIGEROS: ACTIVADOS [V]', '⚡ LIGHT GRAPHICS: ON [V]')
+        : i18n.t('✦ GRÁFICOS COMPLETOS: ACTIVADOS [V]', '✦ FULL GRAPHICS: ON [V]'),
+      this.lightGraphicsEnabled ? '#fbbf24' : '#38bdf8'
+    );
     this.addTerminalLog(
       this.lightGraphicsEnabled
         ? 'PERF: Light Graphics ENABLED (1280x720 + reduced FX).'
@@ -1630,6 +1660,19 @@ export class Game {
       this.dailyMissions.flushPendingSave(true);
     });
 
+    document.addEventListener('visibilitychange', () => {
+      if (
+        document.hidden &&
+        this.gameState === 'PLAYING' &&
+        !this.isCoopMode &&
+        !this.isPaused &&
+        !this.upgradeSystem.isChoosingUpgrade()
+      ) {
+        this.togglePause();
+        this.addTerminalLog('AUTO-PAUSE: Tab switched to background.');
+      }
+    });
+
     window.addEventListener('keydown', (e) => {
       unlockAudio();
       const key = e.key.toLowerCase();
@@ -1640,13 +1683,19 @@ export class Game {
         return;
       }
 
-      if (key === 'm' && this.gameState !== 'MENU') {
-        this.sound.muted = !this.sound.muted;
-        this.addTerminalLog(`Audio Synthesizer: ${this.sound.muted ? 'MUTED' : 'ONLINE'}`);
+      if (key === 'm' && (this.gameState !== 'MENU' || e.shiftKey)) {
+        this.toggleAudioMute();
+        return;
       }
 
       if (key === 'f') {
         this.toggleFullscreen();
+        this.showStatusToast(
+          document.fullscreenElement
+            ? i18n.t('⛶ SALIENDO DE PANTALLA COMPLETA [F]', '⛶ EXITING FULLSCREEN [F]')
+            : i18n.t('⛶ PANTALLA COMPLETA [F]', '⛶ FULLSCREEN [F]'),
+          '#38bdf8'
+        );
       }
 
       if (this.gameState === 'MENU') {
@@ -1776,11 +1825,6 @@ export class Game {
         return;
       }
 
-      if (this.gameState === 'PLAYING' && !this.upgradeSystem.isChoosingUpgrade() && key === 'p') {
-        this.togglePause();
-        return;
-      }
-
       if (this.isPaused) {
         if (this.showHelpOverlay) {
           if (key === 'escape' || key === 'b' || key === 'h') {
@@ -1796,14 +1840,23 @@ export class Game {
           }
           return;
         }
-        if (key === '1' || key === 'enter') {
+        if (key === '1' || key === 'enter' || key === 'escape' || key === 'p') {
           this.togglePause();
         } else if (key === 'o') {
           this.showSettingsOverlay = true;
           this.sound.playShoot(false);
-        } else if (key === '2' || key === 'escape') {
+        } else if (key === '2') {
           this.exitToMainMenu();
         }
+        return;
+      }
+
+      if (
+        this.gameState === 'PLAYING' &&
+        !this.upgradeSystem.isChoosingUpgrade() &&
+        (key === 'p' || key === 'escape')
+      ) {
+        this.togglePause();
         return;
       }
 
@@ -1955,6 +2008,7 @@ export class Game {
       }
 
       if (this.isPaused) {
+        this.hoveredInGameBtn = null;
         this.hoveredPauseAction = null;
         for (const btn of this.getPauseButtonRects()) {
           if (this.isPointInRect(mx, my, btn)) {
@@ -1962,15 +2016,30 @@ export class Game {
             break;
           }
         }
+        this.canvas.style.cursor = this.hoveredPauseAction ? 'pointer' : 'default';
         return;
       }
 
       if (this.gameState !== 'PLAYING' || !this.upgradeSystem.isChoosingUpgrade()) {
         this.hoveredCardIndex = -1;
         this.hoveredRerollBtn = false;
+        if (this.gameState === 'PLAYING') {
+          if (this.isPointInRect(mx, my, this.getInGamePauseButtonRect())) {
+            this.hoveredInGameBtn = 'PAUSE';
+          } else if (this.isPointInRect(mx, my, this.getInGameMuteButtonRect())) {
+            this.hoveredInGameBtn = 'MUTE';
+          } else {
+            this.hoveredInGameBtn = null;
+          }
+          this.canvas.style.cursor = this.hoveredInGameBtn ? 'pointer' : 'default';
+        } else {
+          this.hoveredInGameBtn = null;
+          this.canvas.style.cursor = 'default';
+        }
         return;
       }
 
+      this.hoveredInGameBtn = null;
       this.hoveredCardIndex = -1;
       for (const card of this.getUpgradeCardRects()) {
         if (this.isPointInRect(mx, my, card)) {
@@ -1979,6 +2048,8 @@ export class Game {
         }
       }
       this.hoveredRerollBtn = this.isPointInRect(mx, my, this.getRerollButtonRect());
+      this.canvas.style.cursor =
+        this.hoveredCardIndex !== -1 || this.hoveredRerollBtn ? 'pointer' : 'default';
     });
 
     this.canvas.addEventListener(
@@ -1997,6 +2068,11 @@ export class Game {
             !this.isPaused &&
             !this.upgradeSystem.isChoosingUpgrade()
           ) {
+            if (this.isPointInRect(pt.x, pt.y, this.getInGameMuteButtonRect())) {
+              this.toggleAudioMute();
+              this.lastTouchTapTime = performance.now();
+              continue;
+            }
             if (this.isPointInRect(pt.x, pt.y, this.getInGamePauseButtonRect())) {
               this.togglePause();
               this.lastTouchTapTime = performance.now();
@@ -2390,6 +2466,10 @@ export class Game {
     }
 
     if (this.gameState === 'PLAYING' && !this.upgradeSystem.isChoosingUpgrade()) {
+      if (this.isPointInRect(mx, my, this.getInGameMuteButtonRect())) {
+        this.toggleAudioMute();
+        return;
+      }
       if (this.isPointInRect(mx, my, this.getInGamePauseButtonRect())) {
         this.togglePause();
         return;
@@ -4255,9 +4335,6 @@ export class Game {
       if (this.systemFreezeTimer > 0) {
         this.drawFreezeOverlay();
       }
-      if (this.thermalOverclockTimer > 0) {
-        this.drawThermalOverclockIndicator();
-      }
     }
 
     if (this.spawner.swarmActiveTimer > 0 && this.gameState !== 'MENU') {
@@ -4301,8 +4378,9 @@ export class Game {
       }
     }
 
-    this.achievementSystem.drawToasts(this.ctx, LOGICAL_WIDTH);
-    this.dailyMissions.drawToasts(this.ctx, LOGICAL_WIDTH);
+    this.drawTopStatusBanners();
+    const achToastH = this.achievementSystem.drawToasts(this.ctx, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    this.dailyMissions.drawToasts(this.ctx, LOGICAL_WIDTH, LOGICAL_HEIGHT, achToastH);
     if (!this.lightGraphicsEnabled) {
       this.drawCRTScanlines();
     }
@@ -4318,9 +4396,9 @@ export class Game {
     return [
       {
         action: 'RESUME',
-        label: `> ${i18n.t('[1 / P] REANUDAR PARTIDA', '[1 / P] RESUME GAME')}`,
+        label: `> ${i18n.t('[1 / ESC / P] REANUDAR PARTIDA', '[1 / ESC / P] RESUME GAME')}`,
         x: cx - btnW / 2,
-        y: cy - 35,
+        y: cy - 38,
         width: btnW,
         height: btnH,
       },
@@ -4328,15 +4406,15 @@ export class Game {
         action: 'SETTINGS',
         label: `> ${i18n.t('[O] AJUSTES Y VOLUMEN', '[O] SETTINGS & AUDIO')}`,
         x: cx - btnW / 2,
-        y: cy + 20,
+        y: cy + 16,
         width: btnW,
         height: btnH,
       },
       {
         action: 'EXIT_TO_MENU',
-        label: `> ${i18n.t('[2 / ESC] SALIR AL MENÚ PRINCIPAL', '[2 / ESC] QUIT TO MAIN MENU')}`,
+        label: `> ${i18n.t('[2] SALIR AL MENÚ PRINCIPAL', '[2] QUIT TO MAIN MENU')}`,
         x: cx - btnW / 2,
-        y: cy + 75,
+        y: cy + 70,
         width: btnW,
         height: btnH,
       },
@@ -4351,8 +4429,8 @@ export class Game {
     this.ctx.fillStyle = 'rgba(5, 9, 18, 0.84)';
     this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
-    const boxW = 500;
-    const boxH = 320;
+    const boxW = 520;
+    const boxH = 342;
     this.drawCyberPanel(
       cx - boxW / 2,
       cy - boxH / 2,
@@ -4373,14 +4451,14 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#f8fafc';
     this.ctx.font = `bold 26px ${FONT_DISPLAY}`;
-    this.ctx.fillText(i18n.t('SISTEMA EN PAUSA', 'SYSTEM PAUSED'), cx, cy - 94);
+    this.ctx.fillText(i18n.t('SISTEMA EN PAUSA', 'SYSTEM PAUSED'), cx, cy - 102);
 
     this.ctx.fillStyle = '#38bdf8';
     this.ctx.font = `13px ${FONT_MONO}`;
     this.ctx.fillText(
       i18n.t('// Simulación y temporizadores en espera', '// Simulation & timers suspended'),
       cx,
-      cy - 64
+      cy - 72
     );
 
     for (const btn of this.getPauseButtonRects()) {
@@ -4406,12 +4484,125 @@ export class Game {
       );
     }
 
+    // Barra inferior de atajos rápidos con estado en tiempo real
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#94a3b8';
+    this.ctx.font = `bold 11px ${FONT_MONO}`;
+    const audioState = this.sound.muted ? i18n.t('SILENCIO', 'MUTED') : 'ON';
+    const gfxState = this.lightGraphicsEnabled ? 'ON' : 'OFF';
+    this.ctx.fillText(
+      `[M] AUDIO: ${audioState}   •   [V] ${i18n.t('LIGEROS', 'LIGHT')}: ${gfxState}   •   [F] ${i18n.t('PANTALLA', 'FULLSCR')}`,
+      cx,
+      cy + 144
+    );
+
     if (this.showHelpOverlay) {
       this.drawHelpOverlay();
     } else if (this.showSettingsOverlay) {
       this.drawSettingsOverlay();
     }
 
+    this.ctx.restore();
+  }
+
+  private drawTopStatusBanners(): void {
+    const now = performance.now();
+    const banners: { text: string; color: string; bg: string; alpha?: number }[] = [];
+
+    if (this.gameState === 'PLAYING') {
+      if (this.spawner.swarmActiveTimer > 0) {
+        const blink = Math.floor(now / 280) % 2 === 0;
+        banners.push({
+          text: i18n.t(
+            `⚠️ PLAGA: EL ENJAMBRE (${this.spawner.swarmActiveTimer.toFixed(1)}s) // ¡50 ENEMIGOS!`,
+            `⚠️ PLAGUE: THE SWARM (${this.spawner.swarmActiveTimer.toFixed(1)}s) // 50 HOSTILES!`
+          ),
+          color: blink ? '#ff1e42' : '#fde047',
+          bg: 'rgba(38, 8, 16, 0.88)',
+        });
+      }
+
+      const bossAlertTimer =
+        this.isCoopMode && !this.isCoopHost
+          ? this.coopSnapshot?.boss?.alertTimer || 0
+          : this.spawner.activeBossAlertTimer;
+      if (bossAlertTimer > 0) {
+        const bossName =
+          this.isCoopMode && !this.isCoopHost
+            ? this.coopSnapshot?.boss?.name || 'BOSS'
+            : this.spawner.lastBossSpawnedName || 'BOSS';
+        const bossColor =
+          this.isCoopMode && !this.isCoopHost
+            ? this.coopSnapshot?.boss?.color || '#f43f5e'
+            : this.spawner.lastBossSpawnedColor || '#f43f5e';
+        const pulse = Math.floor(bossAlertTimer * 8) % 2 === 0;
+        banners.push({
+          text: `ALERTA // ${bossName} DETECTED`,
+          color: pulse ? bossColor : '#fef08a',
+          bg: 'rgba(28, 10, 20, 0.9)',
+        });
+      }
+
+      if (this.systemFreezeTimer > 0) {
+        banners.push({
+          text: i18n.t(
+            `❄ SISTEMA CONGELADO: ${this.systemFreezeTimer.toFixed(1)}s`,
+            `❄ SYSTEM FREEZE: ${this.systemFreezeTimer.toFixed(1)}s`
+          ),
+          color: '#38bdf8',
+          bg: 'rgba(8, 24, 42, 0.88)',
+        });
+      }
+
+      if (this.thermalOverclockTimer > 0) {
+        banners.push({
+          text: i18n.t(
+            `⚡ OVERCLOCK TÉRMICO (x2 CADENCIA + 100% CRIT): ${this.thermalOverclockTimer.toFixed(1)}s`,
+            `⚡ THERMAL OVERCLOCK (2x FIRE RATE + 100% CRIT): ${this.thermalOverclockTimer.toFixed(1)}s`
+          ),
+          color: '#fb923c',
+          bg: 'rgba(36, 18, 8, 0.88)',
+        });
+      }
+    }
+
+    if (this.statusToastExpiresAt > now && this.statusToastText) {
+      const rem = this.statusToastExpiresAt - now;
+      const alpha = Math.min(1, rem / 450);
+      banners.push({
+        text: this.statusToastText,
+        color: this.statusToastColor,
+        bg: 'rgba(11, 19, 34, 0.94)',
+        alpha,
+      });
+    }
+
+    if (banners.length === 0) return;
+
+    this.ctx.save();
+    this.ctx.font = `bold 13.5px ${FONT_MONO}`;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    let curY = this.gameState === 'MENU' ? 84 : 62;
+    const pillH = 26;
+
+    for (const b of banners) {
+      const tw = this.ctx.measureText(b.text).width;
+      const pillW = Math.min(760, tw + 32);
+      const px = LOGICAL_WIDTH / 2 - pillW / 2;
+      this.ctx.globalAlpha = b.alpha ?? 1;
+      this.ctx.fillStyle = b.bg;
+      this.ctx.strokeStyle = b.color;
+      this.ctx.lineWidth = 1.4;
+      this.ctx.beginPath();
+      this.ctx.roundRect(px, curY, pillW, pillH, 6);
+      this.ctx.fill();
+      this.ctx.stroke();
+
+      this.ctx.fillStyle = b.color;
+      this.ctx.fillText(b.text, LOGICAL_WIDTH / 2, curY + pillH / 2 + 0.5, pillW - 18);
+      curY += pillH + 6;
+    }
     this.ctx.restore();
   }
 
@@ -4426,24 +4617,10 @@ export class Game {
 
   private drawSwarmPlagueOverlay(): void {
     this.ctx.save();
-    // Filtro rojo suave sobre todo el Canvas durante los 15s de 'El Enjambre'
-    const pulseAlpha = 0.12 + Math.sin(performance.now() * 0.008) * 0.04;
+    // Filtro rojo suave sobre todo el Canvas durante 'El Enjambre' (texto gestionado en drawTopStatusBanners)
+    const pulseAlpha = 0.11 + Math.sin(performance.now() * 0.008) * 0.035;
     this.ctx.fillStyle = `rgba(255, 15, 45, ${pulseAlpha})`;
     this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
-
-    // Alarma visual superior
-    const blink = Math.floor(performance.now() / 280) % 2 === 0;
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = blink ? '#ff1e42' : '#fde047';
-    this.ctx.font = `bold 18px ${FONT_DISPLAY}`;
-    this.ctx.fillText(
-      i18n.t(
-        `⚠️ ALERTA DE PLAGA: EL ENJAMBRE (${this.spawner.swarmActiveTimer.toFixed(1)}s) // ¡50 ENEMIGOS DETECTADOS! ⚠️`,
-        `⚠️ PLAGUE ALERT: THE SWARM (${this.spawner.swarmActiveTimer.toFixed(1)}s) // 50 HOSTILES DETECTED! ⚠️`
-      ),
-      LOGICAL_WIDTH / 2,
-      102
-    );
     this.ctx.restore();
   }
 
@@ -4609,6 +4786,13 @@ export class Game {
           } else if (edgeX > w - 210 && edgeY < 305) {
             edgeY = 305;
           }
+          const hasBottomBossHud =
+            Boolean(this.finalBoss?.active) ||
+            this.enemies.some((e) => e.active && e instanceof WaveBoss) ||
+            Boolean(this.coopSnapshot?.boss && (this.coopSnapshot.boss.isToro || this.coopSnapshot.boss.hp > 0));
+          if (hasBottomBossHud && Math.abs(edgeX - w / 2) < 370 && edgeY > h - 116) {
+            edgeY = h - 116;
+          }
         }
         const distM = Math.max(1, Math.round(Math.hypot(ally.x - this.player.x, ally.y - this.player.y) / 10));
 
@@ -4660,34 +4844,9 @@ export class Game {
       LOGICAL_WIDTH * 0.7
     );
     grad.addColorStop(0, 'rgba(0, 240, 255, 0)');
-    grad.addColorStop(1, 'rgba(0, 200, 255, 0.28)');
+    grad.addColorStop(1, 'rgba(0, 200, 255, 0.26)');
     this.ctx.fillStyle = grad;
     this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
-
-    this.ctx.font = 'bold 15px "JetBrains Mono", Consolas, monospace';
-    this.ctx.fillStyle = '#38bdf8';
-    this.ctx.textAlign = 'center';
-    this.ctx.fillText(
-      `❄ SISTEMA CONGELADO: ${this.systemFreezeTimer.toFixed(1)}s`,
-      LOGICAL_WIDTH / 2,
-      72
-    );
-    this.ctx.restore();
-  }
-
-  private drawThermalOverclockIndicator(): void {
-    this.ctx.save();
-    this.ctx.font = `bold 15px ${FONT_MONO}`;
-    this.ctx.fillStyle = '#f97316';
-    this.ctx.textAlign = 'center';
-    this.ctx.fillText(
-      i18n.t(
-        `⚡ OVERCLOCK TÉRMICO (x2 CADENCIA + 100% CRIT): ${this.thermalOverclockTimer.toFixed(1)}s`,
-        `⚡ THERMAL OVERCLOCK (2x FIRE RATE + 100% CRIT): ${this.thermalOverclockTimer.toFixed(1)}s`
-      ),
-      LOGICAL_WIDTH / 2,
-      110
-    );
     this.ctx.restore();
   }
 
@@ -5039,11 +5198,20 @@ export class Game {
     };
   }
 
+  private getInGameMuteButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: LOGICAL_WIDTH - 156,
+      y: 24,
+      width: 38,
+      height: 24,
+    };
+  }
+
   private getInGamePauseButtonRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: LOGICAL_WIDTH - 110,
+      x: LOGICAL_WIDTH - 112,
       y: 24,
-      width: 84,
+      width: 86,
       height: 24,
     };
   }
@@ -7237,15 +7405,15 @@ export class Game {
           i18n.currentLang === 'EN'
             ? [
                 '• [WASD / Arrows] or Touch Joystick: Move.',
-                '• [P]: Pause  |  [V]: Light Graphics  |  [R]: Reroll.',
-                '• [M]: Daily Missions  |  [B]: Nightmare  |  [K]: Co-op 4P.',
-                '• [H]: Range Circle  |  Auto-fire targets threat.',
+                '• [ESC / P]: Pause  |  [M]: Mute (run) / Missions (menu).',
+                '• [V]: Light Graphics  |  [F]: Fullscreen  |  [R]: Reroll.',
+                '• [H]: Range Circle  |  [B]: Nightmare  |  [K]: Co-op 4P.',
               ]
             : [
                 '• [WASD / Flechas] o Joystick Táctil: Mover.',
-                '• [P]: Pausa  |  [V]: Gráficos Ligeros  |  [R]: Reroll.',
-                '• [M]: Misiones Diarias  |  [B]: Pesadilla  |  [K]: Co-op 4P.',
-                '• [H]: Círculo alcance  |  Disparo automático.',
+                '• [ESC / P]: Pausa  |  [M]: Silenciar / Misiones (menú).',
+                '• [V]: Gráficos Ligeros  |  [F]: Pantalla  |  [R]: Reroll.',
+                '• [H]: Alcance  |  [B]: Pesadilla  |  [K]: Co-op 4P.',
               ],
         color: '#10b981',
         border: 'rgba(16, 185, 129, 0.45)',
@@ -7722,9 +7890,9 @@ export class Game {
     this.ctx.restore();
 
     // ==========================================
-    // 2. POD SUPERIOR DERECHO: CRONÓMETRO, BAJAS, CRIPTO Y OBJETIVO
+    // 2. POD SUPERIOR DERECHO: CRONÓMETRO, BAJAS, CRIPTO, AUDIO Y PAUSA
     // ==========================================
-    const rw = 326;
+    const rw = 368;
     const rx = w - rw - 16;
     const ry = 18;
     const rh = 76;
@@ -7746,33 +7914,50 @@ export class Game {
     // Vector badge de Bajas
     this.ctx.fillStyle = '#f43f5e';
     this.ctx.beginPath();
-    this.ctx.moveTo(rx + 94, ry + 16);
-    this.ctx.lineTo(rx + 99, ry + 21);
-    this.ctx.lineTo(rx + 94, ry + 26);
-    this.ctx.lineTo(rx + 89, ry + 21);
+    this.ctx.moveTo(rx + 88, ry + 16);
+    this.ctx.lineTo(rx + 93, ry + 21);
+    this.ctx.lineTo(rx + 88, ry + 26);
+    this.ctx.lineTo(rx + 83, ry + 21);
     this.ctx.closePath();
     this.ctx.fill();
     this.ctx.fillStyle = '#fda4af';
     this.ctx.font = `bold 12px ${FONT_MONO}`;
-    this.ctx.fillText(`${this.killCount}`, rx + 104, ry + 25);
+    this.ctx.fillText(`${this.killCount}`, rx + 98, ry + 25);
 
     // Vector token de Cripto
     this.ctx.fillStyle = '#fbbf24';
     this.ctx.beginPath();
-    this.ctx.arc(rx + 170, ry + 21, 5, 0, Math.PI * 2);
+    this.ctx.arc(rx + 158, ry + 21, 5, 0, Math.PI * 2);
     this.ctx.fill();
     this.ctx.fillStyle = '#fde68a';
-    this.ctx.fillText(`${this.runCoinsCollected} CR`, rx + 179, ry + 25);
+    this.ctx.fillText(`${this.runCoinsCollected} CR`, rx + 167, ry + 25);
+
+    const muteBtn = this.getInGameMuteButtonRect();
+    const muteHover = this.hoveredInGameBtn === 'MUTE';
+    this.drawClippedButton(
+      muteBtn,
+      this.sound.muted
+        ? 'rgba(76, 12, 28, 0.92)'
+        : muteHover
+        ? 'rgba(30, 58, 86, 0.96)'
+        : 'rgba(30, 41, 59, 0.92)',
+      muteHover ? '#ffffff' : this.sound.muted ? '#fb7185' : 'rgba(148, 163, 184, 0.55)',
+      muteHover ? 1.5 : 1.1,
+      this.sound.muted ? '#fda4af' : '#cbd5e1',
+      11,
+      this.sound.muted ? '🔇' : '🔊'
+    );
 
     const pauseBtn = this.getInGamePauseButtonRect();
+    const pauseHover = this.hoveredInGameBtn === 'PAUSE';
     this.drawClippedButton(
       pauseBtn,
-      'rgba(30, 41, 59, 0.92)',
-      'rgba(148, 163, 184, 0.55)',
-      1.1,
-      '#cbd5e1',
-      10,
-      `[P] ${i18n.t('PAUSA', 'PAUSE')}`
+      pauseHover ? 'rgba(30, 58, 86, 0.96)' : 'rgba(30, 41, 59, 0.92)',
+      pauseHover ? '#ffffff' : 'rgba(148, 163, 184, 0.55)',
+      pauseHover ? 1.5 : 1.1,
+      pauseHover ? '#ffffff' : '#cbd5e1',
+      9.5,
+      `[ESC] ${i18n.t('PAUSA', 'PAUSE')}`
     );
 
     this.ctx.fillStyle = 'rgba(56, 189, 248, 0.22)';
@@ -7938,15 +8123,6 @@ export class Game {
         return;
       }
 
-      if (remoteBoss.alertTimer && remoteBoss.alertTimer > 0) {
-        const pulse = Math.floor(remoteBoss.alertTimer * 8) % 2 === 0;
-        if (pulse) {
-          this.ctx.fillStyle = remoteBoss.color || '#f43f5e';
-          this.ctx.font = `bold 20px ${FONT_DISPLAY}`;
-          this.ctx.fillText(`ALERTA // ${remoteBoss.name} DETECTED`, LOGICAL_WIDTH / 2, 104);
-        }
-      }
-
       if (remoteBoss.hp > 0) {
         const barWidth = Math.min(540, LOGICAL_WIDTH * 0.56);
         const barHeight = 14;
@@ -8021,20 +8197,6 @@ export class Game {
     const activeBoss = this.enemies.find(
       (e): e is WaveBoss => e instanceof WaveBoss && e.active
     );
-
-    if (this.spawner.activeBossAlertTimer > 0) {
-      const pulse = Math.floor(this.spawner.activeBossAlertTimer * 8) % 2 === 0;
-      if (pulse) {
-        const alertColor = this.spawner.lastBossSpawnedColor || '#f43f5e';
-        this.ctx.fillStyle = alertColor;
-        this.ctx.font = `bold 20px ${FONT_DISPLAY}`;
-        this.ctx.fillText(
-          `ALERTA // ${this.spawner.lastBossSpawnedName} DETECTED`,
-          LOGICAL_WIDTH / 2,
-          104
-        );
-      }
-    }
 
     if (activeBoss) {
       const barWidth = Math.min(540, LOGICAL_WIDTH * 0.56);

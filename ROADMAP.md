@@ -343,16 +343,36 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │   ├── Esquiva activa de obstáculos (`moveEntityAvoidingObstacles`) para que los enemigos rodeen los muros en lugar de atascarse de frente
 │   └── Colisión frontal extendida hasta la punta de haces/proyectiles y extrapolación en invitados recortada contra muros
 │
-└── v1.6.0 — Corrección Visual de Enemigos, Combate/IA Robusto, Paridad Co-op Completa y Rendimiento Sin Pausas (ACTUAL)
-    ├── Siluetas e identidades visuales únicas para los 14 tipos de enemigos y 5 Jefes en Co-op (`CoopRenderer.ts` sin `constructor.name` minificado) + micro-oleadas mixtas en Modo Normal (`Spawner.ts`)
-    ├── Combate & IA: cero *soft-locks* al morir por charcos/tormentas, `SqlInjectionBeam` con colisión por segmento sin *tunneling*, `SawDisc` bloqueado antes de herir tras muro, ralentización/hielo efectivo en `ArmoredWorm`/`CryptoMiner`/`Evasor`, spawns siempre fuera de muros y `resolveEnemyCrowd` seguro
-    ├── Paridad total Co-op + Servidor endurecido (`server/index.js`): proyectiles enemigos y eventos de terreno golpean a Invitados, simulación única (`1x`) de arrays compartidos, Drones/Morcillita/Anillos/Barra y música de Jefes/Feedback de daño/Guardado en la nube en Invitados, cámara espectadora al caer y cola íntegra de múltiples subidas de nivel
-    └── Rendimiento: consultas de obstáculos *zero-allocation* con caché LRU (`WorldEnvironment.ts`), `ParticleSystem` con arrastre independiente del FPS y sin `save/restore` por partícula, eliminación de `shadowBlur` en jefes/mascota/sombreros y `PingProjectile` con recálculo amortiguado
+├── v1.6.0 — Corrección Visual de Enemigos, Combate/IA Robusto, Paridad Co-op Completa y Rendimiento Sin Pausas
+│   ├── Siluetas e identidades visuales únicas para los 14 tipos de enemigos y 5 Jefes en Co-op (`CoopRenderer.ts` sin `constructor.name` minificado) + micro-oleadas mixtas en Modo Normal (`Spawner.ts`)
+│   ├── Combate & IA: cero *soft-locks* al morir por charcos/tormentas, `SqlInjectionBeam` con colisión por segmento sin *tunneling*, `SawDisc` bloqueado antes de herir tras muro, ralentización/hielo efectivo en `ArmoredWorm`/`CryptoMiner`/`Evasor`, spawns siempre fuera de muros y `resolveEnemyCrowd` seguro
+│   ├── Paridad total Co-op + Servidor endurecido (`server/index.js`): proyectiles enemigos y eventos de terreno golpean a Invitados, simulación única (`1x`) de arrays compartidos, Drones/Morcillita/Anillos/Barra y música de Jefes/Feedback de daño/Guardado en la nube en Invitados, cámara espectadora al caer y cola íntegra de múltiples subidas de nivel
+│   └── Rendimiento: consultas de obstáculos *zero-allocation* con caché LRU (`WorldEnvironment.ts`), `ParticleSystem` con arrastre independiente del FPS y sin `save/restore` por partícula, eliminación de `shadowBlur` en jefes/mascota/sombreros y `PingProjectile` con recálculo amortiguado
+│
+└── v1.6.1 — Pulido de UI/UX: Pausa Segura con Esc, Silenciado Rápido [M], Toasts y Banners Sin Solapes (ACTUAL)
+    ├── Pausa intuitiva con `Esc` / `P` (ya no sale al menú por accidente al pulsar `Esc` en pausa; auto-pausa al cambiar de pestaña en Solo) y barra de estado de atajos en tiempo real dentro del menú de pausa
+    ├── Botón rápido clicable/táctil de Audio (`🔊/🔇`) junto a `[ESC] PAUSA` en el HUD superior derecho, atajo `[M]` (y `Shift+M` en Menú) y cápsula efímera de estado para Audio (`[M]`), Gráficos Ligeros (`[V]`) y Pantalla Completa (`[F]`)
+    ├── Toasts de Logros y Misiones Diarias reubicados en pila limpia en esquina inferior derecha (sin tapar jamás la barra de armas ni alertas) y pila dinámica `drawTopStatusBanners()` para Enjambre, Jefes, Hielo y Overclock sin colisiones verticales
+    └── Flechas de aliados Co-op elevadas automáticamente por encima de la barra inferior de Jefes y `El Toro`
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.6.1] - 2026-11-19
+- **Pausa Segura con `Esc` y Auto-Pausa en Solo (`Game.ts`)**:
+  - `Esc` y `P` abren la pausa en partida y reanudan desde el menú de pausa (cerrando primero Ajustes/Ayuda si están abiertos), eliminando el cierre accidental de la partida que provocaba `Esc` al estar pausado; salir al menú ahora se limita a `[2]` o clic explícito.
+  - Añadida auto-pausa al cambiar de pestaña (`visibilitychange`) en Modo Solo (desactivada en Co-op para no frenar al equipo) y pie informativo con estado en vivo de `[M]`, `[V]` y `[F]` en el panel de pausa.
+- **Control Rápido de Audio y Feedback Visual (`Game.ts`)**:
+  - Ensanchado el pod superior derecho (`368 px`) para incorporar el botón táctil/clicable de silenciado (`🔊/🔇`) junto a `[ESC] PAUSA` con estados de *hover* y cursor interactivo.
+  - Añadida cápsula de estado temporal (`showStatusToast`) al pulsar `[M]` (`Shift+M` en menú), `[V]` o `[F]`, operativa incluso con el juego en pausa, y actualizado el Manual de Operaciones (`drawHelpOverlay`).
+- **HUD Sin Solapes (`AchievementSystem.ts`, `DailyMissionSystem.ts`, `Game.ts`)**:
+  - Reubicados los toasts de Logros y Misiones Diarias en pila vertical ascendente en la esquina inferior derecha (`canvasWidth - 426`, encima de la versión) pasando `bottomOffsetY` para evitar solaparse entre sí o con la barra central de armas.
+  - Unificadas las alertas de Enjambre, Jefe detectado (Host e Invitado), Sistema Congelado, Overclock Térmico y toasts rápidos en `drawTopStatusBanners()` bajo la barra de armas (`y = 62`) sin colisiones verticales.
+  - Elevadas las flechas de borde de aliados Co-op (`edgeY <= h - 116`) cuando hay barra inferior activa de Jefe o `El Toro`.
+- **Sincronización de Versión (`v1.6.1`)**:
+  - Actualizados `GAME_VERSION` en `src/core/Game.ts`, `package.json`, `package-lock.json`, `server/package.json`, `server/package-lock.json`, `server/index.js` y `ROADMAP.md` a `1.6.1`.
 
 ### [v1.6.0] - 2026-11-19
 - **Apariencia Única para Todos los Enemigos en Co-op y Normal (`CoopRenderer.ts`, `TrojanShooter.ts`, `Spawner.ts`, `Game.ts`)**:

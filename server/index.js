@@ -142,7 +142,7 @@ app.get('/', (_req, res) => {
   res.json({
     ok: true,
     service: 'daw-survivor-coop',
-    version: '1.6.0',
+    version: '1.6.1',
     activeRooms: rooms.size,
     connectedPlayers: io.engine.clientsCount,
   });
@@ -152,7 +152,7 @@ app.get('/health', (_req, res) => {
   res.json({
     ok: true,
     service: 'daw-survivor-coop',
-    version: '1.6.0',
+    version: '1.6.1',
     activeRooms: rooms.size,
     connectedPlayers: io.engine.clientsCount,
     uptimeSec: Math.round(process.uptime()),

@@ -297,13 +297,18 @@ export class DailyMissionSystem {
     this.activeToasts = this.activeToasts.filter((t) => t.timer > 0);
   }
 
-  public drawToasts(ctx: CanvasRenderingContext2D, canvasWidth: number): void {
+  public drawToasts(
+    ctx: CanvasRenderingContext2D,
+    canvasWidth: number,
+    canvasHeight: number = 1080,
+    bottomOffsetY: number = 0
+  ): void {
     if (this.activeToasts.length === 0) return;
     const toast = this.activeToasts[0];
-    const w = 360;
-    const h = 68;
-    const x = canvasWidth / 2 - w / 2;
-    const y = 86;
+    const w = 408;
+    const h = 62;
+    const x = canvasWidth - w - 18;
+    const y = canvasHeight - 40 - bottomOffsetY - h;
 
     const alpha = Math.min(1, toast.timer * 2.5, (toast.maxDuration - toast.timer) * 4 + 0.2);
 
@@ -313,25 +318,32 @@ export class DailyMissionSystem {
     ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 10);
+    ctx.roundRect(x, y, w, h, 8);
     ctx.fill();
     ctx.stroke();
-
-    ctx.textAlign = 'center';
     ctx.fillStyle = '#fbbf24';
-    ctx.font = 'bold 11.5px "JetBrains Mono", Consolas, monospace';
+    ctx.fillRect(x, y + 6, 4, h - 12);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 11px "JetBrains Mono", Consolas, monospace';
     ctx.fillText(
       i18n.t(
-        `★ MISIÓN DIARIA COMPLETADA (+${toast.rewardCoins} CR) ★`,
-        `★ DAILY MISSION COMPLETED (+${toast.rewardCoins} CR) ★`
+        `★ MISIÓN DIARIA COMPLETADA (+${toast.rewardCoins} CR)`,
+        `★ DAILY MISSION COMPLETED (+${toast.rewardCoins} CR)`
       ),
-      canvasWidth / 2,
-      y + 24
+      x + 16,
+      y + 23
     );
 
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
-    ctx.fillText(i18n.currentLang === 'EN' ? toast.titleEn : toast.title, canvasWidth / 2, y + 48);
+    ctx.fillText(
+      i18n.currentLang === 'EN' ? toast.titleEn : toast.title,
+      x + 16,
+      y + 46,
+      w - 30
+    );
     ctx.restore();
   }
 }
