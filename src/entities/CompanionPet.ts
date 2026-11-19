@@ -1,5 +1,6 @@
 import { Player } from './Player';
 import { Adware } from './Adware';
+import type { WorldEnvironment } from '../systems/WorldEnvironment';
 
 export type CompanionBranch = 'NONE' | 'BRUTE' | 'BOTNET' | 'PINBALL';
 
@@ -478,7 +479,8 @@ export class CompanionPet {
     canvasWidth: number = 1920,
     canvasHeight: number = 1080,
     viewOriginX: number = 0,
-    viewOriginY: number = 0
+    viewOriginY: number = 0,
+    worldEnv?: WorldEnvironment
   ): CompanionUpdateOutput {
     const damagedEnemies: { x: number; y: number; damage: number; color: string; isCrit?: boolean }[] = [];
     const killedEnemies: Adware[] = [];
@@ -697,6 +699,27 @@ export class CompanionPet {
         }
 
         const bouncedEdge = bouncedX !== 0 || bouncedY !== 0;
+        let bouncedWall = false;
+        if (worldEnv?.isInfinite) {
+          const prevUx = unit.x;
+          const prevUy = unit.y;
+          const uRes = worldEnv.resolveCircleCollision(unit.x, unit.y, half);
+          const pdx = uRes.x - prevUx;
+          const pdy = uRes.y - prevUy;
+          const pDist = Math.hypot(pdx, pdy);
+          if (pDist > 0.25) {
+            unit.x = uRes.x;
+            unit.y = uRes.y;
+            const nx = pdx / pDist;
+            const ny = pdy / pDist;
+            const vn = unit.vx * nx + unit.vy * ny;
+            if (vn < 0) {
+              unit.vx -= 2 * vn * nx;
+              unit.vy -= 2 * vn * ny;
+            }
+            bouncedWall = true;
+          }
+        }
         if (bouncedEdge) {
           // 100% auto-aim predictivo: calcula dónde estará el enemigo al llegar la mascota
           const nearest = findNearestEnemy(unit.x, unit.y);
@@ -718,7 +741,7 @@ export class CompanionPet {
         }
 
         // Lvl 10 (Explosión Cinética): al rebotar en un borde dispara 4 proyectiles (arriba, abajo, izquierda, derecha)
-        if (bouncedEdge && playerLevel >= 10) {
+        if ((bouncedEdge || bouncedWall) && playerLevel >= 10) {
           spawnKineticBurst(
             unit.x,
             unit.y,
@@ -906,7 +929,13 @@ export class CompanionPet {
     // Actualizar Proyectiles de Explosión Cinética (Pinball Lvl 10)
     for (const proj of this.pinballProjectiles) {
       if (!proj.active) continue;
+      const px = proj.x;
+      const py = proj.y;
       const hits = proj.update(dt, enemies, canvasWidth, canvasHeight, viewOriginX, viewOriginY);
+      if (worldEnv?.isInfinite && worldEnv.segmentHitsObstacle(px, py, proj.x, proj.y, proj.size * 0.3)) {
+        proj.active = false;
+        continue;
+      }
       for (const h of hits) {
         applyDamageToEnemy(h.enemy, h.dmg, 0, 0, '#00f0ff', false, false);
       }
@@ -916,7 +945,13 @@ export class CompanionPet {
     // Actualizar Fragmentos de Metralla Digital (Propagación de Malware - Botnet Lvl 10)
     for (const frag of this.shrapnelFragments) {
       if (!frag.active) continue;
+      const fx = frag.x;
+      const fy = frag.y;
       const hits = frag.update(dt, enemies);
+      if (worldEnv?.isInfinite && worldEnv.segmentHitsObstacle(fx, fy, frag.x, frag.y, frag.size * 0.3)) {
+        frag.active = false;
+        continue;
+      }
       for (const h of hits) {
         applyDamageToEnemy(h.enemy, h.dmg, 0, 0, '#fde047', false, false);
       }

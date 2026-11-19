@@ -6,6 +6,7 @@ import { TrojanShooter, EnemyProjectile } from '../entities/TrojanShooter';
 import { Projectile } from '../entities/Projectile';
 import { PingProjectile } from '../entities/PingProjectile';
 import { QuarantineZone } from '../entities/QuarantineZone';
+import type { WorldEnvironment } from './WorldEnvironment';
 
 export interface DestroyedEnemyInfo {
   x: number;
@@ -36,6 +37,7 @@ export interface CombatEvents {
   shieldBlocked?: boolean;
   dodgedHit?: boolean;
   surgeTriggered?: boolean;
+  wallImpacts?: { x: number; y: number; color: string }[];
 }
 
 export interface ReactiveDroneSlot {
@@ -758,7 +760,8 @@ export class CombatSystem {
     canvasWidth: number = 1920,
     canvasHeight: number = 1080,
     viewOriginX: number = 0,
-    viewOriginY: number = 0
+    viewOriginY: number = 0,
+    worldEnv?: WorldEnvironment
   ): CombatEvents {
     this.fireTimer += dt;
     this.pingTimer += dt;
@@ -772,6 +775,7 @@ export class CombatSystem {
 
     const destroyedEnemies: DestroyedEnemyInfo[] = [];
     const damagedEnemies: DamagedEnemyInfo[] = [];
+    const wallImpacts: { x: number; y: number; color: string }[] = [];
     let enemiesKilled = 0;
     let playerHit = false;
     let shotsFired = 0;
@@ -846,7 +850,7 @@ export class CombatSystem {
     // --- ARMA 1: Ráfaga de Firewall (-> Cañón Hex-Core) ---
     if (!player.isSummoner && player.active && this.fireTimer >= effectiveFireCooldown) {
       const shotCount = this.evolvedBasic ? Math.max(4, this.multiShotCount + 1) : this.multiShotCount;
-      const targets = this.findNearestEnemies(player, enemies, shotCount);
+      const targets = this.findNearestEnemies(player, enemies, shotCount, worldEnv);
       if (targets.length > 0) {
         this.fireTimer = 0;
         shotsFired++;
@@ -886,7 +890,7 @@ export class CombatSystem {
 
     // --- ARMA 2: Ping Tracker (-> Enjambre DDoS) ---
     if (player.active && this.pingTrackerLevel > 0 && this.pingTimer >= effectivePingCooldown) {
-      const activeEnemies = enemies.filter((e) => e.active);
+      const activeEnemies = this.findNearestEnemies(player, enemies, 8, worldEnv);
       if (activeEnemies.length > 0) {
         this.pingTimer = 0;
         homingShotsFired++;
@@ -922,7 +926,7 @@ export class CombatSystem {
     if (player.active && this.quarantineLevel > 0 && this.quarantineTimer >= this.quarantineCooldown) {
       this.quarantineTimer = 0;
 
-      const nearest = this.findNearestEnemies(player, enemies, 1)[0];
+      const nearest = this.findNearestEnemies(player, enemies, 1, worldEnv)[0];
       const spawnX = nearest ? (player.x + nearest.x) * 0.5 : player.x;
       const spawnY = nearest ? (player.y + nearest.y) * 0.5 : player.y;
 
@@ -972,29 +976,29 @@ export class CombatSystem {
       (this.evolvedSqlBeam ? this.sqlBeamCooldown * 0.72 : this.sqlBeamCooldown) / effectiveRof
     );
     if (player.active && this.sqlBeamLevel > 0 && this.sqlBeamTimer >= effectiveSqlCooldown) {
-      const nearest = this.findNearestEnemies(player, enemies, 1)[0];
-      const angle = nearest
-        ? Math.atan2(nearest.y - player.y, nearest.x - player.x)
-        : this.firewallAngle;
-      this.sqlBeamTimer = 0;
-      shotsFired++;
-      const baseDmg = computeBaseScaledDamage(
-        this.evolvedSqlBeam ? Math.round(this.sqlBeamDamage * 1.55) : this.sqlBeamDamage
-      );
-      const beamAngles = this.evolvedSqlBeam ? [angle - 0.11, angle, angle + 0.11] : [angle];
-      const beamThick = this.evolvedSqlBeam ? Math.round(this.sqlBeamThickness * 1.4) : this.sqlBeamThickness;
-      for (const bAng of beamAngles) {
-        this.sqlBeams.push(
-          new SqlInjectionBeam(
-            player.x,
-            player.y,
-            bAng,
-            this.sqlBeamSpeed,
-            baseDmg,
-            beamThick,
-            this.evolvedSqlBeam
-          )
+      const nearest = this.findNearestEnemies(player, enemies, 1, worldEnv)[0];
+      if (nearest) {
+        const angle = Math.atan2(nearest.y - player.y, nearest.x - player.x);
+        this.sqlBeamTimer = 0;
+        shotsFired++;
+        const baseDmg = computeBaseScaledDamage(
+          this.evolvedSqlBeam ? Math.round(this.sqlBeamDamage * 1.55) : this.sqlBeamDamage
         );
+        const beamAngles = this.evolvedSqlBeam ? [angle - 0.11, angle, angle + 0.11] : [angle];
+        const beamThick = this.evolvedSqlBeam ? Math.round(this.sqlBeamThickness * 1.4) : this.sqlBeamThickness;
+        for (const bAng of beamAngles) {
+          this.sqlBeams.push(
+            new SqlInjectionBeam(
+              player.x,
+              player.y,
+              bAng,
+              this.sqlBeamSpeed,
+              baseDmg,
+              beamThick,
+              this.evolvedSqlBeam
+            )
+          );
+        }
       }
     }
 
@@ -1005,7 +1009,7 @@ export class CombatSystem {
     );
     if (player.active && this.teslaLevel > 0 && this.teslaTimer >= effectiveTeslaCd) {
       const chainCount = this.evolvedTesla ? 9 : 2 + Math.floor(this.teslaLevel / 2);
-      const firstTarget = this.findNearestEnemies(player, enemies, 1)[0];
+      const firstTarget = this.findNearestEnemies(player, enemies, 1, worldEnv)[0];
       if (firstTarget) {
         this.teslaTimer = 0;
         const arcPoints: { x: number; y: number }[] = [{ x: player.x, y: player.y }];
@@ -1043,6 +1047,12 @@ export class CombatSystem {
             if (!candidate.active || visited.has(candidate)) continue;
             const d = Math.hypot(candidate.x - currentSource.x, candidate.y - currentSource.y);
             if (d <= bestJumpDist) {
+              if (
+                worldEnv?.isInfinite &&
+                worldEnv.segmentHitsObstacle(currentSource.x, currentSource.y, candidate.x, candidate.y, 2)
+              ) {
+                continue;
+              }
               bestJumpDist = d;
               nextTarget = candidate;
             }
@@ -1068,7 +1078,7 @@ export class CombatSystem {
     );
     if (player.active && this.cryoLevel > 0 && this.cryoTimer >= effectiveCryoCd) {
       const shardCount = this.evolvedCryo ? 4 : 1 + Math.floor(this.cryoLevel / 3);
-      const targets = this.findNearestEnemies(player, enemies, shardCount);
+      const targets = this.findNearestEnemies(player, enemies, shardCount, worldEnv);
       if (targets.length > 0) {
         this.cryoTimer = 0;
         const baseDmg = computeBaseScaledDamage(
@@ -1101,20 +1111,20 @@ export class CombatSystem {
       (this.evolvedSaw ? this.sawCooldown * 0.7 : this.sawCooldown) / effectiveRof
     );
     if (player.active && this.sawLevel > 0 && this.sawTimer >= effectiveSawCd) {
-      this.sawTimer = 0;
-      const discCount = this.evolvedSaw ? 5 : 1 + Math.floor(this.sawLevel / 2);
-      const baseDmg = computeBaseScaledDamage(
-        this.evolvedSaw ? Math.round(this.sawDamage * 1.65) : this.sawDamage
-      );
-      const nearest = this.findNearestEnemies(player, enemies, 1)[0];
-      const baseAngle = nearest
-        ? Math.atan2(nearest.y - player.y, nearest.x - player.x)
-        : this.firewallAngle;
-      for (let i = 0; i < discCount; i++) {
-        const ang = baseAngle + (i * Math.PI * 2) / discCount;
-        this.sawDiscs.push(
-          new SawDiscProjectile(player.x, player.y, ang, baseDmg, this.evolvedSaw)
+      const nearest = this.findNearestEnemies(player, enemies, 1, worldEnv)[0];
+      if (nearest) {
+        this.sawTimer = 0;
+        const discCount = this.evolvedSaw ? 5 : 1 + Math.floor(this.sawLevel / 2);
+        const baseDmg = computeBaseScaledDamage(
+          this.evolvedSaw ? Math.round(this.sawDamage * 1.65) : this.sawDamage
         );
+        const baseAngle = Math.atan2(nearest.y - player.y, nearest.x - player.x);
+        for (let i = 0; i < discCount; i++) {
+          const ang = baseAngle + (i * Math.PI * 2) / discCount;
+          this.sawDiscs.push(
+            new SawDiscProjectile(player.x, player.y, ang, baseDmg, this.evolvedSaw)
+          );
+        }
       }
     }
 
@@ -1256,8 +1266,27 @@ export class CombatSystem {
     // --- ACTUALIZACIÓN Y DAÑO: Fragmento Criogénico ---
     for (const shard of this.cryoShards) {
       if (!shard.active) continue;
+      const prevX = shard.x;
+      const prevY = shard.y;
       shard.update(dt, canvasWidth, canvasHeight, viewOriginX, viewOriginY);
       if (!shard.active) continue;
+
+      if (worldEnv?.isInfinite) {
+        const hitWall = worldEnv.findSegmentObstacleImpact(prevX, prevY, shard.x, shard.y, shard.size * 0.28);
+        if (hitWall) {
+          shard.active = false;
+          wallImpacts.push({ x: hitWall.x, y: hitWall.y, color: '#38bdf8' });
+          this.cryoRings.push({
+            x: hitWall.x,
+            y: hitWall.y,
+            radius: 10,
+            maxRadius: shard.aoeRadius * 0.52,
+            alpha: 0.72,
+            color: shard.isEvolved ? '#67e8f9' : '#38bdf8',
+          });
+          continue;
+        }
+      }
 
       for (const enemy of enemies) {
         if (!enemy.active) continue;
@@ -1275,6 +1304,12 @@ export class CombatSystem {
           for (const target of enemies) {
             if (!target.active) continue;
             if (Math.hypot(target.x - shard.x, target.y - shard.y) <= shard.aoeRadius + target.size * 0.45) {
+              if (
+                worldEnv?.isInfinite &&
+                worldEnv.segmentHitsObstacle(shard.x, shard.y, target.x, target.y, 2)
+              ) {
+                continue;
+              }
               const critRoll = rollCritHit(shard.damage);
               target.takeDamage(critRoll.dmg, 0, 0);
               if (target.active) {
@@ -1302,7 +1337,17 @@ export class CombatSystem {
     // --- ACTUALIZACIÓN Y DAÑO: Disco Kernel Rotativo ---
     for (const disc of this.sawDiscs) {
       if (!disc.active) continue;
+      const prevX = disc.x;
+      const prevY = disc.y;
       const hits = disc.updateDisc(dt, player, enemies);
+      if (worldEnv?.isInfinite) {
+        const hitWall = worldEnv.findSegmentObstacleImpact(prevX, prevY, disc.x, disc.y, disc.size * 0.25);
+        if (hitWall) {
+          disc.active = false;
+          wallImpacts.push({ x: hitWall.x, y: hitWall.y, color: disc.isEvolved ? '#fbbf24' : '#fb923c' });
+          continue;
+        }
+      }
       for (const hitEnemy of hits) {
         const critRoll = rollCritHit(disc.damage);
         hitEnemy.takeDamage(critRoll.dmg, 0, 0);
@@ -1380,6 +1425,12 @@ export class CombatSystem {
       const pulseHits = pulse.update(dt, player, enemies);
       for (const hit of pulseHits) {
         if (!hit.enemy.active) continue;
+        if (
+          worldEnv?.isInfinite &&
+          worldEnv.segmentHitsObstacle(player.x, player.y, hit.enemy.x, hit.enemy.y, 2)
+        ) {
+          continue;
+        }
         const dx = hit.enemy.x - player.x;
         const dy = hit.enemy.y - player.y;
         const dist = Math.hypot(dx, dy) || 1;
@@ -1404,9 +1455,26 @@ export class CombatSystem {
     // --- ACTUALIZACIÓN Y DAÑO PENETRANTE: Rayo SQL Injection ---
     for (const beam of this.sqlBeams) {
       if (!beam.active) continue;
+      const prevX = beam.x;
+      const prevY = beam.y;
       const beamHits = beam.update(dt, enemies, canvasWidth, canvasHeight, viewOriginX, viewOriginY);
+      const tipX = beam.x + Math.cos(beam.angle) * (beam.length * 0.44);
+      const tipY = beam.y + Math.sin(beam.angle) * (beam.length * 0.44);
+      const hitWall = worldEnv?.isInfinite
+        ? worldEnv.findSegmentObstacleImpact(prevX, prevY, tipX, tipY, beam.thickness * 0.26)
+        : null;
+      if (hitWall) {
+        beam.active = false;
+        wallImpacts.push({ x: hitWall.x, y: hitWall.y, color: beam.isEvolved ? '#fbbf24' : '#d946ef' });
+      }
       for (const hit of beamHits) {
         if (!hit.enemy.active) continue;
+        if (
+          worldEnv?.isInfinite &&
+          worldEnv.segmentHitsObstacle(prevX, prevY, hit.enemy.x, hit.enemy.y, 2)
+        ) {
+          continue;
+        }
         if (hit.blocked) {
           damagedEnemies.push({
             x: hit.enemy.x,
@@ -1558,7 +1626,15 @@ export class CombatSystem {
     for (const enemy of enemies) {
       const pProj = (enemy as any).pendingProjectiles as EnemyProjectile[] | undefined;
       if (enemy.active && pProj && pProj.length > 0) {
-        this.enemyProjectiles.push(...pProj);
+        if (worldEnv?.isInfinite) {
+          for (const ep of pProj) {
+            if (!worldEnv.isPointInsideObstacle(ep.x, ep.y, ep.size * 0.25)) {
+              this.enemyProjectiles.push(ep);
+            }
+          }
+        } else {
+          this.enemyProjectiles.push(...pProj);
+        }
         (enemy as any).pendingProjectiles = [];
       }
     }
@@ -1597,7 +1673,18 @@ export class CombatSystem {
 
     for (const eProj of this.enemyProjectiles) {
       if (!eProj.active) continue;
+      const prevX = eProj.x;
+      const prevY = eProj.y;
       eProj.update(dt, canvasWidth, canvasHeight, viewOriginX, viewOriginY);
+
+      if (eProj.active && worldEnv?.isInfinite) {
+        const hitWall = worldEnv.findSegmentObstacleImpact(prevX, prevY, eProj.x, eProj.y, eProj.size * 0.28);
+        if (hitWall) {
+          eProj.active = false;
+          wallImpacts.push({ x: hitWall.x, y: hitWall.y, color: '#ef4444' });
+          continue;
+        }
+      }
 
       if (eProj.active && player.active && CombatSystem.checkAABBCollision(player, eProj)) {
         eProj.active = false;
@@ -1654,6 +1741,7 @@ export class CombatSystem {
       shieldBlocked,
       dodgedHit,
       surgeTriggered,
+      wallImpacts,
     };
   }
 
@@ -1976,13 +2064,24 @@ export class CombatSystem {
     ctx.restore();
   }
 
-  private findNearestEnemies(player: Player, enemies: Adware[], count: number): Adware[] {
+  private findNearestEnemies(
+    player: Player,
+    enemies: Adware[],
+    count: number,
+    worldEnv?: WorldEnvironment
+  ): Adware[] {
     const candidates: { enemy: Adware; dist: number }[] = [];
 
     for (const enemy of enemies) {
       if (!enemy.active) continue;
       const dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
       if (dist <= this.attackRange) {
+        if (
+          worldEnv?.isInfinite &&
+          worldEnv.segmentHitsObstacle(player.x, player.y, enemy.x, enemy.y, 3)
+        ) {
+          continue;
+        }
         candidates.push({ enemy, dist });
       }
     }

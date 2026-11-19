@@ -326,16 +326,50 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │   ├── Modo Normal sin muros ni charcos lentos; Oasis desaparecen inmediatamente al recogerse y reaparecen luego en distintos lados de la pantalla
 │   └── Modo Infinito (Pesadilla y Co-op móvil) con corrientes vivas de fluido viscoso morado que se desplazan continuamente por el mapa
 │
-└── v1.5.3 — Lagos Grandes Espaciados, Obstáculos Variados en Co-op, Colores por Familia y Hexágono de Evolución (ACTUAL)
-    ├── Lagos morados estáticos más grandes (`155–200 px` radio) y mucho menos frecuentes (~25% de sectores) en Modo Infinito sin desplazarse
-    ├── Más obstáculos por sector (`3–4`), más grandes (`136–335 px`) y de 5 tipos distintos (`Muro`, `Pilar Circular`, `Búnker Octogonal`, `Bastión en L`, `Monolito`)
-    ├── Mismo color compartido entre armas, su pasiva requerida y su evolución (`#38bdf8`, `#10b981`, `#f43f5e`, `#fb923c`, `#d946ef`, `#facc15`)
-    └── Hexágono rojo más grande junto a los diamantes de nivel (`⬡` vacío -> `⬢` relleno al evolucionar) en cartas de mejora y barra superior de arsenal
+├── v1.5.3 — Lagos Grandes Espaciados, Obstáculos Variados en Co-op, Colores por Familia y Hexágono de Evolución
+│   ├── Lagos morados estáticos más grandes (`155–200 px` radio) y mucho menos frecuentes (~25% de sectores) en Modo Infinito sin desplazarse
+│   ├── Más obstáculos por sector (`3–4`), más grandes (`136–335 px`) y de 5 tipos distintos (`Muro`, `Pilar Circular`, `Búnker Octogonal`, `Bastión en L`, `Monolito`)
+│   ├── Mismo color compartido entre armas, su pasiva requerida y su evolución (`#38bdf8`, `#10b981`, `#f43f5e`, `#fb923c`, `#d946ef`, `#facc15`)
+│   └── Hexágono rojo más grande junto a los diamantes de nivel (`⬡` vacío -> `⬢` relleno al evolucionar) en cartas de mejora y barra superior de arsenal
+│
+├── v1.5.4 — Paredes Anti-Disparos, Complejos Pegados Aleatorios y Más Lagos
+│   ├── Ningún proyectil ni rayo ni disparo enemigo ni salto eléctrico atraviesa muros (`segmentHitsObstacle` / `findSegmentObstacleImpact` + chispas de impacto)
+│   ├── Complejos de obstáculos menos numerosos (~48% de sectores), dispuestos de forma más orgánica/aleatoria con `2–3` piezas pegadas sin grietas
+│   └── Mayor frecuencia de lagos viscosos grandes (~72% de sectores con `1–2` lagos de `142–188 px`)
+│
+└── v1.5.5 — El Toro Libre en Co-op, Co-op Fluido para Invitados, Esquiva de Enemigos y Recorte Frontal de Proyectiles (ACTUAL)
+    ├── `ElToroBoss` con `unbounded = isMovingMap()` en Co-op para que no regrese al respawn en `0..1920 x 0..1080` tras cada embestida
+    ├── Clientes invitados Co-op sin tirones ni congelación: interpolación 60/144 FPS por `netId`, reconciliación por `ackSeq`, sincronización de velocidad (`spd`), priorización de enemigos/balas por jugador y `25 Hz / 50 Hz` sin compresión `perMessageDeflate`
+    ├── Esquiva activa de obstáculos (`moveEntityAvoidingObstacles`) para que los enemigos rodeen los muros en lugar de atascarse de frente
+    └── Colisión frontal extendida hasta la punta de haces/proyectiles y extrapolación en invitados recortada contra muros
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.5.5] - 2026-11-19
+- **El Toro Libre en Cooperativo (`Game.ts`, `ElToroBoss.ts`)**:
+  - Asignado `this.finalBoss.unbounded = this.isMovingMap()` al invocar `ElToroBoss` (y spawn relativo al jugador activo), evitando que en Co-op Clásico vuelva al área inicial `(0..1920, 0..1080)` tras cada embestida; añadido indicador de telegrafiado en invitados (`flags |= 8`).
+- **Experiencia Fluida para Jugadores que se Unen al Co-op (`CoopRenderer.ts`, `Game.ts`, `Adware.ts`, `MultiplayerTypes.ts`, `server/index.js`)**:
+  - Añadido `netId` a enemigos e interpolación continua de enemigos y aliados a tasa de monitor (`60–144 Hz`) con extrapolación de proyectiles recortada contra obstáculos.
+  - Añadida reconciliación por `ackSeq` y sincronización de velocidad (`spd`) para eliminar el *rubber-banding* hacia atrás al caminar, elevando snapshot a `25 Hz` e input cliente a `50 Hz` y desactivando `perMessageDeflate` en Socket.io.
+  - Priorización por proximidad a cualquier jugador vivo en `broadcastCoopSnapshot` (enemigos, proyectiles y gemas) para evitar que el Host monopolice el envío de entidades.
+- **Esquiva de Obstáculos para Enemigos y Bloqueo Estricto de Disparos (`WorldEnvironment.ts`, `CombatSystem.ts`, `Game.ts`)**:
+  - Implementado `moveEntityAvoidingObstacles` con rayos de detección y giro lateral para que los enemigos rodeen limpiamente complejos y esquinas.
+  - Extendido el chequeo de colisión al extremo frontal de `SqlInjectionBeam` (`length * 0.44`) y proyectiles (`size * 0.68`) con paso de muestreo `6 px` y enganche por ala sólida en `L_BASTION`.
+- **Sincronización de Versión (`v1.5.5`)**:
+  - Actualizados `GAME_VERSION` en `src/core/Game.ts`, `package.json`, `package-lock.json`, `server/package.json`, `server/package-lock.json`, `server/index.js` y `ROADMAP.md` a `1.5.5`.
+
+### [v1.5.4] - 2026-11-18
+- **Paredes Sólidas Contra Disparos (`WorldEnvironment.ts`, `CombatSystem.ts`, `Game.ts`, `PingProjectile.ts`, `CompanionPet.ts`)**:
+  - Ninguna arma ni proyectil ni haz ni proyectil enemigo atraviesa obstáculos en Modo Infinito (`Ráfaga Firewall`, `Ping Tracker`, `Rayo SQL`, `Crio-Shard`, `Disco Kernel`, `Bobina Tesla`, `Cortafuegos`, disparos de `Troyano Tirador`/`WaveBoss` y proyectiles/esfera `Pinball` de Morcillita), generando chispas al impactar sobre cualquier muro.
+  - Añadido filtrado por línea de visión en el auto-apuntado para priorizar objetivos visibles en lugar de disparar contra la cara ciega de una pared.
+- **Complejos Pegados Más Escasos y Aleatorios + Más Lagos (`WorldEnvironment.ts`)**:
+  - Reducida la frecuencia de muros por sector a ~48% con colocación aleatoria basada en semilla y `2–3` piezas distintas unidas con solape estructural (`12 px` sin huecos ni grietas).
+  - Aumentada la generación de lagos viscosos grandes (`142–188 px` de radio) hasta ~72% de sectores (`1–2` lagos por sector evitando obstáculos).
+- **Sincronización de Versión (`v1.5.4`)**:
+  - Actualizados `GAME_VERSION` en `src/core/Game.ts`, `package.json`, `package-lock.json`, `server/package.json`, `server/package-lock.json`, `server/index.js` y `ROADMAP.md` a `1.5.4`.
 
 ### [v1.5.3] - 2026-11-18
 - **Lagos Más Grandes y Espaciados + Obstáculos Diversos y Grandes en Co-op (`WorldEnvironment.ts`)**:

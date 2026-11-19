@@ -57,19 +57,18 @@ interface SectorData {
 }
 
 const SECTOR_SIZE = 900;
-const SECTOR_EDGE_MARGIN = 58; // Garantiza pasillos >= 116 px entre bordes de sectores adyacentes
-const INTRA_SECTOR_GAP = 104;
+const SECTOR_BORDER_PAD = 56; // Pasillo mínimo garantizado (>= 112 px) entre complejos de sectores contiguos
 const SPAWN_CX = 960;
 const SPAWN_CY = 540;
-const SAFE_SPAWN_RADIUS = 270;
+const SAFE_SPAWN_RADIUS = 275;
 const CLASSIC_W = 1920;
 const CLASSIC_H = 1080;
 
 const OBSTACLE_KINDS: readonly ObstacleKind[] = [
   'FIREWALL_WALL',
-  'DATA_PILLAR',
   'HEX_BUNKER',
   'L_BASTION',
+  'DATA_PILLAR',
   'SERVER_MONOLITH',
 ];
 
@@ -77,9 +76,9 @@ const OBSTACLE_KINDS: readonly ObstacleKind[] = [
  * Entorno interactivo del mapa:
  * - Modo Normal (finito): arena despejada SIN muros ni lagos lentos; solo Oasis dinámicos
  *   que desaparecen al recogerse y reaparecen al tiempo en diferentes lados de la pantalla.
- * - Modo Infinito (Pesadilla / Co-op): obstáculos grandes y variados (muros contención,
- *   pilares circulares, búnkeres octogonales, bastiones en L y monolitos de servidor),
- *   lagos viscosos estáticos grandes y espaciados (-42% vel.) y Oasis dinámicos.
+ * - Modo Infinito (Pesadilla / Co-op): menos grupos de obstáculos pero formados por piezas
+ *   grandes pegadas entre sí de forma aleatoria (y sólidas contra disparos), más lagos
+ *   viscosos grandes repartidos por el mapa y Oasis dinámicos.
  */
 export class WorldEnvironment {
   public seed: number = 1337;
@@ -99,7 +98,6 @@ export class WorldEnvironment {
     this.oasisSeq = 0;
     this.lastQuadrant = -1;
 
-    // Generar un primer Oasis inicial desplazado hacia un lateral
     this.spawnDynamicOasis([{ x: SPAWN_CX, y: SPAWN_CY }], 0);
     this.nextOasisSpawnTimer = this.isInfinite ? 15 : 12;
   }
@@ -141,102 +139,107 @@ export class WorldEnvironment {
     return [hRect, vRect];
   }
 
-  private createCandidateObstacle(
+  /**
+   * Genera de forma pura (sin depender de caché de obstáculos) los lagos grandes
+   * de un sector. Más frecuentes (~72% de sectores con 1–2 lagos grandes).
+   */
+  private computeSectorLakes(sx: number, sy: number): SlowLiquidPool[] {
+    const liquids: SlowLiquidPool[] = [];
+    const baseX = sx * SECTOR_SIZE;
+    const baseY = sy * SECTOR_SIZE;
+
+    const lakeRoll = this.hash2D(sx, sy, 31);
+    const desiredLakes = lakeRoll > 0.84 ? 2 : lakeRoll > 0.28 ? 1 : 0;
+
+    for (let i = 0; i < desiredLakes; i++) {
+      const r = 142 + Math.floor(this.hash2D(sx, sy, 32 + i * 7) * 46); // 142–188 px radio
+      const lakeMargin = r + 35;
+      const span = Math.max(40, SECTOR_SIZE - lakeMargin * 2);
+      const lx = baseX + lakeMargin + this.hash2D(sx, sy, 33 + i * 7) * span;
+      const ly = baseY + lakeMargin + this.hash2D(sx, sy, 34 + i * 7) * span;
+
+      if (Math.hypot(lx - SPAWN_CX, ly - SPAWN_CY) < SAFE_SPAWN_RADIUS + r + 40) {
+        continue;
+      }
+      const overlapsPrevLake = liquids.some(
+        (prev) => Math.hypot(lx - prev.x, ly - prev.y) < r + prev.radius + 95
+      );
+      if (overlapsPrevLake) continue;
+
+      liquids.push({
+        id: `liq_${sx}_${sy}_${i}`,
+        x: Math.round(lx),
+        y: Math.round(ly),
+        radius: r,
+        phase: this.hash2D(sx, sy, 35 + i * 7) * Math.PI * 2,
+      });
+    }
+
+    return liquids;
+  }
+
+  private buildPieceDimensions(
     sx: number,
     sy: number,
     index: number,
     kind: ObstacleKind
-  ): WorldObstacle {
-    const baseX = sx * SECTOR_SIZE;
-    const baseY = sy * SECTOR_SIZE;
+  ): {
+    width: number;
+    height: number;
+    radius?: number;
+    armThickness?: number;
+    orientation?: number;
+    variantSeed: number;
+  } {
     const variantSeed = this.hash2D(sx, sy, 90 + index * 11);
-
-    let w = 170;
-    let h = 170;
-    let radius: number | undefined;
-    let armThickness: number | undefined;
-    let orientation: number | undefined;
 
     if (kind === 'FIREWALL_WALL') {
       const vertical = this.hash2D(sx, sy, 12 + index * 7) > 0.5;
-      const length = 240 + Math.floor(this.hash2D(sx, sy, 13 + index * 7) * 95); // 240..335
-      const thick = 62 + Math.floor(this.hash2D(sx, sy, 14 + index * 7) * 16);  // 62..78
-      w = vertical ? thick : length;
-      h = vertical ? length : thick;
-    } else if (kind === 'DATA_PILLAR') {
-      const r = 68 + Math.floor(this.hash2D(sx, sy, 15 + index * 7) * 24); // radius 68..92 (dia 136..184)
-      radius = r;
-      w = r * 2;
-      h = r * 2;
-    } else if (kind === 'HEX_BUNKER') {
-      const size = 166 + Math.floor(this.hash2D(sx, sy, 16 + index * 7) * 48); // 166..214
-      radius = size * 0.5;
-      w = size;
-      h = size;
-    } else if (kind === 'L_BASTION') {
-      w = 205 + Math.floor(this.hash2D(sx, sy, 17 + index * 7) * 50); // 205..255
-      h = 195 + Math.floor(this.hash2D(sx, sy, 18 + index * 7) * 50); // 195..245
-      armThickness = 66 + Math.floor(this.hash2D(sx, sy, 19 + index * 7) * 14); // 66..80
-      orientation = Math.floor(this.hash2D(sx, sy, 20 + index * 7) * 4) % 4;
-    } else {
-      // SERVER_MONOLITH grande
-      const tall = this.hash2D(sx, sy, 21 + index * 7) > 0.45;
-      const shortSide = 142 + Math.floor(this.hash2D(sx, sy, 22 + index * 7) * 38); // 142..180
-      const longSide = 185 + Math.floor(this.hash2D(sx, sy, 23 + index * 7) * 55);  // 185..240
-      w = tall ? shortSide : longSide;
-      h = tall ? longSide : shortSide;
+      const length = 225 + Math.floor(this.hash2D(sx, sy, 13 + index * 7) * 95);
+      const thick = 62 + Math.floor(this.hash2D(sx, sy, 14 + index * 7) * 16);
+      return {
+        width: vertical ? thick : length,
+        height: vertical ? length : thick,
+        variantSeed,
+      };
     }
 
-    const spanX = Math.max(20, SECTOR_SIZE - SECTOR_EDGE_MARGIN * 2 - w);
-    const spanY = Math.max(20, SECTOR_SIZE - SECTOR_EDGE_MARGIN * 2 - h);
-    const ox = baseX + SECTOR_EDGE_MARGIN + this.hash2D(sx, sy, 40 + index * 9) * spanX;
-    const oy = baseY + SECTOR_EDGE_MARGIN + this.hash2D(sx, sy, 41 + index * 9) * spanY;
+    if (kind === 'DATA_PILLAR') {
+      const r = 68 + Math.floor(this.hash2D(sx, sy, 15 + index * 7) * 24);
+      return {
+        width: r * 2,
+        height: r * 2,
+        radius: r,
+        variantSeed,
+      };
+    }
 
+    if (kind === 'HEX_BUNKER') {
+      const size = 160 + Math.floor(this.hash2D(sx, sy, 16 + index * 7) * 44);
+      return {
+        width: size,
+        height: size,
+        radius: size * 0.5,
+        variantSeed,
+      };
+    }
+
+    if (kind === 'L_BASTION') {
+      const width = 195 + Math.floor(this.hash2D(sx, sy, 17 + index * 7) * 45);
+      const height = 185 + Math.floor(this.hash2D(sx, sy, 18 + index * 7) * 45);
+      const armThickness = 64 + Math.floor(this.hash2D(sx, sy, 19 + index * 7) * 14);
+      const orientation = Math.floor(this.hash2D(sx, sy, 20 + index * 7) * 4) % 4;
+      return { width, height, armThickness, orientation, variantSeed };
+    }
+
+    const tall = this.hash2D(sx, sy, 21 + index * 7) > 0.45;
+    const shortSide = 136 + Math.floor(this.hash2D(sx, sy, 22 + index * 7) * 34);
+    const longSide = 178 + Math.floor(this.hash2D(sx, sy, 23 + index * 7) * 48);
     return {
-      id: `obs_${sx}_${sy}_${index}`,
-      kind,
-      x: Math.round(ox),
-      y: Math.round(oy),
-      width: w,
-      height: h,
-      radius,
-      armThickness,
-      orientation,
+      width: tall ? shortSide : longSide,
+      height: tall ? longSide : shortSide,
       variantSeed,
     };
-  }
-
-  private obstacleOverlapsRect(
-    obs: WorldObstacle,
-    rx: number,
-    ry: number,
-    rw: number,
-    rh: number,
-    pad: number
-  ): boolean {
-    if (obs.kind === 'DATA_PILLAR' && obs.radius) {
-      const cx = obs.x + obs.radius;
-      const cy = obs.y + obs.radius;
-      const closestX = Math.max(rx - pad, Math.min(cx, rx + rw + pad));
-      const closestY = Math.max(ry - pad, Math.min(cy, ry + rh + pad));
-      return Math.hypot(cx - closestX, cy - closestY) < obs.radius;
-    }
-    if (obs.kind === 'L_BASTION') {
-      const [hRect, vRect] = this.getLBastionRects(obs);
-      return [hRect, vRect].some(
-        (wing) =>
-          wing.x - pad < rx + rw &&
-          wing.x + wing.w + pad > rx &&
-          wing.y - pad < ry + rh &&
-          wing.y + wing.h + pad > ry
-      );
-    }
-    return (
-      obs.x - pad < rx + rw &&
-      obs.x + obs.width + pad > rx &&
-      obs.y - pad < ry + rh &&
-      obs.y + obs.height + pad > ry
-    );
   }
 
   private getOrCreateSector(sx: number, sy: number): SectorData {
@@ -251,59 +254,123 @@ export class WorldEnvironment {
 
     const baseX = sx * SECTOR_SIZE;
     const baseY = sy * SECTOR_SIZE;
+    const liquids = this.computeSectorLakes(sx, sy);
     const obstacles: WorldObstacle[] = [];
-    const liquids: SlowLiquidPool[] = [];
 
-    // 1. Menos lagos y mucho más grandes (~25% de sectores obtienen 1 lago grande bien separado)
-    const parityEven = ((sx + sy) & 1) === 0;
-    const lakeThreshold = parityEven ? 0.56 : 0.90;
-    if (this.hash2D(sx, sy, 31) > lakeThreshold) {
-      const r = 155 + Math.floor(this.hash2D(sx, sy, 32) * 45); // 155–200px radio (310–400px diámetro)
-      const lakeMargin = r + 75;
-      const span = Math.max(40, SECTOR_SIZE - lakeMargin * 2);
-      const lx = baseX + lakeMargin + this.hash2D(sx, sy, 33) * span;
-      const ly = baseY + lakeMargin + this.hash2D(sx, sy, 34) * span;
-
-      if (Math.hypot(lx - SPAWN_CX, ly - SPAWN_CY) >= SAFE_SPAWN_RADIUS + r + 50) {
-        liquids.push({
-          id: `liq_${sx}_${sy}`,
-          x: Math.round(lx),
-          y: Math.round(ly),
-          radius: r,
-          phase: this.hash2D(sx, sy, 35) * Math.PI * 2,
-        });
+    // Lagos cercanos (propio sector y los 8 colindantes) para no solapar paredes encima del lago
+    const nearbyLakes: SlowLiquidPool[] = [];
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) nearbyLakes.push(...liquids);
+        else nearbyLakes.push(...this.computeSectorLakes(sx + dx, sy + dy));
       }
     }
 
-    // 2. Más obstáculos, más grandes y de tipos variados (objetivo 3–4 por sector con pasillos limpios)
-    const kindStart = Math.floor(this.hash2D(sx, sy, 5) * OBSTACLE_KINDS.length);
-    const desiredCount = this.hash2D(sx, sy, 2) > 0.35 ? 4 : 3;
-    const maxAttempts = 8;
-
-    for (let i = 0; i < maxAttempts && obstacles.length < desiredCount; i++) {
-      const kind = OBSTACLE_KINDS[(kindStart + i * 2 + (i >= 5 ? 1 : 0)) % OBSTACLE_KINDS.length];
-      const cand = this.createCandidateObstacle(sx, sy, i, kind);
-
-      const cx = cand.x + cand.width / 2;
-      const cy = cand.y + cand.height / 2;
-      const safeDist = SAFE_SPAWN_RADIUS + Math.max(cand.width, cand.height) * 0.45;
-      if (Math.hypot(cx - SPAWN_CX, cy - SPAWN_CY) < safeDist) {
-        continue;
+    const isPieceClear = (x: number, y: number, w: number, h: number): boolean => {
+      if (
+        x < baseX + SECTOR_BORDER_PAD ||
+        x + w > baseX + SECTOR_SIZE - SECTOR_BORDER_PAD ||
+        y < baseY + SECTOR_BORDER_PAD ||
+        y + h > baseY + SECTOR_SIZE - SECTOR_BORDER_PAD
+      ) {
+        return false;
       }
 
-      const overlapsLake = liquids.some((pool) => {
-        const closestX = Math.max(cand.x, Math.min(pool.x, cand.x + cand.width));
-        const closestY = Math.max(cand.y, Math.min(pool.y, cand.y + cand.height));
-        return Math.hypot(pool.x - closestX, pool.y - closestY) < pool.radius + 78;
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      const safeDist = SAFE_SPAWN_RADIUS + Math.max(w, h) * 0.45;
+      if (Math.hypot(cx - SPAWN_CX, cy - SPAWN_CY) < safeDist) {
+        return false;
+      }
+
+      const hitsLake = nearbyLakes.some((pool) => {
+        const closestX = Math.max(x, Math.min(pool.x, x + w));
+        const closestY = Math.max(y, Math.min(pool.y, y + h));
+        return Math.hypot(pool.x - closestX, pool.y - closestY) < pool.radius + 54;
       });
-      if (overlapsLake) continue;
+      return !hitsLake;
+    };
 
-      const overlapsPrevObs = obstacles.some((prev) =>
-        this.obstacleOverlapsRect(prev, cand.x, cand.y, cand.width, cand.height, INTRA_SECTOR_GAP)
-      );
-      if (overlapsPrevObs) continue;
+    // Pocas agrupaciones de obstáculos (~48% de sectores), dispuestas aleatoriamente y pegadas entre sí
+    const clusterRoll = this.hash2D(sx, sy, 7);
+    if (clusterRoll > 0.52) {
+      const clusterPieceTarget = clusterRoll > 0.78 ? 3 : 2;
+      const kindStart = Math.floor(this.hash2D(sx, sy, 5) * OBSTACLE_KINDS.length);
+      const firstKind = OBSTACLE_KINDS[kindStart % OBSTACLE_KINDS.length];
+      const firstDim = this.buildPieceDimensions(sx, sy, 0, firstKind);
 
-      obstacles.push(cand);
+      // Buscar posición aleatoria orgánica del ancla dentro del sector
+      let rootPiece: WorldObstacle | null = null;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const spanX = Math.max(24, SECTOR_SIZE - SECTOR_BORDER_PAD * 2 - firstDim.width);
+        const spanY = Math.max(24, SECTOR_SIZE - SECTOR_BORDER_PAD * 2 - firstDim.height);
+        const ox = Math.round(
+          baseX + SECTOR_BORDER_PAD + this.hash2D(sx, sy, 40 + attempt * 5) * spanX
+        );
+        const oy = Math.round(
+          baseY + SECTOR_BORDER_PAD + this.hash2D(sx, sy, 41 + attempt * 5) * spanY
+        );
+        if (isPieceClear(ox, oy, firstDim.width, firstDim.height)) {
+          rootPiece = {
+            id: `obs_${sx}_${sy}_0`,
+            kind: firstKind,
+            x: ox,
+            y: oy,
+            ...firstDim,
+          };
+          break;
+        }
+      }
+
+      if (rootPiece) {
+        obstacles.push(rootPiece);
+
+        // Pegar entre 1 y 2 piezas adicionales tocándose (solape estructural de 10-14 px sin grietas)
+        for (let p = 1; p < clusterPieceTarget; p++) {
+          const nextKind = OBSTACLE_KINDS[(kindStart + p * 2) % OBSTACLE_KINDS.length];
+          const nextDim = this.buildPieceDimensions(sx, sy, p, nextKind);
+          const anchor = obstacles[Math.floor(this.hash2D(sx, sy, 60 + p) * obstacles.length)];
+          const attachBox =
+            anchor.kind === 'L_BASTION'
+              ? this.getLBastionRects(anchor)[p % 2]
+              : { x: anchor.x, y: anchor.y, w: anchor.width, h: anchor.height };
+          const dirBase = Math.floor(this.hash2D(sx, sy, 70 + p) * 4) % 4;
+          const jointOverlap = 14; // Solape firme para que parezcan pegadas y no pasen balas por grietas
+
+          let placed = false;
+          for (let dTry = 0; dTry < 4 && !placed; dTry++) {
+            const dir = (dirBase + dTry) % 4;
+            const slideAlign = this.hash2D(sx, sy, 80 + p * 7 + dTry) * 0.5 - 0.1;
+            let nx = attachBox.x;
+            let ny = attachBox.y;
+
+            if (dir === 0) {
+              nx = attachBox.x + attachBox.w - jointOverlap;
+              ny = attachBox.y + Math.round((attachBox.h - nextDim.height) * 0.5 + slideAlign * 40);
+            } else if (dir === 1) {
+              nx = attachBox.x + Math.round((attachBox.w - nextDim.width) * 0.5 + slideAlign * 40);
+              ny = attachBox.y + attachBox.h - jointOverlap;
+            } else if (dir === 2) {
+              nx = attachBox.x - nextDim.width + jointOverlap;
+              ny = attachBox.y + Math.round((attachBox.h - nextDim.height) * 0.5 + slideAlign * 40);
+            } else {
+              nx = attachBox.x + Math.round((attachBox.w - nextDim.width) * 0.5 + slideAlign * 40);
+              ny = attachBox.y - nextDim.height + jointOverlap;
+            }
+
+            if (isPieceClear(nx, ny, nextDim.width, nextDim.height)) {
+              obstacles.push({
+                id: `obs_${sx}_${sy}_${p}`,
+                kind: nextKind,
+                x: Math.round(nx),
+                y: Math.round(ny),
+                ...nextDim,
+              });
+              placed = true;
+            }
+          }
+        }
+      }
     }
 
     const sector: SectorData = { obstacles, liquids };
@@ -335,7 +402,7 @@ export class WorldEnvironment {
       };
     }
 
-    const pad = 380;
+    const pad = 420;
     const sMinX = Math.floor((minX - pad) / SECTOR_SIZE);
     const sMaxX = Math.floor((maxX + pad) / SECTOR_SIZE);
     const sMinY = Math.floor((minY - pad) / SECTOR_SIZE);
@@ -365,6 +432,200 @@ export class WorldEnvironment {
 
   public getAllActiveOases(): OasisZone[] {
     return this.activeOases;
+  }
+
+  private pointHitsRect(
+    x: number,
+    y: number,
+    radius: number,
+    rx: number,
+    ry: number,
+    rw: number,
+    rh: number
+  ): boolean {
+    const closestX = Math.max(rx, Math.min(x, rx + rw));
+    const closestY = Math.max(ry, Math.min(y, ry + rh));
+    const dx = x - closestX;
+    const dy = y - closestY;
+    return dx * dx + dy * dy <= radius * radius;
+  }
+
+  private pointHitsObstacle(x: number, y: number, radius: number, obs: WorldObstacle): boolean {
+    if (obs.kind === 'DATA_PILLAR' && obs.radius) {
+      const cx = obs.x + obs.radius;
+      const cy = obs.y + obs.radius;
+      const totalR = obs.radius + radius;
+      const dx = x - cx;
+      const dy = y - cy;
+      return dx * dx + dy * dy <= totalR * totalR;
+    }
+
+    if (obs.kind === 'HEX_BUNKER') {
+      if (
+        x + radius < obs.x ||
+        x - radius > obs.x + obs.width ||
+        y + radius < obs.y ||
+        y - radius > obs.y + obs.height
+      ) {
+        return false;
+      }
+      const cx = obs.x + obs.width / 2;
+      const cy = obs.y + obs.height / 2;
+      const half = obs.width / 2;
+      const cut = obs.width * 0.28;
+      const diagLimit = (2 * half - cut) / Math.SQRT2 + radius;
+      const adx = Math.abs(x - cx);
+      const ady = Math.abs(y - cy);
+      return (adx + ady) / Math.SQRT2 <= diagLimit;
+    }
+
+    if (obs.kind === 'L_BASTION') {
+      const [hRect, vRect] = this.getLBastionRects(obs);
+      return (
+        this.pointHitsRect(x, y, radius, hRect.x, hRect.y, hRect.w, hRect.h) ||
+        this.pointHitsRect(x, y, radius, vRect.x, vRect.y, vRect.w, vRect.h)
+      );
+    }
+
+    return this.pointHitsRect(x, y, radius, obs.x, obs.y, obs.width, obs.height);
+  }
+
+  public isPointInsideObstacle(x: number, y: number, radius: number = 0): boolean {
+    if (!this.isInfinite) return false;
+    const area = this.queryArea(
+      x - radius - 360,
+      y - radius - 360,
+      x + radius + 360,
+      y + radius + 360
+    );
+    return area.obstacles.some((obs) => this.pointHitsObstacle(x, y, radius, obs));
+  }
+
+  public findSegmentObstacleImpact(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    radius: number = 0
+  ): { x: number; y: number } | null {
+    if (!this.isInfinite) return null;
+
+    const minX = Math.min(x0, x1) - radius;
+    const minY = Math.min(y0, y1) - radius;
+    const maxX = Math.max(x0, x1) + radius;
+    const maxY = Math.max(y0, y1) + radius;
+    const area = this.queryArea(minX, minY, maxX, maxY);
+    if (area.obstacles.length === 0) return null;
+
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const steps = Math.max(2, Math.ceil(dist / 6));
+
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      const px = x0 + (x1 - x0) * t;
+      const py = y0 + (y1 - y0) * t;
+      for (const obs of area.obstacles) {
+        if (this.pointHitsObstacle(px, py, radius, obs)) {
+          return { x: px, y: py };
+        }
+      }
+    }
+    return null;
+  }
+
+  public segmentHitsObstacle(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    radius: number = 0
+  ): boolean {
+    return this.findSegmentObstacleImpact(x0, y0, x1, y1, radius) !== null;
+  }
+
+  /**
+   * Permite que los enemigos rodeen suavemente los muros y complejos pegados
+   * sin quedarse atascados chocando de frente contra una pared plana.
+   */
+  public moveEntityAvoidingObstacles(
+    prevX: number,
+    prevY: number,
+    nextX: number,
+    nextY: number,
+    targetX: number,
+    targetY: number,
+    radius: number,
+    preferSide: number = 1
+  ): { x: number; y: number } {
+    if (!this.isInfinite) {
+      return { x: nextX, y: nextY };
+    }
+
+    const stepDx = nextX - prevX;
+    const stepDy = nextY - prevY;
+    const stepDist = Math.hypot(stepDx, stepDy);
+    if (stepDist < 0.01) {
+      return this.resolveCircleCollision(nextX, nextY, radius);
+    }
+
+    const toTargetDx = targetX - prevX;
+    const toTargetDy = targetY - prevY;
+    const toTargetLen = Math.hypot(toTargetDx, toTargetDy);
+    const dirX = toTargetLen > 1 ? toTargetDx / toTargetLen : stepDx / stepDist;
+    const dirY = toTargetLen > 1 ? toTargetDy / toTargetLen : stepDy / stepDist;
+    const baseAngle = Math.atan2(dirY, dirX);
+
+    const lookAhead = Math.min(toTargetLen > 1 ? toTargetLen : 120, Math.max(stepDist + 8, radius * 2.2 + 44));
+    const aheadX = prevX + dirX * lookAhead;
+    const aheadY = prevY + dirY * lookAhead;
+
+    if (!this.segmentHitsObstacle(prevX, prevY, aheadX, aheadY, radius + 2)) {
+      return this.resolveCircleCollision(nextX, nextY, radius);
+    }
+
+    // Decidir si el flanco izquierdo o derecho está más libre; preferSide desempata en simetría
+    const sideCheckDist = radius * 2.1 + 52;
+    const posBlocked = this.segmentHitsObstacle(
+      prevX,
+      prevY,
+      prevX + Math.cos(baseAngle + 0.85) * sideCheckDist,
+      prevY + Math.sin(baseAngle + 0.85) * sideCheckDist,
+      radius + 1
+    );
+    const negBlocked = this.segmentHitsObstacle(
+      prevX,
+      prevY,
+      prevX + Math.cos(baseAngle - 0.85) * sideCheckDist,
+      prevY + Math.sin(baseAngle - 0.85) * sideCheckDist,
+      radius + 1
+    );
+
+    const firstSign = !posBlocked && negBlocked ? 1 : !negBlocked && posBlocked ? -1 : preferSide >= 0 ? 1 : -1;
+    const secondSign = -firstSign;
+    const offsets = [
+      firstSign * 0.62,
+      secondSign * 0.62,
+      firstSign * 1.05,
+      secondSign * 1.05,
+      firstSign * 1.48,
+      secondSign * 1.48,
+      firstSign * 2.05,
+      secondSign * 2.05,
+    ];
+
+    const rayLen = Math.max(stepDist + 10, radius * 1.85 + 32);
+    for (const off of offsets) {
+      const ang = baseAngle + off;
+      const rx = prevX + Math.cos(ang) * rayLen;
+      const ry = prevY + Math.sin(ang) * rayLen;
+      if (!this.segmentHitsObstacle(prevX, prevY, rx, ry, radius + 1)) {
+        const candX = prevX + Math.cos(ang) * stepDist;
+        const candY = prevY + Math.sin(ang) * stepDist;
+        return this.resolveCircleCollision(candX, candY, radius);
+      }
+    }
+
+    return this.resolveCircleCollision(nextX, nextY, radius);
   }
 
   private pushOutRect(
@@ -436,7 +697,6 @@ export class WorldEnvironment {
     const cy = obs.y + obs.height / 2;
     const half = obs.width / 2;
     const cut = obs.width * 0.28;
-    // Primero comprobar recorte rápido por AABB
     if (
       rx + radius <= obs.x ||
       rx - radius >= obs.x + obs.width ||
@@ -445,7 +705,6 @@ export class WorldEnvironment {
     ) {
       return { x: rx, y: ry };
     }
-    // Radio inscrito del octógono diagonal vs caja: las 4 esquinas están biseladas a |dx|+|dy| <= 2*half - cut
     const diagLimit = (2 * half - cut) / Math.SQRT2 + radius;
     const adx = Math.abs(rx - cx);
     const ady = Math.abs(ry - cy);
@@ -482,25 +741,35 @@ export class WorldEnvironment {
     let rx = x;
     let ry = y;
 
-    for (const obs of area.obstacles) {
-      if (obs.kind === 'DATA_PILLAR' && obs.radius) {
-        const res = this.pushOutCircle(rx, ry, radius, obs.x + obs.radius, obs.y + obs.radius, obs.radius);
-        rx = res.x;
-        ry = res.y;
-      } else if (obs.kind === 'HEX_BUNKER') {
-        const res = this.pushOutOctagon(rx, ry, radius, obs);
-        rx = res.x;
-        ry = res.y;
-      } else if (obs.kind === 'L_BASTION') {
-        const [hRect, vRect] = this.getLBastionRects(obs);
-        const r1 = this.pushOutRect(rx, ry, radius, hRect.x, hRect.y, hRect.w, hRect.h);
-        const r2 = this.pushOutRect(r1.x, r1.y, radius, vRect.x, vRect.y, vRect.w, vRect.h);
-        rx = r2.x;
-        ry = r2.y;
-      } else {
-        const res = this.pushOutRect(rx, ry, radius, obs.x, obs.y, obs.width, obs.height);
-        rx = res.x;
-        ry = res.y;
+    // 2 iteraciones aseguran resolución limpia cuando varias piezas están pegadas entre sí
+    for (let pass = 0; pass < 2; pass++) {
+      for (const obs of area.obstacles) {
+        if (obs.kind === 'DATA_PILLAR' && obs.radius) {
+          const res = this.pushOutCircle(
+            rx,
+            ry,
+            radius,
+            obs.x + obs.radius,
+            obs.y + obs.radius,
+            obs.radius
+          );
+          rx = res.x;
+          ry = res.y;
+        } else if (obs.kind === 'HEX_BUNKER') {
+          const res = this.pushOutOctagon(rx, ry, radius, obs);
+          rx = res.x;
+          ry = res.y;
+        } else if (obs.kind === 'L_BASTION') {
+          const [hRect, vRect] = this.getLBastionRects(obs);
+          const r1 = this.pushOutRect(rx, ry, radius, hRect.x, hRect.y, hRect.w, hRect.h);
+          const r2 = this.pushOutRect(r1.x, r1.y, radius, vRect.x, vRect.y, vRect.w, vRect.h);
+          rx = r2.x;
+          ry = r2.y;
+        } else {
+          const res = this.pushOutRect(rx, ry, radius, obs.x, obs.y, obs.width, obs.height);
+          rx = res.x;
+          ry = res.y;
+        }
       }
     }
 
@@ -577,9 +846,7 @@ export class WorldEnvironment {
         const cy = anchor.y + Math.sin(angle) * dist;
 
         const area = this.queryArea(cx - 280, cy - 280, cx + 280, cy + 280);
-        const hitsObs = area.obstacles.some((obs) =>
-          this.obstacleOverlapsRect(obs, cx - r, cy - r, r * 2, r * 2, 20)
-        );
+        const hitsObs = area.obstacles.some((obs) => this.pointHitsObstacle(cx, cy, r + 18, obs));
         const hitsLake = area.liquids.some(
           (pool) => Math.hypot(cx - pool.x, cy - pool.y) < r + pool.radius + 32
         );
@@ -725,12 +992,10 @@ export class WorldEnvironment {
       ctx.closePath();
     };
 
-    // Halo exterior tenue del lago
     traceLake(1.06);
     ctx.fillStyle = 'rgba(88, 28, 135, 0.16)';
     ctx.fill();
 
-    // Orilla principal + cuerpo extenso
     traceLake(1.0);
     ctx.fillStyle = 'rgba(107, 33, 168, 0.36)';
     ctx.fill();
@@ -738,7 +1003,6 @@ export class WorldEnvironment {
     ctx.lineWidth = 2.6;
     ctx.stroke();
 
-    // Terraza intermedia + cuenca abisal
     traceLake(0.76);
     ctx.fillStyle = 'rgba(126, 34, 206, 0.25)';
     ctx.fill();
@@ -747,7 +1011,6 @@ export class WorldEnvironment {
     ctx.fillStyle = 'rgba(147, 51, 234, 0.28)';
     ctx.fill();
 
-    // Doble onda concéntrica en superficie
     for (let ringIdx = 0; ringIdx < 2; ringIdx++) {
       const rippleProgress = (nowMs * 0.00042 + pool.phase + ringIdx * 0.5) % 1;
       ctx.strokeStyle = `rgba(233, 213, 255, ${0.42 * (1 - rippleProgress)})`;
@@ -757,7 +1020,6 @@ export class WorldEnvironment {
       ctx.stroke();
     }
 
-    // Burbujas suaves repartidas en el lago grande
     ctx.fillStyle = 'rgba(243, 232, 255, 0.62)';
     for (let b = 0; b < 7; b++) {
       const ba = pool.phase + b * 0.897;
@@ -791,13 +1053,11 @@ export class WorldEnvironment {
       const cy = y + obs.radius;
       const r = obs.radius;
 
-      // Sombra proyectada circular
       ctx.fillStyle = 'rgba(2, 6, 23, 0.65)';
       ctx.beginPath();
       ctx.arc(cx + 8, cy + 10, r, 0, Math.PI * 2);
       ctx.fill();
 
-      // Carcasa blindada índigo/violeta
       ctx.fillStyle = '#1e1b4b';
       ctx.strokeStyle = '#818cf8';
       ctx.lineWidth = 2.6;
@@ -806,7 +1066,6 @@ export class WorldEnvironment {
       ctx.fill();
       ctx.stroke();
 
-      // Anillo medio ranurado + pernos
       ctx.strokeStyle = 'rgba(165, 180, 252, 0.45)';
       ctx.lineWidth = 1.6;
       ctx.beginPath();
@@ -821,7 +1080,6 @@ export class WorldEnvironment {
         ctx.fill();
       }
 
-      // Turbina interna rotatoria
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(nowMs * 0.0011 * (obs.variantSeed > 0.5 ? 1 : -1));
@@ -836,7 +1094,6 @@ export class WorldEnvironment {
       }
       ctx.restore();
 
-      // Núcleo energético central
       const pulse = 0.72 + Math.sin(nowMs * 0.004 + obs.variantSeed * 6) * 0.28;
       ctx.fillStyle = `rgba(129, 140, 248, ${pulse})`;
       ctx.beginPath();
@@ -888,7 +1145,6 @@ export class WorldEnvironment {
       ctx.lineWidth = 1.4;
       ctx.stroke();
 
-      // Trazas diagonales hacia núcleo central
       const cx = x + w / 2;
       const cy = y + h / 2;
       ctx.strokeStyle = 'rgba(94, 234, 212, 0.45)';
@@ -901,7 +1157,6 @@ export class WorldEnvironment {
       ctx.lineTo(cx - arm, cy + arm);
       ctx.stroke();
 
-      // Núcleo hexagonal interior
       const coreR = w * 0.14;
       ctx.fillStyle = '#14b8a6';
       ctx.strokeStyle = '#ccfbf1';
@@ -949,7 +1204,6 @@ export class WorldEnvironment {
       ctx.lineWidth = 2.4;
       ctx.stroke();
 
-      // Conducto central luminoso
       ctx.fillStyle = 'rgba(251, 191, 36, 0.72)';
       if (horiz) {
         ctx.fillRect(x + 22, y + h / 2 - 4, w - 44, 8);
@@ -957,7 +1211,6 @@ export class WorldEnvironment {
         ctx.fillRect(x + w / 2 - 4, y + 22, 8, h - 44);
       }
 
-      // Franjas de advertencia a lo largo del muro
       ctx.fillStyle = 'rgba(245, 158, 11, 0.38)';
       const len = horiz ? w : h;
       const steps = Math.max(3, Math.floor((len - 40) / 30));
@@ -999,12 +1252,10 @@ export class WorldEnvironment {
         ctx.closePath();
       };
 
-      // Sombra proyectada de la estructura completa
       traceL(7, 9);
       ctx.fillStyle = 'rgba(2, 6, 23, 0.62)';
       ctx.fill();
 
-      // Cuerpo blindado continuo sin costuras internas
       traceL(0, 0);
       ctx.fillStyle = '#2b1222';
       ctx.fill();
@@ -1012,7 +1263,6 @@ export class WorldEnvironment {
       ctx.lineWidth = 2.6;
       ctx.stroke();
 
-      // Pista energética continua por ambas alas + nodo en esquina
       const jx = ori === 0 || ori === 3 ? x : x + w - t;
       const jy = ori === 0 || ori === 1 ? y : y + h - t;
       ctx.fillStyle = 'rgba(251, 113, 133, 0.78)';
@@ -1030,7 +1280,6 @@ export class WorldEnvironment {
       return;
     }
 
-    // SERVER_MONOLITH grande (por defecto)
     const cut = 16;
     ctx.fillStyle = 'rgba(2, 6, 23, 0.65)';
     ctx.fillRect(x + 8, y + 10, w, h);
@@ -1057,7 +1306,6 @@ export class WorldEnvironment {
     ctx.lineWidth = 1.4;
     ctx.strokeRect(x + 14, y + 14, w - 28, h - 28);
 
-    // Módulos internos / racks con LEDs de actividad
     const rackRows = Math.max(3, Math.floor((h - 46) / 24));
     for (let rIdx = 0; rIdx < rackRows; rIdx++) {
       const ry = y + 24 + rIdx * 24;
@@ -1093,7 +1341,7 @@ export class WorldEnvironment {
       }
     }
 
-    // 2. Oasis dinámicos (desaparecen tras recogerse y reaparecen en otra posición)
+    // 2. Oasis dinámicos
     for (const oasis of area.oases) {
       const pulse = 0.82 + Math.sin(nowMs * 0.005) * 0.18;
 
@@ -1160,7 +1408,7 @@ export class WorldEnvironment {
       ctx.restore();
     }
 
-    // 3. Obstáculos sólidos variados y grandes (solo Modo Infinito: Pesadilla / Co-op)
+    // 3. Complejos de obstáculos pegados entre sí (solo Modo Infinito: Pesadilla / Co-op)
     if (this.isInfinite) {
       for (const obs of area.obstacles) {
         this.drawObstacle(ctx, obs, nowMs);

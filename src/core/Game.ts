@@ -101,6 +101,7 @@ interface CoopPeerRuntime {
   inputX: number;
   inputY: number;
   isMoving: boolean;
+  lastAckSeq: number;
   downed: boolean;
   reviveProgress: number;
 }
@@ -108,7 +109,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.5.3';
+const GAME_VERSION = 'v1.5.5';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v1';
@@ -212,8 +213,11 @@ export class Game {
   private coopSnapshot: CoopWorldSnapshot | null = null;
   private coopSnapshotTimer: number = 0;
   private coopSnapshotSeq: number = 0;
+  private coopLastSnapSeq: number = 0;
   private coopInputTimer: number = 0;
   private coopInputSeq: number = 0;
+  private coopPendingInputs: { seq: number; x: number; y: number }[] = [];
+  private coopLastPrevEnemyHp: Map<number, { x: number; y: number; hp: number }> = new Map();
   public readonly firestoreDb = db;
   private menuFeedbackMessage: string = i18n.t(
     'Explora Agentes, Gacha (Tirada x1 / x10) e Inventario de Sombreros.',
@@ -608,6 +612,7 @@ export class Game {
       peer.inputX = inp.moveX;
       peer.inputY = inp.moveY;
       peer.isMoving = inp.isMoving;
+      peer.lastAckSeq = Math.max(peer.lastAckSeq, inp.seq || 0);
       if (Math.hypot(inp.moveX, inp.moveY) > 0.05) {
         peer.player.facingAngle = inp.facingAngle;
       }
@@ -615,7 +620,13 @@ export class Game {
 
     this.mpClient.onSnapshot = (snap) => {
       if (!this.isCoopMode || this.isCoopHost) return;
+      if (snap.seq <= this.coopLastSnapSeq) return;
+      this.coopLastSnapSeq = snap.seq;
+
+      CoopRenderer.ingestSnapshot(snap);
+
       const prevCoins = this.coopSnapshot?.coins ?? 0;
+      const prevXp = this.coopSnapshot?.xp ?? 0;
       this.coopSnapshot = snap;
       this.elapsedTime = snap.t;
       this.killCount = snap.kc;
@@ -624,6 +635,7 @@ export class Game {
         const delta = snap.coins - prevCoins;
         this.metaSystem.addCoins(delta);
         this.dailyMissions.reportProgress('COINS', delta);
+        this.sound.playCoinPickup();
       }
       this.runCoinsCollected = snap.coins;
       this.upgradeSystem.level = snap.lv;
@@ -638,6 +650,25 @@ export class Game {
         this.worldEnv.applyRemoteOasisStates(snap.oasis);
       }
 
+      // Retroalimentación visual ligera en cliente al detectar bajas de enemigos por netId
+      if (!this.lightGraphicsEnabled) {
+        const currentById = new Map<number, { x: number; y: number; hp: number }>();
+        for (const e of snap.enemies) {
+          const nid = e[8];
+          if (nid === undefined) continue;
+          currentById.set(nid, { x: e[1], y: e[2], hp: e[4] });
+        }
+        for (const [oldId, oldInfo] of this.coopLastPrevEnemyHp.entries()) {
+          if (
+            !currentById.has(oldId) &&
+            Math.hypot(oldInfo.x - this.player.x, oldInfo.y - this.player.y) < 1100
+          ) {
+            this.particleSystem.spawnExplosion(oldInfo.x, oldInfo.y, '#ff1e42', 7, false);
+          }
+        }
+        this.coopLastPrevEnemyHp = currentById;
+      }
+
       const me = snap.players.find((p) => p.id === this.mpClient.myId);
       if (me) {
         this.coopSelfDowned = me.downed;
@@ -645,13 +676,50 @@ export class Game {
         this.player.hp = me.hp;
         this.player.maxHp = me.maxHp;
         this.player.active = !me.downed;
-        const dist = Math.hypot(me.x - this.player.x, me.y - this.player.y);
-        if (dist > 95 || me.downed) {
+        if (me.spd && me.spd > 0) {
+          this.player.speed = me.spd;
+          this.player.speedBonusMultiplier = 1.0;
+        }
+
+        const ackSeq = me.ackSeq ?? 0;
+        if (me.downed) {
           this.player.x = me.x;
           this.player.y = me.y;
+          this.coopPendingInputs = [];
         } else {
-          this.player.x += (me.x - this.player.x) * 0.32;
-          this.player.y += (me.y - this.player.y) * 0.32;
+          const histIdx = ackSeq > 0 ? this.coopPendingInputs.findIndex((h) => h.seq === ackSeq) : -1;
+          if (histIdx !== -1) {
+            const ackPos = this.coopPendingInputs[histIdx];
+            this.coopPendingInputs.splice(0, histIdx + 1);
+            const errX = me.x - ackPos.x;
+            const errY = me.y - ackPos.y;
+            const errDist = Math.hypot(errX, errY);
+            if (errDist > 150) {
+              this.player.x = me.x;
+              this.player.y = me.y;
+              this.coopPendingInputs = [];
+            } else if (errDist > 4) {
+              const blend = 0.22;
+              const adjX = errX * blend;
+              const adjY = errY * blend;
+              this.player.x += adjX;
+              this.player.y += adjY;
+              for (const pending of this.coopPendingInputs) {
+                pending.x += adjX;
+                pending.y += adjY;
+              }
+            }
+          } else {
+            const dist = Math.hypot(me.x - this.player.x, me.y - this.player.y);
+            if (dist > 170) {
+              this.player.x = me.x;
+              this.player.y = me.y;
+              this.coopPendingInputs = [];
+            } else if (!this.player.isMoving && dist > 6) {
+              this.player.x += (me.x - this.player.x) * 0.16;
+              this.player.y += (me.y - this.player.y) * 0.16;
+            }
+          }
         }
       }
     };
@@ -794,7 +862,13 @@ export class Game {
     this.coopUpgradeStatusText = '';
     this.coopSnapshot = null;
     this.coopSnapshotTimer = 0;
+    this.coopSnapshotSeq = 0;
+    this.coopLastSnapSeq = 0;
     this.coopInputTimer = 0;
+    this.coopInputSeq = 0;
+    this.coopPendingInputs = [];
+    this.coopLastPrevEnemyHp.clear();
+    CoopRenderer.resetState();
     this.coopPeers.clear();
     this.input.clearTouch();
 
@@ -876,6 +950,7 @@ export class Game {
           inputX: 0,
           inputY: 0,
           isMoving: false,
+          lastAckSeq: 0,
           downed: false,
           reviveProgress: 0,
         });
@@ -1018,10 +1093,13 @@ export class Game {
         shieldReady: this.player.shieldReady,
         adrenaline: this.player.adrenalineTimer > 0,
         activeWeapons: this.combatSystem.getActiveWeaponsList(this.player).slice(0, 4),
+        spd: Math.round(this.player.speed * this.player.speedBonusMultiplier),
       },
     ];
 
+    const anchors: { x: number; y: number }[] = [{ x: this.player.x, y: this.player.y }];
     for (const peer of this.coopPeers.values()) {
+      anchors.push({ x: peer.player.x, y: peer.player.y });
       players.push({
         id: peer.id,
         slot: peer.slot,
@@ -1041,17 +1119,45 @@ export class Game {
         shieldReady: peer.player.shieldReady,
         adrenaline: peer.player.adrenalineTimer > 0,
         activeWeapons: peer.combatSystem.getActiveWeaponsList(peer.player).slice(0, 4),
+        ackSeq: peer.lastAckSeq,
+        spd: Math.round(peer.player.speed * peer.player.speedBonusMultiplier),
       });
     }
 
-    const enemies: SnapshotEnemyTuple[] = [];
-    for (let i = 0; i < Math.min(130, this.enemies.length); i++) {
-      const e = this.enemies[i];
+    const minDistSqToAnyPlayer = (x: number, y: number): number => {
+      let best = Infinity;
+      for (const a of anchors) {
+        const dx = x - a.x;
+        const dy = y - a.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) best = d2;
+      }
+      return best;
+    };
+
+    // Priorizar jefes y enemigos más cercanos a CUALQUIER jugador del escuadrón
+    const enemyCandidates: { e: Adware; prio: number }[] = [];
+    for (const e of this.enemies) {
       if (!e.active) continue;
+      const isBossPriority =
+        e.malwareType === 'FINAL_BOSS' ||
+        e.malwareType === 'RANSOMWARE' ||
+        e.malwareType === 'CRYPTO_MINER';
+      const d2 = minDistSqToAnyPlayer(e.x, e.y);
+      if (!isBossPriority && d2 > 1450 * 1450) continue;
+      enemyCandidates.push({ e, prio: isBossPriority ? -1000000 + d2 : d2 });
+    }
+    enemyCandidates.sort((a, b) => a.prio - b.prio);
+
+    const enemies: SnapshotEnemyTuple[] = [];
+    const enemyCap = Math.min(165, enemyCandidates.length);
+    for (let i = 0; i < enemyCap; i++) {
+      const e = enemyCandidates[i].e;
       let flags = 0;
       if (e.malwareType === 'ARMORED_WORM' || e.malwareType === 'EVASOR') flags |= 1;
       if (e.networkFreezeTimer > 0 || e.cryoSlowTimer > 0) flags |= 2;
       if (e.hitFlashTimer > 0) flags |= 4;
+      if (e instanceof ElToroBoss && e.state !== 'CHASE') flags |= 8;
       enemies.push([
         encodeEnemyType(e),
         Math.round(e.x),
@@ -1061,48 +1167,70 @@ export class Game {
         Math.ceil(e.maxHp),
         Number(e.facingAngle.toFixed(2)),
         flags,
+        e.netId,
       ]);
     }
 
-    const projectiles: SnapshotProjTuple[] = [];
-    const pushProj = (kind: number, x: number, y: number, vx: number, vy: number, evolved: boolean, size: number) => {
-      if (projectiles.length >= 96) return;
-      projectiles.push([
-        kind,
-        Math.round(x),
-        Math.round(y),
-        Math.round(vx),
-        Math.round(vy),
-        evolved ? 1 : 0,
-        Math.round(size),
-      ]);
+    // Priorizar proyectiles más cercanos a cualquier jugador (sin que el Host monopolice el tope)
+    const projCandidates: { tuple: SnapshotProjTuple; d2: number }[] = [];
+    const pushProjCand = (
+      kind: number,
+      x: number,
+      y: number,
+      vx: number,
+      vy: number,
+      evolved: boolean,
+      size: number
+    ) => {
+      const d2 = minDistSqToAnyPlayer(x, y);
+      if (d2 > 1350 * 1350) return;
+      projCandidates.push({
+        tuple: [
+          kind,
+          Math.round(x),
+          Math.round(y),
+          Math.round(vx),
+          Math.round(vy),
+          evolved ? 1 : 0,
+          Math.round(size),
+        ],
+        d2,
+      });
     };
 
-    for (const p of this.projectiles) if (p.active) pushProj(0, p.x, p.y, p.vx, p.vy, p.isEvolved, p.size);
-    for (const p of this.pingProjectiles) if (p.active) pushProj(1, p.x, p.y, p.vx, p.vy, p.isEvolved, p.size);
+    for (const p of this.projectiles) if (p.active) pushProjCand(0, p.x, p.y, p.vx, p.vy, p.isEvolved, p.size);
+    for (const p of this.pingProjectiles) if (p.active) pushProjCand(1, p.x, p.y, p.vx, p.vy, p.isEvolved, p.size);
 
     const collectCombatShots = (cs: CombatSystem) => {
-      for (const s of cs.cryoShards) if (s.active) pushProj(2, s.x, s.y, s.vx, s.vy, s.isEvolved, s.size);
-      for (const b of cs.sqlBeams) if (b.active) pushProj(3, b.x, b.y, b.vx, b.vy, b.isEvolved, b.thickness);
-      for (const d of cs.sawDiscs) if (d.active) pushProj(4, d.x, d.y, 0, 0, d.isEvolved, d.size);
-      for (const ep of cs.enemyProjectiles) if (ep.active) pushProj(5, ep.x, ep.y, ep.vx, ep.vy, false, ep.size);
+      for (const s of cs.cryoShards) if (s.active) pushProjCand(2, s.x, s.y, s.vx, s.vy, s.isEvolved, s.size);
+      for (const b of cs.sqlBeams) if (b.active) pushProjCand(3, b.x, b.y, b.vx, b.vy, b.isEvolved, b.thickness);
+      for (const d of cs.sawDiscs) if (d.active) pushProjCand(4, d.x, d.y, 0, 0, d.isEvolved, d.size);
+      for (const ep of cs.enemyProjectiles) if (ep.active) pushProjCand(5, ep.x, ep.y, ep.vx, ep.vy, false, ep.size);
     };
     collectCombatShots(this.combatSystem);
     for (const peer of this.coopPeers.values()) collectCombatShots(peer.combatSystem);
 
-    const pickups: SnapshotPickupTuple[] = [];
-    for (let i = 0; i < Math.min(80, this.codeFragments.length); i++) {
-      const f = this.codeFragments[i];
-      if (f.active) pickups.push([0, Math.round(f.x), Math.round(f.y), f.xpValue]);
+    projCandidates.sort((a, b) => a.d2 - b.d2);
+    const projectiles: SnapshotProjTuple[] = projCandidates.slice(0, 125).map((c) => c.tuple);
+
+    // Priorizar recogibles más cercanos a cualquier jugador
+    const pickupCandidates: { tuple: SnapshotPickupTuple; d2: number }[] = [];
+    for (const f of this.codeFragments) {
+      if (!f.active) continue;
+      const d2 = minDistSqToAnyPlayer(f.x, f.y);
+      if (d2 <= 1350 * 1350) pickupCandidates.push({ tuple: [0, Math.round(f.x), Math.round(f.y), f.xpValue], d2 });
     }
     for (const c of this.cryptoCoins) {
-      if (c.active) pickups.push([1, Math.round(c.x), Math.round(c.y), c.value]);
+      if (!c.active) continue;
+      pickupCandidates.push({ tuple: [1, Math.round(c.x), Math.round(c.y), c.value], d2: minDistSqToAnyPlayer(c.x, c.y) * 0.5 });
     }
     for (const p of this.powerUps) {
       if (!p.active) continue;
       const pk = p.type === 'NUKE' ? 2 : p.type === 'FREEZE' ? 3 : 4;
-      pickups.push([pk, Math.round(p.x), Math.round(p.y), 1]);
+      pickupCandidates.push({ tuple: [pk, Math.round(p.x), Math.round(p.y), 1], d2: minDistSqToAnyPlayer(p.x, p.y) * 0.25 });
     }
+    pickupCandidates.sort((a, b) => a.d2 - b.d2);
+    const pickups: SnapshotPickupTuple[] = pickupCandidates.slice(0, 110).map((c) => c.tuple);
 
     const zones: SnapshotZoneTuple[] = [];
     for (const q of this.quarantineZones) {
@@ -2129,6 +2257,11 @@ export class Game {
     this.coopUpgradePickedIds.clear();
     this.coopUpgradeStatusText = '';
     this.coopSnapshot = null;
+    this.coopLastSnapSeq = 0;
+    this.coopInputSeq = 0;
+    this.coopPendingInputs = [];
+    this.coopLastPrevEnemyHp.clear();
+    CoopRenderer.resetState();
     this.input.clearTouch();
     this.isPaused = false;
     this.isNightmareRun = false;
@@ -2260,14 +2393,21 @@ export class Game {
     this.achievementSystem.reportProgress('toro_arrival', 1);
     this.spawner.enableFinalBossMode();
     this.enemies = [];
-    const spawnX = this.isNightmareRun ? this.player.x : LOGICAL_WIDTH / 2;
-    const spawnY = this.isNightmareRun
-      ? this.player.y - 420
-      : this.player.y > LOGICAL_HEIGHT * 0.45
+    const infiniteArena = this.isMovingMap();
+    const anchor =
+      this.player.active
+        ? this.player
+        : this.isCoopMode
+        ? this.getNearestAliveCoopPlayer(this.player.x, this.player.y)
+        : this.player;
+    const spawnX = infiniteArena ? anchor.x : LOGICAL_WIDTH / 2;
+    const spawnY = infiniteArena
+      ? anchor.y - 420
+      : anchor.y > LOGICAL_HEIGHT * 0.45
       ? 120
       : LOGICAL_HEIGHT - 120;
     this.finalBoss = new ElToroBoss(spawnX, spawnY);
-    this.finalBoss.unbounded = this.isNightmareRun;
+    this.finalBoss.unbounded = infiniteArena;
     this.enemies.push(this.finalBoss);
     logAnalyticsEvent('boss_spawn', { boss_name: 'EL_TORO' });
 
@@ -2323,7 +2463,7 @@ export class Game {
       return;
     }
 
-    // Invitado Co-op: predice movimiento local suave y envía inputs al Host (30 Hz)
+    // Invitado Co-op: predice movimiento local sin tirones y envía inputs al Host (50 Hz)
     if (this.isCoopMode && !this.isCoopHost) {
       if (!this.isPaused && !this.coopSelfDowned && !this.coopWaitingUpgrade && !this.upgradeSystem.isChoosingUpgrade()) {
         this.player.externalSpeedMultiplier = this.worldEnv.isInSlowLiquid(
@@ -2351,17 +2491,22 @@ export class Game {
       }
       this.worldEnv.updateOases(dt, [{ x: this.player.x, y: this.player.y }], false, this.elapsedTime);
       this.coopInputTimer += dt;
-      if (this.coopInputTimer >= 0.033) {
+      if (this.coopInputTimer >= 0.02) {
         this.coopInputTimer = 0;
         const dir = this.isPaused || this.coopSelfDowned || this.coopWaitingUpgrade
           ? { x: 0, y: 0 }
           : this.input.getDirection();
+        const nextSeq = ++this.coopInputSeq;
+        this.coopPendingInputs.push({ seq: nextSeq, x: this.player.x, y: this.player.y });
+        if (this.coopPendingInputs.length > 50) {
+          this.coopPendingInputs.shift();
+        }
         this.mpClient.sendInput(
           dir.x,
           dir.y,
           this.player.facingAngle,
           dir.x !== 0 || dir.y !== 0,
-          ++this.coopInputSeq
+          nextSeq
         );
       }
       return;
@@ -2730,12 +2875,36 @@ export class Game {
     }
 
     for (const proj of this.projectiles) {
+      const prevX = proj.x;
+      const prevY = proj.y;
       const pCam = this.getNearestAliveCoopCameraOrigin(proj.x, proj.y);
       proj.update(dt, LOGICAL_WIDTH, LOGICAL_HEIGHT, pCam.x, pCam.y);
+      if (proj.active && this.worldEnv.isInfinite) {
+        const pSpd = Math.hypot(proj.vx, proj.vy) || 1;
+        const tipX = proj.x + (proj.vx / pSpd) * (proj.size * 0.68);
+        const tipY = proj.y + (proj.vy / pSpd) * (proj.size * 0.68);
+        const hitWall = this.worldEnv.findSegmentObstacleImpact(prevX, prevY, tipX, tipY, Math.max(3.5, proj.size * 0.36));
+        if (hitWall) {
+          proj.active = false;
+          this.particleSystem.spawnExplosion(hitWall.x, hitWall.y, proj.isEvolved ? '#fde047' : '#00f0ff', 4, false);
+        }
+      }
     }
     for (const ping of this.pingProjectiles) {
+      const prevX = ping.x;
+      const prevY = ping.y;
       const pCam = this.getNearestAliveCoopCameraOrigin(ping.x, ping.y);
-      ping.update(dt, this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, pCam.x, pCam.y);
+      ping.update(dt, this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, pCam.x, pCam.y, this.worldEnv);
+      if (ping.active && this.worldEnv.isInfinite) {
+        const pSpd = Math.hypot(ping.vx, ping.vy) || 1;
+        const tipX = ping.x + (ping.vx / pSpd) * (ping.size * 0.68);
+        const tipY = ping.y + (ping.vy / pSpd) * (ping.size * 0.68);
+        const hitWall = this.worldEnv.findSegmentObstacleImpact(prevX, prevY, tipX, tipY, Math.max(3.5, ping.size * 0.36));
+        if (hitWall) {
+          ping.active = false;
+          this.particleSystem.spawnExplosion(hitWall.x, hitWall.y, ping.isEvolved ? '#60a5fa' : '#0088ff', 4, false);
+        }
+      }
     }
     for (const enemy of this.enemies) {
       if (isFrozen && !(enemy instanceof ElToroBoss)) {
@@ -2744,9 +2913,25 @@ export class Game {
         const targetPlayer = this.isCoopMode
           ? this.getNearestAliveCoopPlayer(enemy.x, enemy.y)
           : this.player;
+        const prevEx = enemy.x;
+        const prevEy = enemy.y;
         enemy.update(dt, targetPlayer);
-        if (!(enemy instanceof Evasor) && !(enemy instanceof ElToroBoss)) {
-          const eRes = this.worldEnv.resolveCircleCollision(enemy.x, enemy.y, enemy.size * 0.44);
+        if (
+          !(enemy instanceof Evasor) &&
+          enemy.malwareType !== 'HARDWARE_BOX' &&
+          !(enemy instanceof CryptoMiner) &&
+          (!(enemy instanceof ElToroBoss) || enemy.state === 'CHASE')
+        ) {
+          const eRes = this.worldEnv.moveEntityAvoidingObstacles(
+            prevEx,
+            prevEy,
+            enemy.x,
+            enemy.y,
+            targetPlayer.x,
+            targetPlayer.y,
+            enemy.size * 0.44,
+            (enemy.netId & 1) === 0 ? 1 : -1
+          );
           enemy.x = eRes.x;
           enemy.y = eRes.y;
         }
@@ -2782,7 +2967,8 @@ export class Game {
       LOGICAL_WIDTH,
       LOGICAL_HEIGHT,
       activeCam.x,
-      activeCam.y
+      activeCam.y,
+      this.worldEnv
     );
 
     if (this.player.companion && this.player.active) {
@@ -2794,7 +2980,8 @@ export class Game {
         LOGICAL_WIDTH,
         LOGICAL_HEIGHT,
         activeCam.x,
-        activeCam.y
+        activeCam.y,
+        this.worldEnv
       );
       combatEvents.enemiesKilled += compEvents.killedEnemies.length;
       combatEvents.damagedEnemies.push(...compEvents.damagedEnemies);
@@ -2864,7 +3051,8 @@ export class Game {
           LOGICAL_WIDTH,
           LOGICAL_HEIGHT,
           peer.player.x - LOGICAL_WIDTH / 2,
-          peer.player.y - LOGICAL_HEIGHT / 2
+          peer.player.y - LOGICAL_HEIGHT / 2,
+          this.worldEnv
         );
         if (isFrenzy) {
           peer.player.fireRateMultiplier = pBaseRof;
@@ -2873,6 +3061,11 @@ export class Game {
         combatEvents.enemiesKilled += pCombat.enemiesKilled;
         combatEvents.destroyedEnemies.push(...pCombat.destroyedEnemies);
         combatEvents.damagedEnemies.push(...pCombat.damagedEnemies);
+        if (pCombat.wallImpacts) {
+          for (const wi of pCombat.wallImpacts) {
+            this.particleSystem.spawnExplosion(wi.x, wi.y, wi.color, 4, false);
+          }
+        }
 
         if (peer.player.companion && peer.player.active) {
           const pCompCamX = this.isMovingMap() ? peer.player.x - LOGICAL_WIDTH / 2 : 0;
@@ -2885,7 +3078,8 @@ export class Game {
             LOGICAL_WIDTH,
             LOGICAL_HEIGHT,
             pCompCamX,
-            pCompCamY
+            pCompCamY,
+            this.worldEnv
           );
           combatEvents.enemiesKilled += pComp.killedEnemies.length;
           combatEvents.damagedEnemies.push(...pComp.damagedEnemies);
@@ -2910,6 +3104,12 @@ export class Game {
             text: `ALERT: ${peer.name} cayó — ¡acércate para reanimarlo!`,
           });
         }
+      }
+    }
+
+    if (combatEvents.wallImpacts) {
+      for (const wi of combatEvents.wallImpacts) {
+        this.particleSystem.spawnExplosion(wi.x, wi.y, wi.color, 4, false);
       }
     }
 
@@ -3337,7 +3537,7 @@ export class Game {
 
     if (this.isCoopMode && this.isCoopHost) {
       this.coopSnapshotTimer += dt;
-      if (this.coopSnapshotTimer >= 0.05) {
+      if (this.coopSnapshotTimer >= 0.04) {
         this.coopSnapshotTimer = 0;
         this.broadcastCoopSnapshot();
       }
@@ -3576,10 +3776,18 @@ export class Game {
       );
 
       if (this.isCoopMode && !this.isCoopHost && this.coopSnapshot) {
-        CoopRenderer.drawWorld(this.ctx, this.coopSnapshot, this.mpClient.myId, {
-          x: this.player.x,
-          y: this.player.y,
-        });
+        CoopRenderer.drawWorld(
+          this.ctx,
+          this.coopSnapshot,
+          this.mpClient.myId,
+          {
+            x: this.player.x,
+            y: this.player.y,
+            facingAngle: this.player.facingAngle,
+            isMoving: this.player.isMoving,
+          },
+          this.worldEnv
+        );
       } else {
         if (this.isNightmareRun) {
           this.terrainEvents.draw(this.ctx);

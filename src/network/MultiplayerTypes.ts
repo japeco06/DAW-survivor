@@ -77,11 +77,13 @@ export interface SnapshotPlayer {
   shieldReady: boolean;
   adrenaline: boolean;
   activeWeapons: string[];
+  ackSeq?: number;
+  spd?: number;
 }
 
-// [typeCode, x, y, size, hp, maxHp, angle, flags]
-// flags: bit0=elite, bit1=frozen, bit2=flash, bit3=shield/warning
-export type SnapshotEnemyTuple = [number, number, number, number, number, number, number, number];
+// [typeCode, x, y, size, hp, maxHp, angle, flags, netId?]
+// flags: bit0=elite, bit1=frozen, bit2=flash, bit3=shield/warning(Toro telegraph/dash)
+export type SnapshotEnemyTuple = [number, number, number, number, number, number, number, number, number?];
 
 // [kind, x, y, vx, vy, evolved(0|1), size]
 // kind: 0=Projectile, 1=PingProjectile, 2=CryoShard, 3=SqlBeam, 4=SawDisc, 5=EnemyProjectile

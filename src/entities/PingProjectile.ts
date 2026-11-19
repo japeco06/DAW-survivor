@@ -1,5 +1,6 @@
 import { Entity } from './Entity';
 import { Adware } from './Adware';
+import type { WorldEnvironment } from '../systems/WorldEnvironment';
 
 /**
  * Proyectil de la nueva arma 'Ping Tracker' (v0.2.0).
@@ -40,12 +41,13 @@ export class PingProjectile extends Entity {
     canvasWidth: number,
     canvasHeight: number,
     viewOriginX: number = 0,
-    viewOriginY: number = 0
+    viewOriginY: number = 0,
+    worldEnv?: WorldEnvironment
   ): void {
     this.lifeTime -= dt;
 
-    // Buscar el enemigo activo más cercano para ajustar el vector de persecución
-    const target = this.findNearestTarget(enemies);
+    // Buscar el enemigo activo con línea de visión clara (o el más cercano si todos están cubiertos)
+    const target = this.findNearestTarget(enemies, worldEnv);
     if (target) {
       const desiredDx = target.x - this.x;
       const desiredDy = target.y - this.y;
@@ -84,19 +86,28 @@ export class PingProjectile extends Entity {
     }
   }
 
-  private findNearestTarget(enemies: Adware[]): Adware | null {
-    let nearest: Adware | null = null;
-    let minDist = Infinity;
+  private findNearestTarget(enemies: Adware[], worldEnv?: WorldEnvironment): Adware | null {
+    let nearestVisible: Adware | null = null;
+    let minVisibleDist = Infinity;
+    let nearestAny: Adware | null = null;
+    let minAnyDist = Infinity;
 
     for (const enemy of enemies) {
       if (!enemy.active) continue;
       const d = Math.hypot(enemy.x - this.x, enemy.y - this.y);
-      if (d < minDist) {
-        minDist = d;
-        nearest = enemy;
+      if (d < minAnyDist) {
+        minAnyDist = d;
+        nearestAny = enemy;
+      }
+      if (
+        (!worldEnv?.isInfinite || !worldEnv.segmentHitsObstacle(this.x, this.y, enemy.x, enemy.y, 3)) &&
+        d < minVisibleDist
+      ) {
+        minVisibleDist = d;
+        nearestVisible = enemy;
       }
     }
-    return nearest;
+    return nearestVisible ?? nearestAny;
   }
 
   public override draw(ctx: CanvasRenderingContext2D): void {

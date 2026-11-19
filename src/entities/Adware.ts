@@ -19,6 +19,8 @@ export type MalwareType =
  * y comportamiento de persecución hacia el Agente Antivirus.
  */
 export class Adware extends Entity {
+  private static nextNetId: number = 1;
+  public readonly netId: number = Adware.nextNetId++;
   public malwareType: MalwareType = 'ADWARE';
   public maxHp: number = 25;
   public hp: number = 25;

@@ -70,6 +70,7 @@ export class ElToroBoss extends Adware {
         this.x += (dx / dist) * this.speed * dt;
         this.y += (dy / dist) * this.speed * dt;
         this.dashAngle = Math.atan2(dy, dx);
+        this.facingAngle = this.dashAngle;
       }
 
       this.dashCycleTimer += dt;
@@ -79,11 +80,13 @@ export class ElToroBoss extends Adware {
         this.stateTimer = this.telegraphDuration;
         this.speed = 0;
         this.dashAngle = Math.atan2(player.y - this.y, player.x - this.x);
+        this.facingAngle = this.dashAngle;
       }
     } else if (this.state === 'TELEGRAPH') {
       // Se detiene por completo durante 1.5 segundos apuntando hacia la posición del jugador
       this.speed = 0;
       this.dashAngle = Math.atan2(player.y - this.y, player.x - this.x);
+      this.facingAngle = this.dashAngle;
 
       this.stateTimer -= dt;
       if (this.stateTimer <= 0) {
@@ -93,6 +96,7 @@ export class ElToroBoss extends Adware {
       }
     } else if (this.state === 'DASH') {
       // Embestida masiva de alta velocidad en la dirección fijada
+      this.facingAngle = this.dashAngle;
       this.x += Math.cos(this.dashAngle) * this.dashSpeed * dt;
       this.y += Math.sin(this.dashAngle) * this.dashSpeed * dt;
 

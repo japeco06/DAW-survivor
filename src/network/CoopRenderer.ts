@@ -1,6 +1,7 @@
 import { Player } from '../entities/Player';
 import { Adware, MalwareType } from '../entities/Adware';
 import { i18n } from '../utils/i18n';
+import type { WorldEnvironment } from '../systems/WorldEnvironment';
 import type {
   CoopWorldSnapshot,
   SnapshotEnemyTuple,
@@ -9,6 +10,33 @@ import type {
   SnapshotProjTuple,
   SnapshotZoneTuple,
 } from './MultiplayerTypes';
+
+interface InterpTrack {
+  prevX: number;
+  prevY: number;
+  targetX: number;
+  targetY: number;
+  drawX: number;
+  drawY: number;
+  prevAngle: number;
+  targetAngle: number;
+  recvMs: number;
+  spanMs: number;
+}
+
+export interface LocalPlayerOverride {
+  x: number;
+  y: number;
+  facingAngle?: number;
+  isMoving?: boolean;
+}
+
+function lerpAngle(a: number, b: number, t: number): number {
+  let diff = (b - a + Math.PI) % (Math.PI * 2);
+  if (diff < 0) diff += Math.PI * 2;
+  diff -= Math.PI;
+  return a + diff * t;
+}
 
 export const ENEMY_CODE_MAP: Record<MalwareType, number> = {
   ADWARE: 0,
@@ -35,13 +63,109 @@ export function encodeEnemyType(enemy: Adware): number {
  * Reutiliza la estética cyber-mecha de Player.drawCyberChassis y los disparos "pro".
  */
 export class CoopRenderer {
+  private static playerTracks: Map<string, InterpTrack> = new Map();
+  private static enemyTracks: Map<number, InterpTrack> = new Map();
+  private static snapRecvMs: number = 0;
+  private static avgSpanMs: number = 44;
+
+  public static resetState(): void {
+    this.playerTracks.clear();
+    this.enemyTracks.clear();
+    this.snapRecvMs = 0;
+    this.avgSpanMs = 44;
+  }
+
+  public static ingestSnapshot(snap: CoopWorldSnapshot): void {
+    const now = performance.now();
+    if (this.snapRecvMs > 0) {
+      const delta = now - this.snapRecvMs;
+      if (delta >= 12 && delta <= 250) {
+        this.avgSpanMs = Math.max(32, Math.min(95, this.avgSpanMs * 0.7 + delta * 0.3));
+      }
+    }
+    this.snapRecvMs = now;
+    const span = this.avgSpanMs;
+
+    const seenPlayers = new Set<string>();
+    for (const pl of snap.players) {
+      seenPlayers.add(pl.id);
+      const prev = this.playerTracks.get(pl.id);
+      if (prev && Math.hypot(pl.x - prev.targetX, pl.y - prev.targetY) < 280) {
+        prev.prevX = prev.drawX;
+        prev.prevY = prev.drawY;
+        prev.targetX = pl.x;
+        prev.targetY = pl.y;
+        prev.prevAngle = prev.targetAngle;
+        prev.targetAngle = pl.facingAngle;
+        prev.recvMs = now;
+        prev.spanMs = span;
+      } else {
+        this.playerTracks.set(pl.id, {
+          prevX: pl.x,
+          prevY: pl.y,
+          targetX: pl.x,
+          targetY: pl.y,
+          drawX: pl.x,
+          drawY: pl.y,
+          prevAngle: pl.facingAngle,
+          targetAngle: pl.facingAngle,
+          recvMs: now,
+          spanMs: span,
+        });
+      }
+    }
+    for (const key of this.playerTracks.keys()) {
+      if (!seenPlayers.has(key)) this.playerTracks.delete(key);
+    }
+
+    const seenEnemies = new Set<number>();
+    for (const e of snap.enemies) {
+      const netId = e[8];
+      if (netId === undefined) continue;
+      seenEnemies.add(netId);
+      const ex = e[1];
+      const ey = e[2];
+      const eAng = e[6];
+      const prev = this.enemyTracks.get(netId);
+      if (prev && Math.hypot(ex - prev.targetX, ey - prev.targetY) < 260) {
+        prev.prevX = prev.drawX;
+        prev.prevY = prev.drawY;
+        prev.targetX = ex;
+        prev.targetY = ey;
+        prev.prevAngle = prev.targetAngle;
+        prev.targetAngle = eAng;
+        prev.recvMs = now;
+        prev.spanMs = span;
+      } else {
+        this.enemyTracks.set(netId, {
+          prevX: ex,
+          prevY: ey,
+          targetX: ex,
+          targetY: ey,
+          drawX: ex,
+          drawY: ey,
+          prevAngle: eAng,
+          targetAngle: eAng,
+          recvMs: now,
+          spanMs: span,
+        });
+      }
+    }
+    for (const key of this.enemyTracks.keys()) {
+      if (!seenEnemies.has(key)) this.enemyTracks.delete(key);
+    }
+  }
+
   public static drawWorld(
     ctx: CanvasRenderingContext2D,
     snap: CoopWorldSnapshot,
     myId: string,
-    overrideLocalPos?: { x: number; y: number }
+    overrideLocalPos?: LocalPlayerOverride,
+    worldEnv?: WorldEnvironment
   ): void {
     const now = performance.now();
+    const projElapsedSec =
+      this.snapRecvMs > 0 ? Math.min(0.085, Math.max(0, (now - this.snapRecvMs) / 1000)) : 0;
 
     // 1. Zonas de Cuarentena y Eventos de Terreno
     for (const z of snap.zones) {
@@ -97,20 +221,72 @@ export class CoopRenderer {
       ctx.restore();
     }
 
-    // 4. Enemigos y Jefes
+    // 4. Enemigos y Jefes (con interpolación fluida por netId)
     for (const e of snap.enemies) {
-      this.drawEnemy(ctx, e, now);
+      const netId = e[8];
+      const tr = netId !== undefined ? this.enemyTracks.get(netId) : undefined;
+      if (tr) {
+        const rawT = Math.max(0, (now - tr.recvMs) / Math.max(16, tr.spanMs));
+        const t = Math.min(1, rawT);
+        tr.drawX = tr.prevX + (tr.targetX - tr.prevX) * t;
+        tr.drawY = tr.prevY + (tr.targetY - tr.prevY) * t;
+        const smoothAngle = lerpAngle(tr.prevAngle, tr.targetAngle, t);
+        const interpTuple: SnapshotEnemyTuple = [
+          e[0],
+          tr.drawX,
+          tr.drawY,
+          e[3],
+          e[4],
+          e[5],
+          smoothAngle,
+          e[7],
+          netId,
+        ];
+        this.drawEnemy(ctx, interpTuple, now);
+      } else {
+        this.drawEnemy(ctx, e, now);
+      }
     }
 
-    // 5. Proyectiles "Pro" aliados y enemigos
+    // 5. Proyectiles "Pro" aliados y enemigos (extrapolación suave + recorte contra muros)
     for (const proj of snap.projectiles) {
-      this.drawProjectile(ctx, proj, now);
+      const [kind, px, py, vx, vy, evolved, size] = proj;
+      const ex = px + vx * projElapsedSec;
+      const ey = py + vy * projElapsedSec;
+      if (
+        worldEnv?.isInfinite &&
+        (vx !== 0 || vy !== 0) &&
+        worldEnv.findSegmentObstacleImpact(px, py, ex, ey, Math.max(3, (size || 10) * 0.35)) !== null
+      ) {
+        continue;
+      }
+      this.drawProjectile(ctx, [kind, ex, ey, vx, vy, evolved, size], now);
     }
 
-    // 6. Todos los jugadores del escuadrón (hasta 4)
+    // 6. Todos los jugadores del escuadrón (local sin lag, aliados interpolados)
     for (const pl of snap.players) {
-      const pos = pl.id === myId && overrideLocalPos ? overrideLocalPos : { x: pl.x, y: pl.y };
-      this.drawTeammate(ctx, pl, pos.x, pos.y, pl.id === myId, now);
+      if (pl.id === myId && overrideLocalPos) {
+        const localPl: SnapshotPlayer = {
+          ...pl,
+          facingAngle: overrideLocalPos.facingAngle ?? pl.facingAngle,
+          isMoving: overrideLocalPos.isMoving ?? pl.isMoving,
+        };
+        this.drawTeammate(ctx, localPl, overrideLocalPos.x, overrideLocalPos.y, true, now);
+      } else {
+        const tr = this.playerTracks.get(pl.id);
+        if (tr) {
+          const t = Math.min(1, Math.max(0, (now - tr.recvMs) / Math.max(16, tr.spanMs)));
+          tr.drawX = tr.prevX + (tr.targetX - tr.prevX) * t;
+          tr.drawY = tr.prevY + (tr.targetY - tr.prevY) * t;
+          const interpPl: SnapshotPlayer = {
+            ...pl,
+            facingAngle: lerpAngle(tr.prevAngle, tr.targetAngle, t),
+          };
+          this.drawTeammate(ctx, interpPl, tr.drawX, tr.drawY, pl.id === myId, now);
+        } else {
+          this.drawTeammate(ctx, pl, pl.x, pl.y, pl.id === myId, now);
+        }
+      }
     }
   }
 
@@ -351,7 +527,19 @@ export class CoopRenderer {
     }
 
     if (typeCode === 9) {
-      // EL TORO BOSS
+      // EL TORO BOSS (+ indicador de telegrafiado de embestida en flags bit 3)
+      if ((flags & 8) !== 0) {
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.fillStyle = 'rgba(255, 20, 50, 0.2)';
+        ctx.fillRect(0, -half * 0.85, 620, half * 1.7);
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.8)';
+        ctx.lineWidth = 2.6;
+        ctx.setLineDash([14, 8]);
+        ctx.strokeRect(0, -half * 0.85, 620, half * 1.7);
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
       const bodyColor = isFlashing ? '#ffffff' : '#991b1b';
       ctx.fillStyle = bodyColor;
       ctx.strokeStyle = '#f87171';
