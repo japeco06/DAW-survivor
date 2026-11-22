@@ -482,6 +482,46 @@ export const HATS_DATABASE: HatItem[] = [
     stats: { damageMult: 0.36, critChance: 0.3, speedMult: 0.22, magnetBonus: 120 },
     statsLabel: '+36% Daño, +30% Crít, +22% Vel, +120px Imán',
   },
+  {
+    id: 'mit_sing_1',
+    name: 'Halo de Singularidad Cuántica',
+    rarity: 'MITICA',
+    icon: '🌌',
+    stats: { damageMult: 0.42, critChance: 0.32, fireRateMult: 0.24, maxHpBonus: 80 },
+    statsLabel: '+42% Daño, +32% Crít, +24% Cad, +80 HP',
+  },
+  {
+    id: 'mit_sing_2',
+    name: 'Visor Cibernético Emperador',
+    rarity: 'MITICA',
+    icon: '👁️',
+    stats: { speedMult: 0.34, fireRateMult: 0.34, critChance: 0.3, magnetBonus: 110 },
+    statsLabel: '+34% Vel, +34% Cad, +30% Crít, +110px Imán',
+  },
+  {
+    id: 'mit_sing_3',
+    name: 'Casco de Valkiria Astral',
+    rarity: 'MITICA',
+    icon: '🪽',
+    stats: { maxHpBonus: 165, damageMult: 0.38, speedMult: 0.25, critChance: 0.2 },
+    statsLabel: '+165 HP, +38% Daño, +25% Vel, +20% Crít',
+  },
+  {
+    id: 'mit_sing_4',
+    name: 'Máscara de Anubis Neón',
+    rarity: 'MITICA',
+    icon: '🐺',
+    stats: { damageMult: 0.46, critChance: 0.35, magnetBonus: 95 },
+    statsLabel: '+46% Daño, +35% Crítico, +95px Imán',
+  },
+  {
+    id: 'mit_sing_5',
+    name: 'Diadema del Arquitecto Matrix',
+    rarity: 'MITICA',
+    icon: '💠',
+    stats: { damageMult: 0.34, fireRateMult: 0.3, speedMult: 0.28, magnetBonus: 150 },
+    statsLabel: '+34% Daño, +30% Cad, +28% Vel, +150px Imán',
+  },
 ];
 
 export function getHatById(id: string | null | undefined): HatItem | null {
@@ -506,5 +546,32 @@ export function rollGachaHat(): HatItem {
   }
 
   const pool = HATS_DATABASE.filter((h) => h.rarity === selectedRarity);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/**
+ * Tirada del Cofre Especial "Bóveda de Singularidad" (600 CR):
+ * 0% Común, 0% Rara — Garantiza Épica (40%), Legendaria (42%) o Mítica (18%),
+ * priorizando sombreros que el jugador aún no tenga desbloqueados.
+ */
+export function rollSpecialGachaHat(unlockedHats?: Set<string>): HatItem {
+  const roll = Math.random() * 100;
+  let selectedRarity: HatRarity = 'EPICA';
+
+  if (roll < 18) {
+    selectedRarity = 'MITICA';
+  } else if (roll < 60) {
+    selectedRarity = 'LEGENDARIA';
+  } else {
+    selectedRarity = 'EPICA';
+  }
+
+  const pool = HATS_DATABASE.filter((h) => h.rarity === selectedRarity);
+  if (unlockedHats) {
+    const unowned = pool.filter((h) => !unlockedHats.has(h.id));
+    if (unowned.length > 0 && Math.random() < 0.75) {
+      return unowned[Math.floor(Math.random() * unowned.length)];
+    }
+  }
   return pool[Math.floor(Math.random() * pool.length)];
 }

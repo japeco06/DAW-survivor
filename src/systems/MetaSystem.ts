@@ -1,4 +1,11 @@
-import { HatItem, HATS_DATABASE, getHatById, rollGachaHat, RARITY_CONFIG } from './HatSystem';
+import {
+  HatItem,
+  HATS_DATABASE,
+  getHatById,
+  rollGachaHat,
+  rollSpecialGachaHat,
+  RARITY_CONFIG,
+} from './HatSystem';
 import { auth, db } from '../firebase';
 import {
   collection,
@@ -81,8 +88,8 @@ export const LAB_UPGRADES_CONFIG: Record<LabUpgradeId, LabUpgradeConfig> = {
     statPerLevel: '+8% HP Máx / nivel',
     statPerLevelEn: '+8% Max HP / level',
     color: '#10b981',
-    maxLevel: 5,
-    costs: [12, 24, 40, 60, 85],
+    maxLevel: 8,
+    costs: [60, 140, 260, 440, 720, 1100, 1650, 2400],
   },
   CPU_OVERCLOCK: {
     id: 'CPU_OVERCLOCK',
@@ -95,8 +102,8 @@ export const LAB_UPGRADES_CONFIG: Record<LabUpgradeId, LabUpgradeConfig> = {
     statPerLevel: '+6% Daño Global / nivel',
     statPerLevelEn: '+6% Global Dmg / level',
     color: '#f43f5e',
-    maxLevel: 5,
-    costs: [15, 28, 45, 68, 95],
+    maxLevel: 8,
+    costs: [75, 175, 320, 540, 860, 1300, 1950, 2800],
   },
   DATA_MAGNET: {
     id: 'DATA_MAGNET',
@@ -109,8 +116,8 @@ export const LAB_UPGRADES_CONFIG: Record<LabUpgradeId, LabUpgradeConfig> = {
     statPerLevel: '+15% Imán y +6% XP / nv',
     statPerLevelEn: '+15% Magnet & +6% XP / lv',
     color: '#38bdf8',
-    maxLevel: 5,
-    costs: [12, 22, 38, 58, 82],
+    maxLevel: 8,
+    costs: [55, 130, 240, 400, 660, 1020, 1540, 2250],
   },
   TURBO_SERVOS: {
     id: 'TURBO_SERVOS',
@@ -123,8 +130,8 @@ export const LAB_UPGRADES_CONFIG: Record<LabUpgradeId, LabUpgradeConfig> = {
     statPerLevel: '+4% Vel y +5% Cadencia / nv',
     statPerLevelEn: '+4% Spd & +5% ROF / lv',
     color: '#fb923c',
-    maxLevel: 5,
-    costs: [15, 28, 45, 68, 95],
+    maxLevel: 8,
+    costs: [70, 160, 300, 500, 800, 1220, 1820, 2600],
   },
   CRYPTO_MINING: {
     id: 'CRYPTO_MINING',
@@ -137,8 +144,8 @@ export const LAB_UPGRADES_CONFIG: Record<LabUpgradeId, LabUpgradeConfig> = {
     statPerLevel: '+2.5% Drop CR y -2 Bajas Ult / nv',
     statPerLevelEn: '+2.5% CR Drop & -2 Ult Kills / lv',
     color: '#fbbf24',
-    maxLevel: 5,
-    costs: [18, 32, 52, 76, 105],
+    maxLevel: 8,
+    costs: [85, 195, 360, 600, 950, 1450, 2150, 3100],
   },
   TACTICAL_DICE: {
     id: 'TACTICAL_DICE',
@@ -151,8 +158,8 @@ export const LAB_UPGRADES_CONFIG: Record<LabUpgradeId, LabUpgradeConfig> = {
     statPerLevel: '+1 Reroll y +15% Rescate / nv',
     statPerLevelEn: '+1 Reroll & +15% Revive / lv',
     color: '#c084fc',
-    maxLevel: 3,
-    costs: [25, 55, 95],
+    maxLevel: 5,
+    costs: [120, 280, 580, 1050, 1800],
   },
 };
 
@@ -205,7 +212,9 @@ interface SavedMetaState {
 export const STORAGE_KEY = 'daw_survivor_meta_v020';
 export const GACHA_PULL_SINGLE_COST = 20;
 export const GACHA_PULL_TEN_COST = 200;
+export const GACHA_PULL_SPECIAL_COST = 600;
 export const GACHA_DUPLICATE_REFUND = 10;
+export const GACHA_SPECIAL_DUPLICATE_REFUND = 180;
 
 export interface GachaPullEntry {
   hat: HatItem;
@@ -591,19 +600,29 @@ export class MetaSystem {
     };
   }
 
-  public pullGachaBatch(count: 1 | 10): {
+  public pullGachaBatch(mode: 1 | 10 | 'SPECIAL'): {
     success: boolean;
     results: GachaPullEntry[];
     totalRefunded: number;
     message: string;
   } {
-    const cost = count === 10 ? GACHA_PULL_TEN_COST : GACHA_PULL_SINGLE_COST;
+    const isSpecial = mode === 'SPECIAL';
+    const count = isSpecial ? 1 : mode;
+    const cost = isSpecial
+      ? GACHA_PULL_SPECIAL_COST
+      : count === 10
+      ? GACHA_PULL_TEN_COST
+      : GACHA_PULL_SINGLE_COST;
+    const dupRefund = isSpecial ? GACHA_SPECIAL_DUPLICATE_REFUND : GACHA_DUPLICATE_REFUND;
+
     if (this.coins < cost) {
       return {
         success: false,
         results: [],
         totalRefunded: 0,
-        message: `> ERROR: Necesitas ${cost} Criptomonedas para la Tirada x${count} (Tienes ${this.coins}).`,
+        message: isSpecial
+          ? `> ERROR: Necesitas ${cost} CR para la Bóveda de Singularidad VIP (Tienes ${this.coins} CR).`
+          : `> ERROR: Necesitas ${cost} Criptomonedas para la Tirada x${count} (Tienes ${this.coins}).`,
       };
     }
 
@@ -613,16 +632,16 @@ export class MetaSystem {
     let newCount = 0;
 
     for (let i = 0; i < count; i++) {
-      const hat = rollGachaHat();
+      const hat = isSpecial ? rollSpecialGachaHat(this.unlockedHats) : rollGachaHat();
       const alreadyOwned = this.unlockedHats.has(hat.id);
 
       if (alreadyOwned) {
-        this.coins += GACHA_DUPLICATE_REFUND;
-        totalRefunded += GACHA_DUPLICATE_REFUND;
+        this.coins += dupRefund;
+        totalRefunded += dupRefund;
         results.push({
           hat,
           isNew: false,
-          refundedCoins: GACHA_DUPLICATE_REFUND,
+          refundedCoins: dupRefund,
         });
       } else {
         this.unlockedHats.add(hat.id);
@@ -645,8 +664,10 @@ export class MetaSystem {
       const entry = results[0];
       const rarityLabel = RARITY_CONFIG[entry.hat.rarity].label.split(' ')[0];
       const statusText = entry.isNew
-        ? '¡NUEVO!'
-        : `Repetido: +${GACHA_DUPLICATE_REFUND} Monedas`;
+        ? isSpecial
+          ? '¡RELIQUIA DE SINGULARIDAD DESBLOQUEADA!'
+          : '¡NUEVO!'
+        : `Repetido: +${dupRefund} CR reembolsados`;
       return {
         success: true,
         results,

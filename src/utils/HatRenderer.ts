@@ -15,6 +15,7 @@ const FACE_HAT_IDS = new Set<string>([
   'mit_2',
   'mit_7',
   'mit_9',
+  'mit_sing_2',
 ]);
 
 const HELM_HAT_IDS = new Set<string>([
@@ -32,6 +33,8 @@ const HELM_HAT_IDS = new Set<string>([
   'mit_4',
   'mit_5',
   'mit_10',
+  'mit_sing_3',
+  'mit_sing_4',
 ]);
 
 /**
@@ -1285,6 +1288,125 @@ export class HatRenderer {
         ctx.beginPath();
         ctx.arc(0, -12.5, 1.8, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
+        break;
+
+      case 'mit_sing_1': // Halo de Singularidad Cuántica (Agujero negro orbital + anillos de fotones)
+        ctx.save();
+        ctx.translate(0, -5);
+        ctx.strokeStyle = '#f43f5e';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 14, 4.2, 0.15, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 11, 3, -0.2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#090d16';
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, -2, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        break;
+
+      case 'mit_sing_2': // Visor Cibernético Emperador
+        ctx.save();
+        ctx.fillStyle = 'rgba(244, 63, 94, 0.88)';
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-11, -3);
+        ctx.lineTo(11, -3);
+        ctx.lineTo(8.5, 3.5);
+        ctx.lineTo(0, 1.5);
+        ctx.lineTo(-8.5, 3.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-6, -1.5, 12, 1.6);
+        ctx.restore();
+        break;
+
+      case 'mit_sing_3': // Casco de Valkiria Astral (Casco dorado con alas de plasma)
+        ctx.save();
+        ctx.fillStyle = '#1e1b4b';
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, -1, 10.5, Math.PI, 0, false);
+        ctx.lineTo(10.5, 4);
+        ctx.lineTo(-10.5, 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#38bdf8';
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 1.3;
+        // Ala izquierda y derecha
+        ctx.beginPath();
+        ctx.moveTo(-10, -2);
+        ctx.lineTo(-18, -11);
+        ctx.lineTo(-13, 1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(10, -2);
+        ctx.lineTo(18, -11);
+        ctx.lineTo(13, 1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        break;
+
+      case 'mit_sing_4': // Máscara de Anubis Neón (Chacal egipcio cibernético negro y oro)
+        ctx.save();
+        ctx.fillStyle = '#090d16';
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1.5;
+        // Orejas puntiagudas altas
+        ctx.beginPath();
+        ctx.moveTo(-9, -2);
+        ctx.lineTo(-11, -15);
+        ctx.lineTo(-4, -5);
+        ctx.lineTo(4, -5);
+        ctx.lineTo(11, -15);
+        ctx.lineTo(9, -2);
+        ctx.lineTo(0, 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Ojos de energía esmeralda
+        ctx.fillStyle = '#10b981';
+        ctx.fillRect(-5.5, -2, 3.5, 2);
+        ctx.fillRect(2, -2, 3.5, 2);
+        ctx.restore();
+        break;
+
+      case 'mit_sing_5': // Diadema del Arquitecto Matrix (Corona flotante de rombos cuánticos)
+        ctx.save();
+        for (let i = -2; i <= 2; i++) {
+          const rx = i * 5.2;
+          const ry = -Math.abs(i) * 1.2 - 3;
+          ctx.fillStyle = i === 0 ? '#10b981' : '#38bdf8';
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.1;
+          ctx.beginPath();
+          ctx.moveTo(rx, ry - 4.5);
+          ctx.lineTo(rx + 3.2, ry);
+          ctx.lineTo(rx, ry + 4.5);
+          ctx.lineTo(rx - 3.2, ry);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
         ctx.restore();
         break;
 

@@ -53,6 +53,7 @@ import {
   NIGHTMARE_ENTRY_COST,
   GACHA_PULL_SINGLE_COST,
   GACHA_PULL_TEN_COST,
+  GACHA_PULL_SPECIAL_COST,
   GachaPullEntry,
   LeaderboardEntry,
 } from '../systems/MetaSystem';
@@ -2165,6 +2166,32 @@ export class Game {
           if (res.success) {
             this.sound.playCoinPickup();
             this.syncCoopLoadout();
+          }
+        } else if (
+          this.activeMenuTab === 'GACHA' &&
+          (key === '1' || key === '2' || key === '3')
+        ) {
+          const pullMode = key === '3' ? 'SPECIAL' : key === '2' ? 10 : 1;
+          const res = this.metaSystem.pullGachaBatch(pullMode);
+          this.menuFeedbackMessage = res.message;
+          if (res.success && res.results.length > 0) {
+            this.lastGachaResults = res.results;
+            this.gachaRevealTimer = 1.2;
+            this.sound.playCasinoWin(pullMode === 'SPECIAL');
+            this.achievementSystem.reportProgress(
+              'gacha_collector_20',
+              this.metaSystem.unlockedHats.size,
+              true
+            );
+            if (
+              res.results.some(
+                (r) => r.hat.rarity === 'MITICA' || r.hat.rarity === 'LEGENDARIA'
+              )
+            ) {
+              this.achievementSystem.reportProgress('gacha_mythic', 1, true);
+            }
+          } else {
+            this.sound.playExplosion(false);
           }
         } else if (
           this.activeMenuTab === 'LAB' &&
@@ -6430,26 +6457,29 @@ export class Game {
   }
 
   private getGachaPullButtonRects(): {
-    count: 1 | 10;
+    count: 1 | 10 | 'SPECIAL';
     cost: number;
     label: string;
+    sublabel?: string;
     x: number;
     y: number;
     width: number;
     height: number;
   }[] {
     const { py, leftCx } = this.getMenuLayout();
-    const btnW = 328;
-    const btnH = 46;
-    const gap = 20;
-    const startX = leftCx - btnW - gap / 2;
-    const y = py + 188;
+    const btnW = 236;
+    const btnH = 52;
+    const gap = 12;
+    const totalW = btnW * 3 + gap * 2;
+    const startX = leftCx - totalW / 2;
+    const y = py + 186;
 
     return [
       {
         count: 1,
         cost: GACHA_PULL_SINGLE_COST,
-        label: `[1x] ${i18n.t('COMPILAR COFRE', 'OPEN CHEST')} (${GACHA_PULL_SINGLE_COST} CR)`,
+        label: `[1x] ${i18n.t('COFRE ESTÁNDAR', 'STANDARD CHEST')} (${GACHA_PULL_SINGLE_COST} CR)`,
+        sublabel: i18n.t('40% Común • 1% Mítica', '40% Common • 1% Mythic'),
         x: startX,
         y,
         width: btnW,
@@ -6459,7 +6489,18 @@ export class Game {
         count: 10,
         cost: GACHA_PULL_TEN_COST,
         label: `[10x] ${i18n.t('LOTE OVERCLOCK', 'BATCH x10')} (${GACHA_PULL_TEN_COST} CR)`,
+        sublabel: i18n.t('10 Tiradas Simultáneas', '10 Simultaneous Rolls'),
         x: startX + btnW + gap,
+        y,
+        width: btnW,
+        height: btnH,
+      },
+      {
+        count: 'SPECIAL',
+        cost: GACHA_PULL_SPECIAL_COST,
+        label: `🌌 ${i18n.t('SINGULARIDAD VIP', 'VIP SINGULARITY')} (${GACHA_PULL_SPECIAL_COST} CR)`,
+        sublabel: i18n.t('★ 0% Común/Rara • 18% MÍTICA ★', '★ 0% Common/Rare • 18% MYTHIC ★'),
+        x: startX + (btnW + gap) * 2,
         y,
         width: btnW,
         height: btnH,
@@ -7647,9 +7688,9 @@ export class Game {
 
         // Rombos de nivel permanente
         for (let p = 0; p < cfg.maxLevel; p++) {
-          const pxPip = rect.x + 16 + p * 14;
+          const pxPip = rect.x + 15 + p * 12;
           const pyPip = rect.y + 52;
-          const r = 3.6;
+          const r = 3.2;
           this.ctx.beginPath();
           this.ctx.moveTo(pxPip, pyPip - r);
           this.ctx.lineTo(pxPip + r, pyPip);
@@ -7704,20 +7745,28 @@ export class Game {
     } else if (this.activeMenuTab === 'GACHA') {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = '#94a3b8';
-      this.ctx.font = `bold 12px ${FONT_MONO}`;
+      this.ctx.font = `bold 11.5px ${FONT_MONO}`;
       this.ctx.fillText(
         i18n.t(
-          'DROP: Común 40% | Rara 30% | Épica 20% | Legendaria 9% | Mítica 1%  (Duplicado: +10 CR)',
-          'ODDS: Common 40% | Rare 30% | Epic 20% | Legendary 9% | Mythic 1%  (Duplicate: +10 CR)'
+          'ESTÁNDAR: 40% Común | 30% Rara | 20% Épica | 9% Legend. | 1% Mítica   •   🌌 SINGULARIDAD (600 CR): 40% Épica | 42% Legend. | 18% Mítica',
+          'STANDARD: 40% Common | 30% Rare | 20% Epic | 9% Legend. | 1% Mythic   •   🌌 SINGULARITY (600 CR): 40% Epic | 42% Legend. | 18% Mythic'
         ),
         leftCx,
-        py + 166
+        py + 166,
+        740
       );
 
       for (const pullBtn of this.getGachaPullButtonRects()) {
         const canAfford = this.metaSystem.coins >= pullBtn.cost;
         const isTen = pullBtn.count === 10;
-        const strokeCol = canAfford ? (isTen ? '#fbbf24' : '#c084fc') : '#f43f5e';
+        const isSpecial = pullBtn.count === 'SPECIAL';
+        const strokeCol = canAfford
+          ? isSpecial
+            ? '#f43f5e'
+            : isTen
+            ? '#fbbf24'
+            : '#c084fc'
+          : '#64748b';
         this.drawCyberPanel(
           pullBtn.x,
           pullBtn.y,
@@ -7725,19 +7774,37 @@ export class Game {
           pullBtn.height,
           10,
           canAfford
-            ? isTen
+            ? isSpecial
+              ? 'rgba(88, 12, 36, 0.97)'
+              : isTen
               ? 'rgba(69, 36, 8, 0.95)'
               : 'rgba(46, 20, 82, 0.95)'
-            : 'rgba(34, 14, 24, 0.92)',
+            : 'rgba(24, 18, 28, 0.92)',
           strokeCol,
-          2.0,
+          isSpecial ? 2.4 : 2.0,
           strokeCol,
-          8
+          isSpecial && canAfford ? 12 : 6
         );
 
         this.ctx.fillStyle = canAfford ? '#f8fafc' : '#fca5a5';
-        this.ctx.font = `bold 14.5px ${FONT_DISPLAY}`;
-        this.ctx.fillText(pullBtn.label, pullBtn.x + pullBtn.width / 2, pullBtn.y + 28);
+        this.ctx.font = `bold 12px ${FONT_DISPLAY}`;
+        this.ctx.fillText(
+          pullBtn.label,
+          pullBtn.x + pullBtn.width / 2,
+          pullBtn.y + 22,
+          pullBtn.width - 14
+        );
+
+        if (pullBtn.sublabel) {
+          this.ctx.fillStyle = isSpecial ? '#fde047' : '#cbd5e1';
+          this.ctx.font = `bold 9.5px ${FONT_MONO}`;
+          this.ctx.fillText(
+            pullBtn.sublabel,
+            pullBtn.x + pullBtn.width / 2,
+            pullBtn.y + 40,
+            pullBtn.width - 14
+          );
+        }
       }
 
       if (this.lastGachaResults.length === 1) {
@@ -7782,7 +7849,10 @@ export class Game {
         this.ctx.fillText(
           entry.isNew
             ? i18n.t('¡NUEVO ACCESORIO DESBLOQUEADO!', 'NEW GEAR MODULE UNLOCKED!')
-            : i18n.t('Repetido: +10 CR reembolsados', 'Duplicate: +10 CR refunded'),
+            : i18n.t(
+                `Repetido: +${entry.refundedCoins || 10} CR reembolsados`,
+                `Duplicate: +${entry.refundedCoins || 10} CR refunded`
+              ),
           leftCx,
           ry + 158
         );
@@ -7870,33 +7940,33 @@ export class Game {
         );
 
         this.ctx.fillStyle = '#e2e8f0';
-        this.ctx.font = `13.5px ${FONT_DISPLAY}`;
+        this.ctx.font = `13px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t(
-            'Pulsa "Compilar Cofre (20 CR)" o "Lote x10 (200 CR)" para fabricar piezas.',
-            'Choose "Open Chest (20 CR)" or "Batch x10 (200 CR)" to fabricate gear.'
+            'Elige Cofre Estándar (20 CR), Lote x10 (200 CR) o la 🌌 Bóveda de Singularidad VIP (600 CR).',
+            'Choose Standard Chest (20 CR), Batch x10 (200 CR), or the 🌌 VIP Singularity Vault (600 CR).'
           ),
           leftCx,
-          ry + 84
+          ry + 82
         );
 
-        this.ctx.fillStyle = '#94a3b8';
-        this.ctx.font = `12.5px ${FONT_DISPLAY}`;
-        this.ctx.fillText(
-          i18n.t(
-            'Cada sombrero se acopla sobre el chasis y otorga bonificaciones permanentes.',
-            'Every headgear piece mounts directly onto your bot with permanent buffs.'
-          ),
-          leftCx,
-          ry + 114
-        );
-
-        this.ctx.fillStyle = '#fbbf24';
+        this.ctx.fillStyle = '#fde047';
         this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
         this.ctx.fillText(
           i18n.t(
-            'Los módulos repetidos devuelven +10 CR automáticamente.',
-            'Duplicate modules automatically refund +10 CR.'
+            '★ BÓVEDA SINGULARIDAD (600 CR): 0% Común y 0% Rara • 100% Épica/Legendaria/Mítica (18% Mítica + Prioridad Nuevos).',
+            '★ SINGULARITY VAULT (600 CR): 0% Common/Rare • 100% Epic/Legendary/Mythic (18% Mythic + Unowned Priority).'
+          ),
+          leftCx,
+          ry + 116
+        );
+
+        this.ctx.fillStyle = '#fbbf24';
+        this.ctx.font = `bold 12px ${FONT_DISPLAY}`;
+        this.ctx.fillText(
+          i18n.t(
+            'Duplicados devuelven +10 CR (Estándar) o +180 CR (Bóveda Singularidad VIP).',
+            'Duplicates refund +10 CR (Standard) or +180 CR (VIP Singularity Vault).'
           ),
           leftCx,
           ry + 152
