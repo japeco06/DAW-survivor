@@ -695,6 +695,19 @@ export class MetaSystem {
     };
   }
 
+  public unlockSpecificHat(hatId: string): boolean {
+    if (this.unlockedHats.has(hatId)) return false;
+    const hat = getHatById(hatId);
+    if (!hat) return false;
+    this.unlockedHats.add(hatId);
+    if (!this.equippedHatId) {
+      this.equippedHatId = hatId;
+    }
+    this.save();
+    void this.syncToCloud();
+    return true;
+  }
+
   public async loadFromCloud(uid: string): Promise<void> {
     try {
       const currentUser = auth.currentUser;

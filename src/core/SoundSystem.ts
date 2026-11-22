@@ -542,4 +542,77 @@ export class SoundSystem {
     osc.start();
     osc.stop(ctx.currentTime + 0.55);
   }
+
+  /**
+   * Impulso sónico de Dash táctico ([Shift]).
+   */
+  public playDash(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain || this.muted) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(680, now);
+    osc.frequency.exponentialRampToValueAtTime(190, now + 0.14);
+
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.002, now + 0.15);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start(now);
+    osc.stop(now + 0.155);
+  }
+
+  /**
+   * Clic mecánico/digital para rodillos de Cyber-Slots, Ruleta y Buscaminas.
+   */
+  public playCasinoTick(pitchMult: number = 1.0): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain || this.muted) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(Math.max(240, Math.min(2400, 880 * pitchMult)), now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(180, 440 * pitchMult), now + 0.035);
+
+    gain.gain.setValueAtTime(0.11, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start(now);
+    osc.stop(now + 0.045);
+  }
+
+  /**
+   * Fanfarria de premio de Cripto-Casino (cascada de monedas o Mega Jackpot).
+   */
+  public playCasinoWin(isJackpot: boolean = false): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain || this.muted) return;
+
+    const notes = isJackpot
+      ? [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98, 2093.0]
+      : [587.33, 739.99, 880.0, 1174.66];
+    notes.forEach((freq, idx) => {
+      const startTime = ctx.currentTime + idx * (isJackpot ? 0.065 : 0.055);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = isJackpot ? 'sawtooth' : 'triangle';
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      gain.gain.setValueAtTime(isJackpot ? 0.2 : 0.16, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + (isJackpot ? 0.28 : 0.18));
+
+      osc.connect(gain);
+      gain.connect(this.sfxGain!);
+      osc.start(startTime);
+      osc.stop(startTime + (isJackpot ? 0.29 : 0.19));
+    });
+  }
 }

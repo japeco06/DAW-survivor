@@ -378,11 +378,20 @@ export class MultiplayerClient {
     facingAngle: number,
     isMoving: boolean,
     seq: number,
-    ult: boolean = false
+    ult: boolean = false,
+    dash: boolean = false
   ): void {
     if (this.socket?.connected && this.room?.status === 'IN_GAME') {
-      if (ult) {
-        this.socket.emit('game:input', { moveX, moveY, facingAngle, isMoving, seq, ult: true });
+      if (ult || dash) {
+        this.socket.emit('game:input', {
+          moveX,
+          moveY,
+          facingAngle,
+          isMoving,
+          seq,
+          ult: ult || undefined,
+          dash: dash || undefined,
+        });
       } else {
         this.socket.volatile.emit('game:input', { moveX, moveY, facingAngle, isMoving, seq });
       }

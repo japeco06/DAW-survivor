@@ -57,6 +57,7 @@ export interface PeerInputPayload {
   isMoving: boolean;
   seq: number;
   ult?: boolean;
+  dash?: boolean;
 }
 
 export interface SnapshotPlayer {

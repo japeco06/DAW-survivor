@@ -40,6 +40,14 @@ export class Player extends Entity {
   public ultName: string = 'SOBRECARGA EMP';
   public ultNameEn: string = 'EMP OVERLOAD';
 
+  // Sistema de Dash Táctico ([Shift])
+  public dashCooldown: number = 0;
+  public dashMaxCooldown: number = 2.6;
+  public dashActiveTimer: number = 0;
+  public readonly dashDuration: number = 0.17;
+  private dashDirX: number = 1;
+  private dashDirY: number = 0;
+
   // Pasivas específicas por personaje
   public shieldReady: boolean = false;
   public shieldRechargeTimer: number = 0;
@@ -177,6 +185,14 @@ export class Player extends Entity {
       this.ultPulseTimer -= dt;
     }
 
+    if (this.dashCooldown > 0) {
+      this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    }
+    const isDashing = this.dashActiveTimer > 0;
+    if (isDashing) {
+      this.dashActiveTimer = Math.max(0, this.dashActiveTimer - dt);
+    }
+
     const activeUltRegen =
       this.ultActiveTimer > 0
         ? this.characterId === 'PROXY'
@@ -211,8 +227,8 @@ export class Player extends Entity {
     }
 
     const len = Math.hypot(dirX, dirY);
-    const nx = len > 1 ? dirX / len : dirX;
-    const ny = len > 1 ? dirY / len : dirY;
+    const nx = isDashing ? this.dashDirX : len > 1 ? dirX / len : dirX;
+    const ny = isDashing ? this.dashDirY : len > 1 ? dirY / len : dirY;
     const adrenalineSpeedMult = this.adrenalineTimer > 0 ? 1.25 : 1.0;
     const ultSpeedMult =
       this.ultActiveTimer > 0
@@ -226,20 +242,22 @@ export class Player extends Entity {
           ? 1.2
           : 1.12
         : 1.0;
-    const effectiveSpeed = Math.min(
+    const baseEffectiveSpeed = Math.min(
       680,
       this.speed * adrenalineSpeedMult * ultSpeedMult * this.speedBonusMultiplier * this.externalSpeedMultiplier
     );
-    this.isMoving = nx !== 0 || ny !== 0;
+    const effectiveSpeed = isDashing ? Math.min(1020, Math.max(760, baseEffectiveSpeed * 3.15)) : baseEffectiveSpeed;
+    this.isMoving = isDashing || nx !== 0 || ny !== 0;
 
     if (this.isMoving) {
       this.facingAngle = Math.atan2(ny, nx);
       if (!lightGraphics) {
         this.trailTimer += dt;
-        if (this.trailTimer >= 0.032) {
+        const trailStep = isDashing ? 0.014 : 0.032;
+        if (this.trailTimer >= trailStep) {
           this.trailTimer = 0;
-          this.motionTrail.push({ x: this.x, y: this.y, alpha: 0.42 });
-          if (this.motionTrail.length > 6) {
+          this.motionTrail.push({ x: this.x, y: this.y, alpha: isDashing ? 0.68 : 0.42 });
+          if (this.motionTrail.length > (isDashing ? 9 : 6)) {
             this.motionTrail.shift();
           }
         }
@@ -309,6 +327,31 @@ export class Player extends Entity {
 
   public canActivateUltimate(): boolean {
     return this.active && this.ultActiveTimer <= 0 && this.ultCharge >= this.ultMaxCharge;
+  }
+
+  public canDash(): boolean {
+    return this.active && this.dashCooldown <= 0 && this.dashActiveTimer <= 0;
+  }
+
+  public tryTriggerDash(dirX?: number, dirY?: number): boolean {
+    if (!this.canDash()) return false;
+    let dx = dirX ?? 0;
+    let dy = dirY ?? 0;
+    const len = Math.hypot(dx, dy);
+    if (len > 0.01) {
+      dx /= len;
+      dy /= len;
+    } else {
+      dx = Math.cos(this.facingAngle);
+      dy = Math.sin(this.facingAngle);
+    }
+    this.dashDirX = dx;
+    this.dashDirY = dy;
+    this.facingAngle = Math.atan2(dy, dx);
+    this.dashActiveTimer = this.dashDuration;
+    this.dashCooldown = this.dashMaxCooldown;
+    this.invulnerabilityTimer = Math.max(this.invulnerabilityTimer, 0.25);
+    return true;
   }
 
   public activateUltimate(): boolean {

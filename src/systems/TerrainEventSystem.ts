@@ -14,6 +14,8 @@ export type TerrainEventType =
   | 'CORRUPTED_VAULT'
   | 'DATA_STORM';
 
+export type HackDirection = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
+
 export interface TerrainNode {
   id: number;
   type: TerrainEventType;
@@ -26,12 +28,16 @@ export interface TerrainNode {
   active: boolean;
   detonated: boolean;
   pulsePhase: number;
+  hackSequence: HackDirection[];
+  hackStep: number;
+  hackBonusTriggered: boolean;
 }
 
 export interface TerrainUpdateResult {
   coolingActivated: boolean;
   empDetonation: { x: number; y: number; radius: number; damage: number } | null;
-  vaultReward: { x: number; y: number; coins: number; xp: number } | null;
+  vaultReward: { x: number; y: number; coins: number; xp: number; isCritHack?: boolean } | null;
+  hackCritCompleted: { x: number; y: number; type: TerrainEventType } | null;
   stormBlast: {
     x: number;
     y: number;
@@ -56,6 +62,85 @@ export class TerrainEventSystem {
     this.spawnRandomEventAround(playerX, playerY, 'COOLING_SERVER', 480, 760, worldEnv);
     this.spawnRandomEventAround(playerX, playerY, 'CORRUPTED_VAULT', 640, 980, worldEnv);
     this.spawnRandomEventAround(playerX, playerY, 'EMP_PYLON', 520, 860, worldEnv);
+  }
+
+  private generateHackSequence(): HackDirection[] {
+    const dirs: HackDirection[] = ['UP', 'RIGHT', 'DOWN', 'LEFT'];
+    return [
+      dirs[Math.floor(Math.random() * 4)],
+      dirs[Math.floor(Math.random() * 4)],
+      dirs[Math.floor(Math.random() * 4)],
+      dirs[Math.floor(Math.random() * 4)],
+    ];
+  }
+
+  public spawnArenaEvent(
+    canvasWidth: number,
+    canvasHeight: number,
+    forcedType?: TerrainEventType
+  ): void {
+    const margin = 170;
+    const x = margin + Math.random() * Math.max(200, canvasWidth - margin * 2);
+    const y = margin + Math.random() * Math.max(200, canvasHeight - margin * 2);
+    let type: TerrainEventType = forcedType ?? 'CORRUPTED_VAULT';
+    if (!forcedType) {
+      const r = Math.random();
+      type = r < 0.55 ? 'CORRUPTED_VAULT' : r < 0.8 ? 'COOLING_SERVER' : 'EMP_PYLON';
+    }
+    const config =
+      type === 'COOLING_SERVER'
+        ? { radius: 92, duration: 1.5, life: 45 }
+        : type === 'EMP_PYLON'
+        ? { radius: 84, duration: 0.75, life: 45 }
+        : { radius: 104, duration: 2.5, life: 55 };
+
+    this.nodes.push({
+      id: this.nextId++,
+      type,
+      x,
+      y,
+      radius: config.radius,
+      progress: 0,
+      duration: config.duration,
+      maxLifetime: config.life,
+      active: true,
+      detonated: false,
+      pulsePhase: Math.random() * Math.PI * 2,
+      hackSequence: this.generateHackSequence(),
+      hackStep: 0,
+      hackBonusTriggered: false,
+    });
+  }
+
+  public handleHackDirectionInput(
+    player: Player,
+    dir: HackDirection
+  ): { matched: boolean; completed: boolean; node: TerrainNode | null } {
+    let target: TerrainNode | null = null;
+    let bestDist = Infinity;
+    for (const node of this.nodes) {
+      if (!node.active || node.type === 'DATA_STORM' || node.hackBonusTriggered) continue;
+      const d = Math.hypot(player.x - node.x, player.y - node.y);
+      if (d <= node.radius + 95 && d < bestDist) {
+        bestDist = d;
+        target = node;
+      }
+    }
+    if (!target) return { matched: false, completed: false, node: null };
+
+    const expected = target.hackSequence[target.hackStep];
+    if (dir === expected) {
+      target.hackStep++;
+      if (target.hackStep >= target.hackSequence.length) {
+        target.hackBonusTriggered = true;
+        target.progress = target.duration;
+        return { matched: true, completed: true, node: target };
+      }
+      return { matched: true, completed: false, node: target };
+    } else {
+      target.hackStep = dir === target.hackSequence[0] ? 1 : 0;
+      return { matched: false, completed: false, node: target };
+    }
   }
 
   private spawnRandomEventAround(
@@ -106,6 +191,9 @@ export class TerrainEventSystem {
       active: true,
       detonated: false,
       pulsePhase: Math.random() * Math.PI * 2,
+      hackSequence: this.generateHackSequence(),
+      hackStep: 0,
+      hackBonusTriggered: false,
     });
   }
 
@@ -120,6 +208,7 @@ export class TerrainEventSystem {
       coolingActivated: false,
       empDetonation: null,
       vaultReward: null,
+      hackCritCompleted: null,
       stormBlast: null,
     };
 
@@ -207,25 +296,30 @@ export class TerrainEventSystem {
         continue;
       }
 
-      if (minDist <= node.radius) {
+      if (minDist <= node.radius || node.hackBonusTriggered) {
         node.progress += dt;
         if (node.progress >= node.duration) {
           node.active = false;
+          const critMult = node.hackBonusTriggered ? 3 : 1;
+          if (node.hackBonusTriggered) {
+            result.hackCritCompleted = { x: node.x, y: node.y, type: node.type };
+          }
           if (node.type === 'COOLING_SERVER') {
             result.coolingActivated = true;
           } else if (node.type === 'EMP_PYLON') {
             result.empDetonation = {
               x: node.x,
               y: node.y,
-              radius: 440,
-              damage: Math.round(170 * (1 + elapsedTime / 220)),
+              radius: node.hackBonusTriggered ? 560 : 440,
+              damage: Math.round(170 * critMult * (1 + elapsedTime / 220)),
             };
           } else if (node.type === 'CORRUPTED_VAULT') {
             result.vaultReward = {
               x: node.x,
               y: node.y,
-              coins: 10,
-              xp: 180,
+              coins: 10 * critMult,
+              xp: 180 * (node.hackBonusTriggered ? 2 : 1),
+              isCritHack: node.hackBonusTriggered,
             };
           }
         }
@@ -383,6 +477,54 @@ export class TerrainEventSystem {
       ctx.fillStyle = color;
       ctx.font = 'bold 11.5px "JetBrains Mono", Consolas, monospace';
       ctx.fillText(this.getLabelForType(node.type), 0, -node.radius - 10);
+
+      // Micro-Minijuego de Hackeo en Vivo (Secuencia de 4 Flechas tipo Helldivers)
+      if (node.type !== 'DATA_STORM' && !node.hackBonusTriggered && node.hackSequence.length > 0) {
+        const barW = 148;
+        const barH = 34;
+        const bx = -barW / 2;
+        const by = -node.radius - 52;
+
+        ctx.fillStyle = 'rgba(7, 13, 25, 0.94)';
+        ctx.strokeStyle = node.hackStep > 0 ? '#10b981' : color;
+        ctx.lineWidth = 1.6;
+        ctx.fillRect(bx, by, barW, barH);
+        ctx.strokeRect(bx, by, barW, barH);
+
+        ctx.fillStyle = '#fde047';
+        ctx.font = 'bold 8.5px "JetBrains Mono", Consolas, monospace';
+        ctx.fillText('⚡ HACKEO CRÍTICO (x3) [FLECHAS]', 0, by - 4);
+
+        const arrowGlyph: Record<HackDirection, string> = {
+          UP: '▲',
+          DOWN: '▼',
+          LEFT: '◄',
+          RIGHT: '►',
+        };
+        for (let i = 0; i < node.hackSequence.length; i++) {
+          const dir = node.hackSequence[i];
+          const ax = bx + 20 + i * 36;
+          const ay = by + 17;
+          const done = i < node.hackStep;
+          const current = i === node.hackStep;
+
+          ctx.fillStyle = done
+            ? 'rgba(16, 185, 129, 0.92)'
+            : current
+            ? 'rgba(251, 191, 36, 0.25)'
+            : 'rgba(15, 23, 42, 0.9)';
+          ctx.strokeStyle = done ? '#10b981' : current ? '#fbbf24' : '#475569';
+          ctx.lineWidth = current ? 1.8 : 1.1;
+          ctx.fillRect(ax - 13, ay - 11, 26, 22);
+          ctx.strokeRect(ax - 13, ay - 11, 26, 22);
+
+          ctx.fillStyle = done ? '#ffffff' : current ? '#fef08a' : '#94a3b8';
+          ctx.font = 'bold 13px "JetBrains Mono", Consolas, monospace';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(arrowGlyph[dir], ax, ay + 1);
+        }
+        ctx.textBaseline = 'alphabetic';
+      }
 
       ctx.restore();
     }

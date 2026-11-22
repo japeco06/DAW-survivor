@@ -365,6 +365,7 @@ io.on('connection', (socket) => {
       isMoving: Boolean(payload?.isMoving),
       seq,
       ult: Boolean(payload?.ult),
+      dash: Boolean(payload?.dash),
     });
   });
 

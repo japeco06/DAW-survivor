@@ -474,6 +474,14 @@ export const HATS_DATABASE: HatItem[] = [
     stats: { damageMult: 0.38, critChance: 0.28, fireRateMult: 0.2 },
     statsLabel: '+38% Daño, +28% Crítico, +20% Cadencia',
   },
+  {
+    id: 'mit_casino',
+    name: 'Corona de Cripto-Magnate VIP',
+    rarity: 'MITICA',
+    icon: '👑',
+    stats: { damageMult: 0.36, critChance: 0.3, speedMult: 0.22, magnetBonus: 120 },
+    statsLabel: '+36% Daño, +30% Crít, +22% Vel, +120px Imán',
+  },
 ];
 
 export function getHatById(id: string | null | undefined): HatItem | null {

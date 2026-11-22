@@ -21,8 +21,9 @@ import { UpgradeSystem } from '../systems/UpgradeSystem';
 import { ParticleSystem } from '../systems/ParticleSystem';
 import { AchievementSystem } from '../systems/AchievementSystem';
 import { DailyMissionSystem } from '../systems/DailyMissionSystem';
-import { TerrainEventSystem } from '../systems/TerrainEventSystem';
+import { TerrainEventSystem, HackDirection } from '../systems/TerrainEventSystem';
 import { WorldEnvironment } from '../systems/WorldEnvironment';
+import { CasinoSystem } from '../systems/CasinoSystem';
 import { MultiplayerClient } from '../network/MultiplayerClient';
 import { CoopLobbyUI, CoopButtonAction } from '../network/CoopLobbyUI';
 import { CoopRenderer, encodeEnemyType } from '../network/CoopRenderer';
@@ -68,8 +69,17 @@ import {
 } from 'firebase/auth';
 
 type GameState = 'MENU' | 'PLAYING' | 'GAMEOVER';
-type MenuTab = 'SHOP' | 'LAB' | 'GACHA' | 'INVENTORY';
+type MenuTab = 'SHOP' | 'LAB' | 'GACHA' | 'INVENTORY' | 'CASINO' | 'MINIGAMES';
+type MinigameMode = 'NONE' | 'BULL_ARENA' | 'BOSS_RUSH' | 'CORE_DEFENSE' | 'VAULT_BLITZ';
 type LeaderboardCategory = 'TORO_DAMAGE' | 'SURVIVAL_TIME';
+
+interface CoreDefenseTurret {
+  x: number;
+  y: number;
+  angle: number;
+  fireTimer: number;
+  level: number;
+}
 
 interface CardRect {
   index: number;
@@ -120,7 +130,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.7.0';
+const GAME_VERSION = 'v1.8.0';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v1';
@@ -196,8 +206,27 @@ export class Game {
   private hoveredDailyMissionsBtn: boolean = false;
   private showDailyMissionsOverlay: boolean = false;
   private hoveredRerollBtn: boolean = false;
-  private hoveredInGameBtn: 'PAUSE' | 'MUTE' | 'ULT' | null = null;
+  private hoveredInGameBtn: 'PAUSE' | 'MUTE' | 'ULT' | 'DASH' | 'TURRET' | null = null;
   private hoveredGameOverBtn: 'RETRY' | 'MENU' | null = null;
+  private casinoSystem: CasinoSystem;
+  private activeMinigame: MinigameMode = 'NONE';
+  private hoveredMinigameCard: Exclude<MinigameMode, 'NONE'> | null = null;
+  private minigameVictory: boolean = false;
+  // Estado de Minijuegos de Acción
+  private bullArenaNextSpawnTime: number = 15;
+  private bullArenaPassiveRewardTimer: number = 5;
+  private bullArenaOleCount: number = 0;
+  private bullLastOleTime: Map<ElToroBoss, number> = new Map();
+  private bossRushRound: number = 1;
+  private coreDefenseHp: number = 2500;
+  private coreDefenseMaxHp: number = 2500;
+  private coreDefenseWave: number = 1;
+  private coreDefenseWaveTimer: number = 0;
+  private coreDefenseData: number = 45;
+  private coreDefenseTurrets: CoreDefenseTurret[] = [];
+  private vaultBlitzTimeLeft: number = 60;
+  private vaultBlitzVaultsCracked: number = 0;
+  private classicVaultSpawnTimer: number = 12;
   private runRevivesDone: number = 0;
   private runTimesDowned: number = 0;
   private coopGameOverSquad: CoopSquadMvpEntry[] = [];
@@ -307,6 +336,7 @@ export class Game {
     };
     this.terrainEvents = new TerrainEventSystem();
     this.worldEnv = new WorldEnvironment();
+    this.casinoSystem = new CasinoSystem();
     this.mpClient = new MultiplayerClient();
     this.setupMultiplayerHandlers();
 
@@ -669,6 +699,10 @@ export class Game {
       if (Math.hypot(inp.moveX, inp.moveY) > 0.05) {
         peer.player.facingAngle = inp.facingAngle;
       }
+      if (inp.dash && !peer.downed && peer.player.tryTriggerDash(inp.moveX, inp.moveY)) {
+        this.sound.playDash();
+        this.particleSystem.spawnExplosion(peer.player.x, peer.player.y, '#38bdf8', 14, false);
+      }
       if (inp.ult && !peer.downed && peer.player.activateUltimate()) {
         const uName = i18n.currentLang === 'EN' ? peer.player.ultNameEn : peer.player.ultName;
         this.sound.playAchievement();
@@ -1019,6 +1053,11 @@ export class Game {
     this.thermalOverclockTimer = 0;
     this.finalBoss = null;
     this.isPaused = false;
+    this.activeMinigame = 'NONE';
+    this.minigameVictory = false;
+    this.coreDefenseTurrets = [];
+    this.bullLastOleTime.clear();
+    this.classicVaultSpawnTimer = 10;
     this.hoveredPauseAction = null;
     this.hoveredGameOverBtn = null;
     this.runRevivesDone = 0;
@@ -1733,6 +1772,160 @@ export class Game {
     return true;
   }
 
+  private tryTriggerPlayerDash(): boolean {
+    if (
+      this.gameState !== 'PLAYING' ||
+      this.isPaused ||
+      this.coopWaitingUpgrade ||
+      this.upgradeSystem.isChoosingUpgrade() ||
+      this.coopSelfDowned
+    ) {
+      return false;
+    }
+
+    const dir = this.input.getDirection();
+    if (!this.player.tryTriggerDash(dir.x, dir.y)) return false;
+
+    this.sound.playDash();
+    this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#38bdf8', 18, false);
+    this.particleSystem.spawnFloatingText(
+      this.player.x,
+      this.player.y - 28,
+      '💨 DASH!',
+      '#38bdf8',
+      1.05
+    );
+
+    if (this.isCoopMode && !this.isCoopHost) {
+      const nextSeq = ++this.coopInputSeq;
+      this.mpClient.sendInput(
+        dir.x,
+        dir.y,
+        this.player.facingAngle,
+        dir.x !== 0 || dir.y !== 0,
+        nextSeq,
+        false,
+        true
+      );
+    }
+    return true;
+  }
+
+  private tryDeployCoreTurret(): boolean {
+    if (
+      this.gameState !== 'PLAYING' ||
+      this.activeMinigame !== 'CORE_DEFENSE' ||
+      this.isPaused ||
+      this.upgradeSystem.isChoosingUpgrade()
+    ) {
+      return false;
+    }
+    const cost = 15;
+    if (this.coreDefenseData < cost) {
+      this.sound.playExplosion(false);
+      this.showStatusToast(
+        i18n.t(
+          `⚠️ DATOS INSUFICIENTES (${this.coreDefenseData}/15 DATOS). ELIMINA ENEMIGOS PARA OBTENER DATOS.`,
+          `⚠️ INSUFFICIENT DATA (${this.coreDefenseData}/15 DATA). KILL ENEMIES TO GAIN DATA.`
+        ),
+        '#f43f5e',
+        1800
+      );
+      return false;
+    }
+
+    this.coreDefenseData -= cost;
+    this.sound.playAchievement();
+    if (this.coreDefenseTurrets.length >= 6) {
+      // Si ya hay 6 torretas, repara el Núcleo Maestro +350 HP y mejora el nivel de todas las torretas
+      this.coreDefenseHp = Math.min(this.coreDefenseMaxHp, this.coreDefenseHp + 350);
+      for (const t of this.coreDefenseTurrets) {
+        t.level = Math.min(5, t.level + 1);
+      }
+      this.particleSystem.spawnExplosion(LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2, '#10b981', 30, true);
+      this.showStatusToast(
+        i18n.t('🛡️ ¡NÚCLEO REPARADO (+350 HP) Y TORRETAS MEJORADAS!', '🛡️ CORE REPAIRED (+350 HP) & TURRETS UPGRADED!'),
+        '#10b981',
+        2200
+      );
+      return true;
+    }
+
+    let tx = this.player.x;
+    let ty = this.player.y;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const tooClose = this.coreDefenseTurrets.some((other) => Math.hypot(other.x - tx, other.y - ty) < 46);
+      if (!tooClose) break;
+      const ang = (this.coreDefenseTurrets.length + attempt) * (Math.PI / 3);
+      tx = this.player.x + Math.cos(ang) * 52;
+      ty = this.player.y + Math.sin(ang) * 52;
+    }
+
+    this.coreDefenseTurrets.push({
+      x: tx,
+      y: ty,
+      angle: this.player.facingAngle,
+      fireTimer: 0.1,
+      level: 1,
+    });
+    this.particleSystem.spawnExplosion(tx, ty, '#38bdf8', 24, true);
+    this.particleSystem.spawnFloatingText(
+      tx,
+      ty - 32,
+      `🔫 TORRETA #${this.coreDefenseTurrets.length}/6 DESPLEGADA`,
+      '#38bdf8',
+      1.2
+    );
+    return true;
+  }
+
+  private tryHandleLiveHackInput(dir: HackDirection): boolean {
+    if (
+      this.gameState !== 'PLAYING' ||
+      this.isPaused ||
+      this.upgradeSystem.isChoosingUpgrade() ||
+      (this.isCoopMode && !this.isCoopHost)
+    ) {
+      return false;
+    }
+    const res = this.terrainEvents.handleHackDirectionInput(this.player, dir);
+    if (!res.node) return false;
+
+    if (res.completed) {
+      this.sound.playCasinoWin(true);
+      this.player.dashCooldown = 0; // Recarga instantánea del Dash al completar Hackeo Crítico
+      this.particleSystem.spawnExplosion(res.node.x, res.node.y, '#10b981', 36, true);
+      this.particleSystem.spawnFloatingText(
+        res.node.x,
+        res.node.y - 45,
+        i18n.t('⚡ ¡HACKEO CRÍTICO (x3 BOTÍN + EMP)!', '⚡ CRITICAL HACK (3x LOOT + EMP)!'),
+        '#10b981',
+        1.45
+      );
+      const killed = this.terrainEvents.applyAreaBlast(
+        this.enemies,
+        res.node.x,
+        res.node.y,
+        290,
+        165,
+        2.2
+      );
+      for (const k of killed) {
+        this.spawnCodeFragment(k.x, k.y, k.xpValue);
+        this.killCount++;
+      }
+      return true;
+    }
+
+    if (res.matched) {
+      this.sound.playCasinoTick(1.15 + res.node.hackStep * 0.14);
+      return true;
+    } else {
+      this.sound.playExplosion(false);
+      return true;
+    }
+  }
+
   private showStatusToast(text: string, color: string = '#38bdf8', durationMs: number = 2100): void {
     this.statusToastText = text;
     this.statusToastColor = color;
@@ -1908,6 +2101,12 @@ export class Game {
         } else if (key === 'i') {
           this.activeMenuTab = 'INVENTORY';
           this.inventoryPage = 0;
+        } else if (key === 'c') {
+          this.activeMenuTab = 'CASINO';
+          this.sound.playCoinPickup();
+        } else if (key === 'j') {
+          this.activeMenuTab = 'MINIGAMES';
+          this.sound.playCoinPickup();
         } else if (key === 'k') {
           this.openCoopModal();
           this.sound.playCoinPickup();
@@ -1931,6 +2130,35 @@ export class Game {
           this.selectedGameMode =
             this.selectedGameMode === 'CLASSIC' ? 'NIGHTMARE' : 'CLASSIC';
           this.sound.playShoot(false);
+        } else if (this.activeMenuTab === 'CASINO') {
+          if (key === '1') {
+            this.casinoSystem.activeGame = 'SLOTS';
+            this.sound.playCasinoTick(1.1);
+          } else if (key === '2') {
+            this.casinoSystem.activeGame = 'CRASH';
+            this.sound.playCasinoTick(1.1);
+          } else if (key === '3') {
+            this.casinoSystem.activeGame = 'MINES';
+            this.sound.playCasinoTick(1.1);
+          } else if (key === '4') {
+            this.casinoSystem.activeGame = 'WHEEL';
+            this.sound.playCasinoTick(1.1);
+          } else if (key === ' ' || key === 'enter') {
+            e.preventDefault();
+            this.casinoSystem.triggerPrimaryAction(this.metaSystem, this.sound);
+          }
+        } else if (this.activeMenuTab === 'MINIGAMES') {
+          if (key === '1') {
+            this.startMinigameRun('BULL_ARENA');
+          } else if (key === '2') {
+            this.startMinigameRun('BOSS_RUSH');
+          } else if (key === '3') {
+            this.startMinigameRun('CORE_DEFENSE');
+          } else if (key === '4') {
+            this.startMinigameRun('VAULT_BLITZ');
+          } else if (key === 'enter' || key === ' ') {
+            this.startMinigameRun('BULL_ARENA');
+          }
         } else if (this.activeMenuTab === 'SHOP' && keyMap[key]) {
           const res = this.metaSystem.selectOrBuyCharacter(keyMap[key]);
           this.menuFeedbackMessage = res.message;
@@ -1960,6 +2188,8 @@ export class Game {
         if (key === 'r' || key === 'enter' || key === ' ') {
           if (this.isCoopMode) {
             if (this.isCoopHost) this.mpClient.sendReturnToLobby();
+          } else if (this.activeMinigame !== 'NONE') {
+            this.startMinigameRun(this.activeMinigame);
           } else {
             this.startNewRun();
           }
@@ -2023,6 +2253,44 @@ export class Game {
         return;
       }
 
+      if (
+        this.gameState === 'PLAYING' &&
+        !this.upgradeSystem.isChoosingUpgrade() &&
+        key === 'shift'
+      ) {
+        e.preventDefault();
+        this.tryTriggerPlayerDash();
+        return;
+      }
+
+      if (
+        this.gameState === 'PLAYING' &&
+        !this.upgradeSystem.isChoosingUpgrade() &&
+        key === 't' &&
+        this.activeMinigame === 'CORE_DEFENSE'
+      ) {
+        e.preventDefault();
+        this.tryDeployCoreTurret();
+        return;
+      }
+
+      if (
+        this.gameState === 'PLAYING' &&
+        !this.upgradeSystem.isChoosingUpgrade() &&
+        (key === 'arrowup' || key === 'arrowdown' || key === 'arrowleft' || key === 'arrowright')
+      ) {
+        const dirMap: Record<string, HackDirection> = {
+          arrowup: 'UP',
+          arrowdown: 'DOWN',
+          arrowleft: 'LEFT',
+          arrowright: 'RIGHT',
+        };
+        if (this.tryHandleLiveHackInput(dirMap[key])) {
+          e.preventDefault();
+          return;
+        }
+      }
+
       if (key === 'h') {
         if (this.gameState === 'PLAYING') {
           this.showAttackRange = !this.showAttackRange;
@@ -2042,6 +2310,7 @@ export class Game {
         this.hoveredLabId = null;
         this.hoveredHatId = null;
         this.hoveredModeBtn = null;
+        this.hoveredMinigameCard = null;
 
         if (this.showLeaderboardOverlay) {
           this.hoveredLeaderboardTab = null;
@@ -2165,6 +2434,13 @@ export class Game {
               break;
             }
           }
+        } else if (this.activeMenuTab === 'MINIGAMES') {
+          for (const mgCard of this.getMinigameCardRects()) {
+            if (this.isPointInRect(mx, my, mgCard)) {
+              this.hoveredMinigameCard = mgCard.mode;
+              break;
+            }
+          }
         }
         return;
       }
@@ -2196,6 +2472,16 @@ export class Game {
             this.isPointInRect(mx, my, this.getInGameUltBarRect())
           ) {
             this.hoveredInGameBtn = 'ULT';
+          } else if (
+            this.player.canDash() &&
+            this.isPointInRect(mx, my, this.getInGameDashBarRect())
+          ) {
+            this.hoveredInGameBtn = 'DASH';
+          } else if (
+            this.activeMinigame === 'CORE_DEFENSE' &&
+            this.isPointInRect(mx, my, this.getInGameTurretButtonRect())
+          ) {
+            this.hoveredInGameBtn = 'TURRET';
           } else {
             this.hoveredInGameBtn = null;
           }
@@ -2605,23 +2891,36 @@ export class Game {
             return;
           }
         }
+      } else if (this.activeMenuTab === 'CASINO') {
+        if (this.casinoSystem.handleClick(mx, my, this.getMenuLayout(), this.metaSystem, this.sound)) {
+          return;
+        }
+      } else if (this.activeMenuTab === 'MINIGAMES') {
+        for (const mgCard of this.getMinigameCardRects()) {
+          if (this.isPointInRect(mx, my, mgCard)) {
+            this.startMinigameRun(mgCard.mode);
+            return;
+          }
+        }
       }
 
-      for (const mBtn of this.getGameModeButtonRects()) {
-        if (this.isPointInRect(mx, my, mBtn)) {
-          this.selectedGameMode = mBtn.mode;
-          this.menuFeedbackMessage =
-            mBtn.mode === 'NIGHTMARE'
-              ? i18n.t(
-                  `Modo Pesadilla seleccionado: Mapa Infinito, Eventos y x2 Cripto (Coste: ${NIGHTMARE_ENTRY_COST} CR).`,
-                  `Nightmare Mode selected: Infinite Map, Events & 2x Crypto (Cost: ${NIGHTMARE_ENTRY_COST} CR).`
-                )
-              : i18n.t(
-                  'Modo Clásico seleccionado: Arena estándar gratuita 1920x1080.',
-                  'Classic Mode selected: Free standard 1920x1080 arena.'
-                );
-          this.sound.playShoot(false);
-          return;
+      if (this.activeMenuTab !== 'CASINO' && this.activeMenuTab !== 'MINIGAMES') {
+        for (const mBtn of this.getGameModeButtonRects()) {
+          if (this.isPointInRect(mx, my, mBtn)) {
+            this.selectedGameMode = mBtn.mode;
+            this.menuFeedbackMessage =
+              mBtn.mode === 'NIGHTMARE'
+                ? i18n.t(
+                    `Modo Pesadilla seleccionado: Mapa Infinito, Eventos y x2 Cripto (Coste: ${NIGHTMARE_ENTRY_COST} CR).`,
+                    `Nightmare Mode selected: Infinite Map, Events & 2x Crypto (Cost: ${NIGHTMARE_ENTRY_COST} CR).`
+                  )
+                : i18n.t(
+                    'Modo Clásico seleccionado: Arena estándar gratuita 1920x1080.',
+                    'Classic Mode selected: Free standard 1920x1080 arena.'
+                  );
+            this.sound.playShoot(false);
+            return;
+          }
         }
       }
 
@@ -2674,6 +2973,8 @@ export class Game {
             if (this.isCoopMode) {
               if (this.isCoopHost) this.mpClient.sendReturnToLobby();
               else this.exitToMainMenu();
+            } else if (this.activeMinigame !== 'NONE') {
+              this.startMinigameRun(this.activeMinigame);
             } else {
               this.startNewRun();
             }
@@ -2700,6 +3001,20 @@ export class Game {
         this.isPointInRect(mx, my, this.getInGameUltBarRect())
       ) {
         this.tryTriggerPlayerUltimate();
+        return;
+      }
+      if (
+        this.player.canDash() &&
+        this.isPointInRect(mx, my, this.getInGameDashBarRect())
+      ) {
+        this.tryTriggerPlayerDash();
+        return;
+      }
+      if (
+        this.activeMinigame === 'CORE_DEFENSE' &&
+        this.isPointInRect(mx, my, this.getInGameTurretButtonRect())
+      ) {
+        this.tryDeployCoreTurret();
         return;
       }
       return;
@@ -2763,6 +3078,10 @@ export class Game {
     this.input.clearTouch();
     this.isPaused = false;
     this.isNightmareRun = false;
+    this.activeMinigame = 'NONE';
+    this.minigameVictory = false;
+    this.coreDefenseTurrets = [];
+    this.bullLastOleTime.clear();
     this.hoveredPauseAction = null;
     this.hoveredCardIndex = -1;
     this.enemies = [];
@@ -2848,6 +3167,11 @@ export class Game {
     this.thermalOverclockTimer = 0;
     this.finalBoss = null;
     this.isPaused = false;
+    this.activeMinigame = 'NONE';
+    this.minigameVictory = false;
+    this.coreDefenseTurrets = [];
+    this.bullLastOleTime.clear();
+    this.classicVaultSpawnTimer = 10;
     this.hoveredPauseAction = null;
     this.hoveredGameOverBtn = null;
     this.runRevivesDone = 0;
@@ -2873,6 +3197,9 @@ export class Game {
     );
     if (this.isNightmareRun) {
       this.terrainEvents.reset(this.player.x, this.player.y, this.worldEnv);
+    } else {
+      this.terrainEvents.nodes = [];
+      this.terrainEvents.spawnArenaEvent(LOGICAL_WIDTH, LOGICAL_HEIGHT, 'CORRUPTED_VAULT');
     }
     this.particleSystem.clear();
     this.elapsedTime = 0;
@@ -2893,6 +3220,424 @@ export class Game {
       `[000.0s] > DEPLOYED: ${profile.name} [${this.isNightmareRun ? 'PESADILLA x2 CR' : 'CLÁSICO'}]`,
       `[000.0s] > Passive: ${i18n.currentLang === 'EN' ? profile.passiveNameEn : profile.passiveName}`,
     ];
+  }
+
+  private startMinigameRun(mode: Exclude<MinigameMode, 'NONE'>): void {
+    this.isNightmareRun = false;
+    this.isCoopMode = false;
+    this.isCoopHost = false;
+    this.activeMinigame = mode;
+    this.minigameVictory = false;
+    this.input.clearTouch();
+
+    const profile = this.metaSystem.getSelectedProfile();
+    this.player = new Player(
+      LOGICAL_WIDTH / 2,
+      mode === 'CORE_DEFENSE' ? LOGICAL_HEIGHT / 2 + 125 : LOGICAL_HEIGHT / 2,
+      profile,
+      this.metaSystem.getEquippedHat()
+    );
+    this.enemies = [];
+    this.projectiles = [];
+    this.pingProjectiles = [];
+    this.quarantineZones = [];
+    this.codeFragments = [];
+    this.cryptoCoins = [];
+    this.powerUps = [];
+    this.terrainEvents.nodes = [];
+    this.systemFreezeTimer = 0;
+    this.thermalOverclockTimer = 0;
+    this.finalBoss = null;
+    this.isPaused = false;
+    this.hoveredPauseAction = null;
+    this.hoveredGameOverBtn = null;
+    this.combatSystem = new CombatSystem();
+    if (profile.id === 'KERNEL_X') {
+      this.combatSystem.multiShotCount += 1;
+    }
+    this.upgradeSystem = new UpgradeSystem();
+    this.spawner = new Spawner();
+    this.spawner.isNightmareMode = false;
+    this.spawner.isInfiniteMap = false;
+    this.worldEnv.reset(Math.floor(Math.random() * 0xffffffff) >>> 0, false);
+    this.particleSystem.clear();
+    this.elapsedTime = 0;
+    this.killCount = 0;
+    this.lastOverclockTier = 0;
+    this.runCoinsCollected = 0;
+    this.runDamageToToro = 0;
+    this.runBossesKilled = 0;
+    this.runTotalDamageDealt = 0;
+    this.hoveredCardIndex = -1;
+    this.hoveredRerollBtn = false;
+    this.damageVignetteAlpha = 0;
+    this.coreDefenseTurrets = [];
+    this.bullLastOleTime.clear();
+
+    if (mode === 'BULL_ARENA') {
+      this.player.dashMaxCooldown = 1.45;
+      this.player.speed = Math.round(this.player.speed * 1.16);
+      this.bullArenaNextSpawnTime = 15;
+      this.bullArenaPassiveRewardTimer = 5;
+      this.bullArenaOleCount = 0;
+      const firstBull = new ElToroBoss(LOGICAL_WIDTH / 2, 140);
+      this.finalBoss = firstBull;
+      this.enemies.push(firstBull);
+      this.sound.setTrack('FINAL_BOSS');
+      this.showStatusToast(
+        i18n.t(
+          '🐂 EL RUEDO CYBER: ¡SIN ARMAS! ESQUIVA CON [SHIFT] DASH PARA HACER "¡OLÉ!" (+25 CR)',
+          '🐂 CYBER BULLRING: NO WEAPONS! DODGE WITH [SHIFT] DASH FOR "¡OLÉ!" (+25 CR)'
+        ),
+        '#fbbf24',
+        3600
+      );
+    } else if (mode === 'BOSS_RUSH') {
+      this.bossRushRound = 1;
+      this.upgradeSystem.level = 10;
+      this.combatSystem.multiShotCount += 2;
+      this.combatSystem.projectileDamage += 18;
+      this.combatSystem.fireCooldown = Math.max(0.18, this.combatSystem.fireCooldown * 0.72);
+      this.combatSystem.pingTrackerLevel = 2;
+      this.combatSystem.firewallPulseLevel = 1;
+      this.upgradeSystem.addXp(this.upgradeSystem.xpToNextLevel, this.player);
+      const r1Boss = new RansomwareBoss(LOGICAL_WIDTH / 2, 150, 1.15);
+      this.enemies.push(r1Boss);
+      this.sound.setTrack('BOSS');
+      this.showStatusToast(
+        i18n.t(
+          '⚔️ COLISEO BOSS RUSH — RONDA 1/5: RANSOMWARE JUGGERNAUT',
+          '⚔️ BOSS RUSH COLISEUM — ROUND 1/5: RANSOMWARE JUGGERNAUT'
+        ),
+        '#f43f5e',
+        3200
+      );
+    } else if (mode === 'CORE_DEFENSE') {
+      this.coreDefenseMaxHp = 2500;
+      this.coreDefenseHp = 2500;
+      this.coreDefenseWave = 1;
+      this.coreDefenseWaveTimer = 0;
+      this.coreDefenseData = 45;
+      this.spawner.spawnOpeningWave(this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, 0, 0, this.worldEnv);
+      this.sound.setTrack('INGAME');
+      this.showStatusToast(
+        i18n.t(
+          '🛡️ DEFENSA DEL NÚCLEO: PROTEGE EL SERVIDOR CENTRAL • PULSA [T] PARA DESPLEGAR TORRETAS',
+          '🛡️ CORE DEFENSE: PROTECT THE MASTER SERVER • PRESS [T] TO DEPLOY TURRETS'
+        ),
+        '#38bdf8',
+        3600
+      );
+    } else if (mode === 'VAULT_BLITZ') {
+      this.vaultBlitzTimeLeft = 60.0;
+      this.vaultBlitzVaultsCracked = 0;
+      this.player.speed = Math.round(this.player.speed * 1.45);
+      this.player.pickupRadius += 95;
+      for (let i = 0; i < 3; i++) {
+        this.terrainEvents.spawnArenaEvent(LOGICAL_WIDTH, LOGICAL_HEIGHT, 'CORRUPTED_VAULT');
+      }
+      this.enemies.push(new CryptoMiner(360, 260));
+      this.enemies.push(new CryptoMiner(LOGICAL_WIDTH - 360, LOGICAL_HEIGHT - 260));
+      this.spawner.spawnOpeningWave(this.enemies, LOGICAL_WIDTH, LOGICAL_HEIGHT, 0, 0, this.worldEnv);
+      this.sound.setTrack('INGAME');
+      this.showStatusToast(
+        i18n.t(
+          '🏁 ATRACO RELÁMPAGO (60s): HACKEA BÓVEDAS CON [FLECHAS ↑↓←→] PARA x3 CR Y +6s EXTRA',
+          '🏁 VAULT BLITZ (60s): HACK VAULTS WITH [ARROWS ↑↓←→] FOR 3x CR & +6s TIME'
+        ),
+        '#10b981',
+        3600
+      );
+    }
+
+    this.gameState = 'PLAYING';
+    this.lastTime = performance.now();
+    this.sound.playAchievement();
+    this.terminalLogs = [
+      `[000.0s] > MINIGAME LAUNCHED: ${mode} (${profile.name})`,
+      `[000.0s] > [SHIFT] Tactical Dash & [ARROWS] Live Hack ONLINE.`,
+    ];
+  }
+
+  private updateMinigameRuntime(dt: number): void {
+    if (this.activeMinigame === 'BULL_ARENA') {
+      this.bullArenaPassiveRewardTimer -= dt;
+      if (this.bullArenaPassiveRewardTimer <= 0) {
+        this.bullArenaPassiveRewardTimer = 5.0;
+        this.runCoinsCollected += 5;
+        this.metaSystem.addCoins(5);
+        this.particleSystem.spawnFloatingText(
+          this.player.x,
+          this.player.y - 24,
+          '+5 CR (SUPERVIVENCIA)',
+          '#6ee7b7',
+          1.0
+        );
+      }
+
+      if (this.elapsedTime >= this.bullArenaNextSpawnTime && this.enemies.length < 5) {
+        this.bullArenaNextSpawnTime += 15;
+        const corners = [
+          { x: 140, y: 140 },
+          { x: LOGICAL_WIDTH - 140, y: 140 },
+          { x: 140, y: LOGICAL_HEIGHT - 140 },
+          { x: LOGICAL_WIDTH - 140, y: LOGICAL_HEIGHT - 140 },
+        ];
+        const pick = corners[this.enemies.length % corners.length];
+        const nextBull = new ElToroBoss(pick.x, pick.y);
+        this.enemies.push(nextBull);
+        this.runCoinsCollected += 15;
+        this.metaSystem.addCoins(15);
+        this.sound.playBossAlert();
+        this.particleSystem.spawnExplosion(pick.x, pick.y, '#f43f5e', 45, true);
+        this.showStatusToast(
+          i18n.t(
+            `🐂 ¡TORO #${this.enemies.length} SALTA AL RUEDO! (+15 CR BONUS)`,
+            `🐂 BULL #${this.enemies.length} ENTERS THE RING! (+15 CR BONUS)`
+          ),
+          '#f43f5e',
+          2600
+        );
+      }
+
+      for (const e of this.enemies) {
+        if (!(e instanceof ElToroBoss) || !e.active) continue;
+        const dist = Math.hypot(e.x - this.player.x, e.y - this.player.y);
+        const hitDist = (e.size + this.player.size) * 0.42;
+        const lastOle = this.bullLastOleTime.get(e) ?? -10;
+
+        if (dist <= hitDist) {
+          if (this.player.dashActiveTimer > 0) {
+            if (this.elapsedTime - lastOle >= 1.4) {
+              this.bullLastOleTime.set(e, this.elapsedTime);
+              this.bullArenaOleCount++;
+              this.runCoinsCollected += 25;
+              this.metaSystem.addCoins(25);
+              this.player.addUltCharge(6);
+              this.sound.playCasinoWin(false);
+              this.particleSystem.spawnFloatingText(
+                this.player.x,
+                this.player.y - 38,
+                '🐂 ¡OLÉ! CAPOTAZO +25 CR',
+                '#fbbf24',
+                1.4
+              );
+            }
+          } else if (this.player.takeDamage(28)) {
+            this.damageVignetteAlpha = 0.7;
+            this.particleSystem.triggerShake(10, 0.25);
+            this.sound.playExplosion(false);
+            if (!this.player.active || this.player.hp <= 0) {
+              this.triggerGameOverSequence();
+              return;
+            }
+          }
+        } else if (
+          dist <= 118 &&
+          (e.state === 'DASH' || this.player.dashActiveTimer > 0) &&
+          this.elapsedTime - lastOle >= 1.5
+        ) {
+          this.bullLastOleTime.set(e, this.elapsedTime);
+          this.bullArenaOleCount++;
+          this.runCoinsCollected += 25;
+          this.metaSystem.addCoins(25);
+          this.player.addUltCharge(5);
+          this.sound.playCasinoWin(false);
+          this.particleSystem.spawnFloatingText(
+            this.player.x,
+            this.player.y - 38,
+            '🐂 ¡OLÉ! CAPOTAZO +25 CR',
+            '#fbbf24',
+            1.38
+          );
+        }
+      }
+      return;
+    }
+
+    if (this.activeMinigame === 'BOSS_RUSH') {
+      const bossAlive = this.enemies.some(
+        (e) => e.active && (e.malwareType === 'RANSOMWARE' || e.malwareType === 'FINAL_BOSS')
+      );
+      if (!bossAlive) {
+        const roundCoins = this.bossRushRound * 45;
+        this.runCoinsCollected += roundCoins;
+        this.metaSystem.addCoins(roundCoins);
+        this.runBossesKilled++;
+        this.sound.playAchievement();
+
+        if (this.bossRushRound >= 5) {
+          this.runCoinsCollected += 150;
+          this.metaSystem.addCoins(150);
+          this.minigameVictory = true;
+          this.showStatusToast(
+            i18n.t(
+              '🏆 ¡COLISEO BOSS RUSH COMPLETADO! (+150 CR BOTE CAMPEÓN)',
+              '🏆 BOSS RUSH COLISEUM CLEARED! (+150 CR CHAMPION POT)'
+            ),
+            '#fbbf24',
+            3800
+          );
+          this.triggerGameOverSequence();
+          return;
+        }
+
+        this.bossRushRound++;
+        this.player.heal(Math.round(this.player.maxHp * 0.4));
+        this.upgradeSystem.addXp(this.upgradeSystem.xpToNextLevel, this.player);
+
+        if (this.bossRushRound === 2) {
+          this.enemies.push(new WormPrimeBoss(LOGICAL_WIDTH / 2, 150, 1.35));
+        } else if (this.bossRushRound === 3) {
+          this.enemies.push(new SpywareSpecterBoss(LOGICAL_WIDTH / 2, 150, 1.55));
+        } else if (this.bossRushRound === 4) {
+          this.enemies.push(new RootkitTitanBoss(LOGICAL_WIDTH / 2, 150, 1.8));
+        } else if (this.bossRushRound === 5) {
+          this.enemies.push(
+            new RansomwareBoss(380, 160, 2.0),
+            new RootkitTitanBoss(LOGICAL_WIDTH - 380, 160, 2.0)
+          );
+        }
+
+        this.showStatusToast(
+          i18n.t(
+            `⚔️ ¡RONDA ${this.bossRushRound}/5 DEL COLISEO! (+${roundCoins} CR +40% HP)`,
+            `⚔️ COLISEUM ROUND ${this.bossRushRound}/5! (+${roundCoins} CR +40% HP)`
+          ),
+          '#fbbf24',
+          3000
+        );
+      }
+      return;
+    }
+
+    if (this.activeMinigame === 'CORE_DEFENSE') {
+      const cx = LOGICAL_WIDTH / 2;
+      const cy = LOGICAL_HEIGHT / 2;
+
+      for (const e of this.enemies) {
+        if (!e.active || e.malwareType === 'HARDWARE_BOX') continue;
+        const dCore = Math.hypot(e.x - cx, e.y - cy);
+        const dPlayer = Math.hypot(e.x - this.player.x, e.y - this.player.y);
+        if (dCore < dPlayer * 1.35 && dCore > 48) {
+          const ang = Math.atan2(cy - e.y, cx - e.x);
+          e.x += Math.cos(ang) * e.speed * 0.45 * dt;
+          e.y += Math.sin(ang) * e.speed * 0.45 * dt;
+        }
+        if (dCore <= 56 + e.size * 0.42) {
+          this.coreDefenseHp = Math.max(0, this.coreDefenseHp - 26 * dt);
+          const pushAng = Math.atan2(e.y - cy, e.x - cx);
+          e.x = cx + Math.cos(pushAng) * (58 + e.size * 0.42);
+          e.y = cy + Math.sin(pushAng) * (58 + e.size * 0.42);
+        }
+      }
+
+      if (this.coreDefenseHp <= 0) {
+        this.sound.playExplosion(true);
+        this.showStatusToast(
+          i18n.t('💥 ¡EL NÚCLEO MAESTRO HA CAÍDO!', '💥 THE MASTER CORE HAS FALLEN!'),
+          '#f43f5e',
+          3200
+        );
+        this.triggerGameOverSequence();
+        return;
+      }
+
+      // Actualizar torretas desplegadas ([T])
+      for (const t of this.coreDefenseTurrets) {
+        t.fireTimer -= dt;
+        let nearest: Adware | null = null;
+        let bestD = 440;
+        for (const e of this.enemies) {
+          if (!e.active) continue;
+          const d = Math.hypot(e.x - t.x, e.y - t.y);
+          if (d < bestD) {
+            bestD = d;
+            nearest = e;
+          }
+        }
+        if (nearest) {
+          t.angle = Math.atan2(nearest.y - t.y, nearest.x - t.x);
+          if (t.fireTimer <= 0) {
+            t.fireTimer = Math.max(0.16, 0.36 - (t.level - 1) * 0.04);
+            this.projectiles.push(
+              new Projectile(
+                t.x,
+                t.y,
+                Math.cos(t.angle),
+                Math.sin(t.angle),
+                620,
+                30 + t.level * 10,
+                t.level >= 3 ? 1 : 0,
+                t.level >= 3
+              )
+            );
+          }
+        }
+      }
+
+      this.coreDefenseWaveTimer += dt;
+      if (this.coreDefenseWaveTimer >= 24) {
+        this.coreDefenseWaveTimer = 0;
+        if (this.coreDefenseWave >= 5) {
+          this.runCoinsCollected += 180;
+          this.metaSystem.addCoins(180);
+          this.minigameVictory = true;
+          this.showStatusToast(
+            i18n.t(
+              '🏆 ¡5 OLEADAS SUPERADAS! NÚCLEO DEFENDIDO (+180 CR BONUS)',
+              '🏆 5 WAVES SURVIVED! CORE DEFENDED (+180 CR BONUS)'
+            ),
+            '#10b981',
+            3800
+          );
+          this.triggerGameOverSequence();
+          return;
+        }
+        this.coreDefenseWave++;
+        this.runCoinsCollected += 35;
+        this.metaSystem.addCoins(35);
+        this.coreDefenseData += 15;
+        this.sound.playAchievement();
+        this.showStatusToast(
+          i18n.t(
+            `🛡️ OLEADA DE ASEDIO ${this.coreDefenseWave}/5 (+35 CR +15 DATOS)`,
+            `🛡️ SIEGE WAVE ${this.coreDefenseWave}/5 (+35 CR +15 DATA)`
+          ),
+          '#38bdf8',
+          2600
+        );
+      }
+      return;
+    }
+
+    if (this.activeMinigame === 'VAULT_BLITZ') {
+      this.vaultBlitzTimeLeft = Math.max(0, this.vaultBlitzTimeLeft - dt);
+      let vaultCount = 0;
+      for (const n of this.terrainEvents.nodes) {
+        if (n.active && n.type === 'CORRUPTED_VAULT') vaultCount++;
+      }
+      while (vaultCount < 3) {
+        this.terrainEvents.spawnArenaEvent(LOGICAL_WIDTH, LOGICAL_HEIGHT, 'CORRUPTED_VAULT');
+        vaultCount++;
+      }
+
+      if (this.vaultBlitzTimeLeft <= 0) {
+        this.minigameVictory = true;
+        this.runCoinsCollected += 40;
+        this.metaSystem.addCoins(40);
+        this.sound.playCasinoWin(true);
+        this.showStatusToast(
+          i18n.t(
+            '🏁 ¡EXTRACCIÓN DE ATRACO COMPLETADA (+40 CR BONUS)!',
+            '🏁 HEIST EXTRACTION COMPLETE (+40 CR BONUS)!'
+          ),
+          '#10b981',
+          3800
+        );
+        this.triggerGameOverSequence();
+      }
+    }
   }
 
   /**
@@ -2966,6 +3711,11 @@ export class Game {
 
     if (this.damageVignetteAlpha > 0) {
       this.damageVignetteAlpha = Math.max(0, this.damageVignetteAlpha - dt * 1.8);
+    }
+
+    if (this.gameState === 'MENU') {
+      this.casinoSystem.update(dt, this.metaSystem, this.sound);
+      return;
     }
 
     if (this.gameState !== 'PLAYING') {
@@ -3218,8 +3968,18 @@ export class Game {
       }
     };
 
-    // Eventos de terreno en Modo Pesadilla
-    if (this.isNightmareRun) {
+    // Eventos de terreno y Hackeo en Vivo (Pesadilla, Clásico y Atraco Relámpago)
+    if (!this.isNightmareRun && !this.isCoopMode && this.activeMinigame === 'NONE') {
+      this.classicVaultSpawnTimer -= dt;
+      if (this.classicVaultSpawnTimer <= 0) {
+        this.classicVaultSpawnTimer = 22;
+        if (this.terrainEvents.nodes.length < 2) {
+          this.terrainEvents.spawnArenaEvent(LOGICAL_WIDTH, LOGICAL_HEIGHT);
+        }
+      }
+    }
+
+    if (this.isNightmareRun || this.terrainEvents.nodes.length > 0) {
       const tRes = this.terrainEvents.update(
         dt,
         this.player,
@@ -3272,7 +4032,9 @@ export class Game {
         const v = tRes.vaultReward;
         this.sound.playAchievement();
         this.particleSystem.spawnExplosion(v.x, v.y, '#fbbf24', 36, true);
-        for (let c = 0; c < v.coins; c++) {
+        const totalVaultCoins =
+          this.activeMinigame === 'VAULT_BLITZ' ? v.coins + 18 : v.coins;
+        for (let c = 0; c < totalVaultCoins; c++) {
           this.spawnCryptoCoin(
             v.x + (Math.random() - 0.5) * 80,
             v.y + (Math.random() - 0.5) * 80,
@@ -3286,13 +4048,30 @@ export class Game {
             Math.round(v.xp / 4)
           );
         }
-        this.particleSystem.spawnFloatingText(
-          v.x,
-          v.y - 26,
-          i18n.t('₿ ¡BÓVEDA CRIPTO CONQUISTADA!', '₿ CRYPTO VAULT CAPTURED!'),
-          '#fbbf24',
-          1.35
-        );
+        if (this.activeMinigame === 'VAULT_BLITZ') {
+          this.vaultBlitzVaultsCracked++;
+          this.vaultBlitzTimeLeft += 6.0;
+          this.particleSystem.spawnFloatingText(
+            v.x,
+            v.y - 26,
+            i18n.t(
+              `🏁 ¡BÓVEDA ROBADA (+${totalVaultCoins} CR Y +6.0s EXTRA)!`,
+              `🏁 VAULT CRACKED (+${totalVaultCoins} CR & +6.0s TIME)!`
+            ),
+            '#10b981',
+            1.4
+          );
+        } else {
+          this.particleSystem.spawnFloatingText(
+            v.x,
+            v.y - 26,
+            v.isCritHack
+              ? i18n.t('⚡ ¡BÓVEDA HACKEADA CRÍTICA (x3 CR)!', '⚡ CRITICAL VAULT HACK (3x CR)!')
+              : i18n.t('₿ ¡BÓVEDA CRIPTO CONQUISTADA!', '₿ CRYPTO VAULT CAPTURED!'),
+            '#fbbf24',
+            1.35
+          );
+        }
         this.addTerminalLog('TERRAIN: Corrupted Vault captured! Bonus CryptoCoins & XP!');
       }
       if (tRes.stormBlast) {
@@ -3330,11 +4109,17 @@ export class Game {
 
     // Comprobar llegada del Jefe Final ("El Toro") a los ~11-12 minutos (700s)
     if (
+      this.activeMinigame === 'NONE' &&
       this.elapsedTime >= FINAL_BOSS_ARRIVAL_TIME &&
       !this.spawner.finalBossMode &&
       !this.finalBoss
     ) {
       this.triggerFinalBossArrival();
+    }
+
+    if (this.activeMinigame !== 'NONE') {
+      this.updateMinigameRuntime(dt);
+      if (this.gameState !== 'PLAYING') return;
     }
 
     const prevThreat = this.spawner.currentThreatLevel;
@@ -3405,18 +4190,20 @@ export class Game {
     }
 
     this.spawner.coopPlayerCount = this.isCoopMode ? Math.max(1, 1 + this.coopPeers.size) : 1;
-    this.spawner.update(
-      dt,
-      this.elapsedTime,
-      this.upgradeSystem.level,
-      this.enemies,
-      LOGICAL_WIDTH,
-      LOGICAL_HEIGHT,
-      activeCam.x,
-      activeCam.y,
-      aliveOrigins,
-      this.worldEnv
-    );
+    if (this.activeMinigame !== 'BULL_ARENA' && this.activeMinigame !== 'BOSS_RUSH') {
+      this.spawner.update(
+        dt,
+        this.elapsedTime,
+        this.upgradeSystem.level,
+        this.enemies,
+        LOGICAL_WIDTH,
+        LOGICAL_HEIGHT,
+        activeCam.x,
+        activeCam.y,
+        aliveOrigins,
+        this.worldEnv
+      );
+    }
 
     if (this.spawner.currentThreatLevel > prevThreat) {
       this.addTerminalLog(`WARNING: Threat Level escalated to LVL ${this.spawner.currentThreatLevel}`);
@@ -3554,21 +4341,38 @@ export class Game {
       this.player.critChance = 1.0;
     }
 
-    const combatEvents = this.combatSystem.update(
-      dt,
-      this.player,
-      this.enemies,
-      this.projectiles,
-      this.pingProjectiles,
-      this.quarantineZones,
-      LOGICAL_WIDTH,
-      LOGICAL_HEIGHT,
-      activeCam.x,
-      activeCam.y,
-      this.worldEnv,
-      true,
-      allAlivePlayers
-    );
+    const combatEvents =
+      this.activeMinigame === 'BULL_ARENA'
+        ? {
+            enemiesKilled: 0,
+            playerHit: false,
+            peerPlayersHit: [] as Player[],
+            shotsFired: 0,
+            homingShotsFired: 0,
+            vampirismHeals: 0,
+            droneExploded: false,
+            shieldBlocked: false,
+            dodgedHit: false,
+            surgeTriggered: false,
+            destroyedEnemies: [] as any[],
+            damagedEnemies: [] as any[],
+            wallImpacts: [] as any[],
+          }
+        : this.combatSystem.update(
+            dt,
+            this.player,
+            this.enemies,
+            this.projectiles,
+            this.pingProjectiles,
+            this.quarantineZones,
+            LOGICAL_WIDTH,
+            LOGICAL_HEIGHT,
+            activeCam.x,
+            activeCam.y,
+            this.worldEnv,
+            true,
+            allAlivePlayers
+          );
 
     if (combatEvents.peerPlayersHit && combatEvents.peerPlayersHit.length > 0) {
       for (const hitPeerPlayer of combatEvents.peerPlayersHit) {
@@ -3581,7 +4385,7 @@ export class Game {
       }
     }
 
-    if (this.player.companion && this.player.active) {
+    if (this.player.companion && this.player.active && this.activeMinigame !== 'BULL_ARENA') {
       const isK9Hyper = this.player.ultActiveTimer > 0 && this.player.characterId === 'MORCILLITA';
       const savedDmgMult = this.player.damageMultiplier;
       if (isK9Hyper) {
@@ -3759,6 +4563,9 @@ export class Game {
     const prevKillCount = this.killCount;
     this.killCount += combatEvents.enemiesKilled;
     if (combatEvents.enemiesKilled > 0) {
+      if (this.activeMinigame === 'CORE_DEFENSE') {
+        this.coreDefenseData += combatEvents.enemiesKilled * 3;
+      }
       this.dailyMissions.reportProgress('KILLS', combatEvents.enemiesKilled);
       if (this.isNightmareRun) {
         this.dailyMissions.reportProgress('NIGHTMARE_KILLS', combatEvents.enemiesKilled);
@@ -4554,8 +5361,12 @@ export class Game {
           this.worldEnv
         );
       } else {
-        if (this.isNightmareRun) {
+        if (this.isNightmareRun || this.terrainEvents.nodes.length > 0) {
           this.terrainEvents.draw(this.ctx);
+        }
+
+        if (this.activeMinigame === 'CORE_DEFENSE') {
+          this.drawCoreDefenseWorldEntities();
         }
 
         for (const zone of this.quarantineZones) {
@@ -4938,7 +5749,14 @@ export class Game {
     this.ctx.font = `bold 13.5px ${FONT_MONO}`;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
-    let curY = this.gameState === 'MENU' ? 84 : 62;
+    let curY =
+      this.gameState === 'MENU'
+        ? 84
+        : this.activeMinigame === 'CORE_DEFENSE'
+        ? 126
+        : this.activeMinigame !== 'NONE'
+        ? 92
+        : 62;
     const pillH = 26;
 
     for (const b of banners) {
@@ -5306,10 +6124,10 @@ export class Game {
     height: number;
   }[] {
     const { py, leftCx } = this.getMenuLayout();
-    const tabW = 180;
+    const tabW = 120;
     const tabH = 38;
-    const gap = 12;
-    const totalW = tabW * 4 + gap * 3;
+    const gap = 7;
+    const totalW = tabW * 6 + gap * 5;
     const startX = leftCx - totalW / 2;
     const y = py + 104;
 
@@ -5324,7 +6142,7 @@ export class Game {
       },
       {
         tab: 'LAB',
-        label: `[U] ${i18n.t('LABORATORIO', 'KERNEL LAB')}`,
+        label: `[U] ${i18n.t('LAB', 'LAB')}`,
         x: startX + tabW + gap,
         y,
         width: tabW,
@@ -5340,13 +6158,117 @@ export class Game {
       },
       {
         tab: 'INVENTORY',
-        label: `[I] ${i18n.t('SOMBREROS', 'HATS')} (${this.metaSystem.unlockedHats.size}/${HATS_DATABASE.length})`,
+        label: `[I] ${i18n.t('GORROS', 'HATS')} (${this.metaSystem.unlockedHats.size})`,
         x: startX + (tabW + gap) * 3,
         y,
         width: tabW,
         height: tabH,
       },
+      {
+        tab: 'CASINO',
+        label: `[C] 🎰 CASINO`,
+        x: startX + (tabW + gap) * 4,
+        y,
+        width: tabW,
+        height: tabH,
+      },
+      {
+        tab: 'MINIGAMES',
+        label: `[J] 🕹️ ${i18n.t('MINIJUEGOS', 'ARCADE')}`,
+        x: startX + (tabW + gap) * 5,
+        y,
+        width: tabW,
+        height: tabH,
+      },
     ];
+  }
+
+  private getMinigameCardRects(): {
+    mode: Exclude<MinigameMode, 'NONE'>;
+    title: string;
+    subtitle: string;
+    desc: string;
+    rewardText: string;
+    color: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const { py, leftCx } = this.getMenuLayout();
+    const cardW = 368;
+    const cardH = 148;
+    const gapX = 16;
+    const gapY = 12;
+    const totalW = cardW * 2 + gapX;
+    const startX = leftCx - totalW / 2;
+    const startY = py + 154;
+
+    const defs: {
+      mode: Exclude<MinigameMode, 'NONE'>;
+      title: string;
+      subtitle: string;
+      desc: string;
+      rewardText: string;
+      color: string;
+    }[] = [
+      {
+        mode: 'BULL_ARENA',
+        title: i18n.t('[1] 🐂 EL RUEDO CYBER', '[1] 🐂 CYBER BULLRING'),
+        subtitle: i18n.t('SUPERVIVENCIA SIN ARMAS • DASH 1.4s', 'NO-WEAPON SURVIVAL • 1.4s DASH'),
+        desc: i18n.t(
+          'Entras sin armas a una plaza cerrada. Cada 15s salta otro Toro más al ruedo. Esquiva rozando sus embestidas con [Shift] Dash para hacer "¡OLÉ!".',
+          'Enter a closed ring with no weapons. Every 15s another Bull joins. Dodge charges closely with [Shift] Dash for "¡OLÉ!".'
+        ),
+        rewardText: i18n.t('★ +25 CR por Capotazo "¡OLÉ!" + 5 CR/5s', '★ +25 CR per "¡OLÉ!" Dodge + 5 CR/5s'),
+        color: '#f43f5e',
+      },
+      {
+        mode: 'BOSS_RUSH',
+        title: i18n.t('[2] ⚔️ COLISEO BOSS RUSH', '[2] ⚔️ BOSS RUSH COLISEUM'),
+        subtitle: i18n.t('EMPIEZAS A NIVEL 10 • 5 RONDAS DE JEFES', 'START AT LVL 10 • 5 BOSS ROUNDS'),
+        desc: i18n.t(
+          'Despliega directamente con arsenal de Nivel 10 y enfréntate a 5 rondas consecutivas de Jefes de Élite sin hordas pequeñas.',
+          'Deploy directly at Level 10 and fight 5 consecutive Elite Boss rounds without filler hordes.'
+        ),
+        rewardText: i18n.t('★ Hasta +825 CR por completar las 5 Rondas', '★ Up to +825 CR for clearing all 5 Rounds'),
+        color: '#fbbf24',
+      },
+      {
+        mode: 'CORE_DEFENSE',
+        title: i18n.t('[3] 🛡️ DEFENSA DEL NÚCLEO', '[3] 🛡️ CORE DEFENSE (TD)'),
+        subtitle: i18n.t('TOWER DEFENSE TÁCTICO • 5 OLEADAS', 'TACTICAL TOWER DEFENSE • 5 WAVES'),
+        desc: i18n.t(
+          'Protege el Servidor Maestro central (2500 HP). Usa los Datos de las bajas para construir hasta 6 Torretas Láser con la tecla [T].',
+          'Protect the central Master Server (2500 HP). Spend kill Data to deploy up to 6 Laser Turrets with key [T].'
+        ),
+        rewardText: i18n.t('★ +35 CR/Oleada + 180 CR Bonus Victoria', '★ +35 CR/Wave + 180 CR Victory Bonus'),
+        color: '#38bdf8',
+      },
+      {
+        mode: 'VAULT_BLITZ',
+        title: i18n.t('[4] 🏁 ATRACO RELÁMPAGO', '[4] 🏁 VAULT BLITZ (60s)'),
+        subtitle: i18n.t('CAZA-BÓVEDAS 60s • VELOCIDAD +45%', '60s VAULT HEIST • +45% SPEED'),
+        desc: i18n.t(
+          'Tienes 60 segundos y botas turbo. Hackea las Bóvedas Doradas con las Flechas [↑↓←→] para triplicar el botín (x3 CR) y ganar +6s extra.',
+          'You have 60 seconds and turbo boots. Hack Golden Vaults with Arrow Keys [↑↓←→] for 3x CR and +6s extra time.'
+        ),
+        rewardText: i18n.t('★ Te llevas el 100% de CR robados + 40 CR', '★ Keep 100% of looted CR + 40 CR'),
+        color: '#10b981',
+      },
+    ];
+
+    return defs.map((d, idx) => {
+      const col = idx % 2;
+      const row = Math.floor(idx / 2);
+      return {
+        ...d,
+        x: startX + col * (cardW + gapX),
+        y: startY + row * (cardH + gapY),
+        width: cardW,
+        height: cardH,
+      };
+    });
   }
 
   private getMenuLabRects(): {
@@ -5378,12 +6300,30 @@ export class Game {
     });
   }
 
-  private getInGameUltBarRect(): { x: number; y: number; width: number; height: number } {
+  private getInGameDashBarRect(): { x: number; y: number; width: number; height: number } {
     return {
       x: 30,
       y: 91,
-      width: 328,
+      width: 108,
       height: 20,
+    };
+  }
+
+  private getInGameUltBarRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 144,
+      y: 91,
+      width: 214,
+      height: 20,
+    };
+  }
+
+  private getInGameTurretButtonRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: LOGICAL_WIDTH / 2 - 190,
+      y: 92,
+      width: 380,
+      height: 28,
     };
   }
 
@@ -6503,28 +7443,50 @@ export class Game {
     this.ctx.fillStyle = 'rgba(56, 189, 248, 0.16)';
     this.ctx.fillRect(px + 26, py + 88, panelW - 52, 1);
 
-    // Bahía derecha fija con el Bot + Sombrero vectorial en vivo
-    this.drawLiveHangarBay(bayX, bayY, bayW, bayH);
+    // Bahía derecha fija con el Bot + Sombrero vectorial en vivo (en Casino se reemplaza por la Bahía VIP del Casino)
+    if (this.activeMenuTab !== 'CASINO') {
+      this.drawLiveHangarBay(bayX, bayY, bayW, bayH);
+    }
 
-    // Barra de pestañas de consola izquierda ([Q] | [G] | [I])
+    // Barra de pestañas de consola izquierda ([Q] | [U] | [G] | [I] | [C] | [J])
     for (const tabRect of this.getMenuTabRects()) {
       const isActive = this.activeMenuTab === tabRect.tab;
+      const isCasinoTab = tabRect.tab === 'CASINO';
+      const isMinigamesTab = tabRect.tab === 'MINIGAMES';
+      const activeStroke = isCasinoTab ? '#fbbf24' : isMinigamesTab ? '#10b981' : '#38bdf8';
+      const inactiveStroke = isCasinoTab
+        ? 'rgba(251, 191, 36, 0.55)'
+        : isMinigamesTab
+        ? 'rgba(16, 185, 129, 0.55)'
+        : 'rgba(71, 85, 105, 0.65)';
       this.drawCyberPanel(
         tabRect.x,
         tabRect.y,
         tabRect.width,
         tabRect.height,
         8,
-        isActive ? 'rgba(14, 52, 82, 0.96)' : 'rgba(15, 25, 44, 0.9)',
-        isActive ? '#38bdf8' : 'rgba(71, 85, 105, 0.65)',
+        isActive
+          ? isCasinoTab
+            ? 'rgba(92, 42, 8, 0.96)'
+            : isMinigamesTab
+            ? 'rgba(6, 62, 46, 0.96)'
+            : 'rgba(14, 52, 82, 0.96)'
+          : 'rgba(15, 25, 44, 0.9)',
+        isActive ? activeStroke : inactiveStroke,
         isActive ? 2.0 : 1.4,
-        isActive ? '#38bdf8' : undefined,
+        isActive ? activeStroke : undefined,
         isActive ? 8 : 0
       );
 
       this.ctx.textAlign = 'center';
-      this.ctx.fillStyle = isActive ? '#f8fafc' : '#94a3b8';
-      this.ctx.font = `bold 12.5px ${FONT_DISPLAY}`;
+      this.ctx.fillStyle = isActive
+        ? '#f8fafc'
+        : isCasinoTab
+        ? '#fde047'
+        : isMinigamesTab
+        ? '#6ee7b7'
+        : '#94a3b8';
+      this.ctx.font = `bold 11.5px ${FONT_DISPLAY}`;
       this.ctx.fillText(tabRect.label, tabRect.x + tabRect.width / 2, tabRect.y + 24);
     }
 
@@ -7040,46 +8002,124 @@ export class Game {
           this.ctx.fillText(pageBtn.label, pageBtn.x + pageBtn.width / 2, pageBtn.y + 18);
         }
       }
+    } else if (this.activeMenuTab === 'CASINO') {
+      this.casinoSystem.drawCasinoConsole(this.ctx, this.getMenuLayout(), this.metaSystem);
+    } else if (this.activeMenuTab === 'MINIGAMES') {
+      const mgCards = this.getMinigameCardRects();
+      for (const card of mgCards) {
+        const hovered = this.hoveredMinigameCard === card.mode;
+        this.ctx.save();
+        this.drawCyberPanel(
+          card.x,
+          card.y,
+          card.width,
+          card.height,
+          10,
+          hovered ? 'rgba(20, 38, 66, 0.97)' : 'rgba(13, 22, 38, 0.95)',
+          hovered ? '#ffffff' : card.color,
+          hovered ? 2.4 : 1.7,
+          card.color,
+          hovered ? 12 : 4
+        );
+        this.traceChamferRect(card.x + 2, card.y + 2, card.width - 4, card.height - 4, 8);
+        this.ctx.clip();
+
+        this.ctx.fillStyle = card.color;
+        this.ctx.fillRect(card.x + 12, card.y, card.width - 24, 3);
+
+        this.ctx.textAlign = 'left';
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = `bold 14.5px ${FONT_DISPLAY}`;
+        this.ctx.fillText(card.title, card.x + 14, card.y + 25);
+
+        this.ctx.fillStyle = card.color;
+        this.ctx.font = `bold 10px ${FONT_MONO}`;
+        this.ctx.fillText(card.subtitle, card.x + 14, card.y + 42);
+
+        this.ctx.fillStyle = '#cbd5e1';
+        this.ctx.font = `11px ${FONT_DISPLAY}`;
+        this.wrapText(card.desc, card.x + 14, card.y + 62, card.width - 28, 14, 3);
+
+        this.ctx.fillStyle = '#a3e635';
+        this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+        this.ctx.fillText(card.rewardText, card.x + 14, card.y + 115, card.width - 28);
+
+        this.ctx.fillStyle = hovered ? '#ffffff' : '#38bdf8';
+        this.ctx.font = `bold 11px ${FONT_MONO}`;
+        this.ctx.fillText(
+          i18n.t('▸ [CLIC O TECLA 1-4] LANZAR MINIJUEGO AHORA', '▸ [CLICK OR KEY 1-4] LAUNCH MINIGAME NOW'),
+          card.x + 14,
+          card.y + 137
+        );
+        this.ctx.restore();
+      }
+
+      // Banner de nuevas habilidades integradas en partida (Dash [Shift] + Hackeo en Vivo [Flechas])
+      const infoBox = { x: leftCx - 376, y: py + 474, width: 752, height: 38 };
+      this.drawCyberPanel(
+        infoBox.x,
+        infoBox.y,
+        infoBox.width,
+        infoBox.height,
+        8,
+        'rgba(8, 22, 38, 0.95)',
+        '#10b981',
+        1.5
+      );
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#6ee7b7';
+      this.ctx.font = `bold 11.5px ${FONT_MONO}`;
+      this.ctx.fillText(
+        i18n.t(
+          '💨 NUEVO EN PARTIDA: [SHIFT] DASH TÁCTICO CON INVULNERABILIDAD   •   ⚡ [FLECHAS ↑↓←→] HACKEO EN VIVO (x3 BOTÍN)',
+          '💨 NEW IN-GAME: [SHIFT] TACTICAL I-FRAME DASH   •   ⚡ [ARROWS ↑↓←→] LIVE TERMINAL HACK (3x LOOT)'
+        ),
+        leftCx,
+        infoBox.y + 23,
+        732
+      );
     }
 
     // Selector de Modo de Juego ([B]: CLÁSICO vs PESADILLA 15 CR)
-    for (const mBtn of this.getGameModeButtonRects()) {
-      const isNight = mBtn.mode === 'NIGHTMARE';
-      const isSelected = this.selectedGameMode === mBtn.mode;
-      const isHov = this.hoveredModeBtn === mBtn.mode;
-      const canPay = !isNight || this.metaSystem.coins >= NIGHTMARE_ENTRY_COST;
-      const strokeCol = isNight
-        ? isSelected
-          ? canPay
-            ? '#f43f5e'
-            : '#fb7185'
-          : 'rgba(244, 63, 94, 0.4)'
-        : isSelected
-        ? '#38bdf8'
-        : 'rgba(56, 189, 248, 0.4)';
+    if (this.activeMenuTab !== 'CASINO' && this.activeMenuTab !== 'MINIGAMES') {
+      for (const mBtn of this.getGameModeButtonRects()) {
+        const isNight = mBtn.mode === 'NIGHTMARE';
+        const isSelected = this.selectedGameMode === mBtn.mode;
+        const isHov = this.hoveredModeBtn === mBtn.mode;
+        const canPay = !isNight || this.metaSystem.coins >= NIGHTMARE_ENTRY_COST;
+        const strokeCol = isNight
+          ? isSelected
+            ? canPay
+              ? '#f43f5e'
+              : '#fb7185'
+            : 'rgba(244, 63, 94, 0.4)'
+          : isSelected
+          ? '#38bdf8'
+          : 'rgba(56, 189, 248, 0.4)';
 
-      this.drawClippedButton(
-        mBtn,
-        isSelected
-          ? isNight
-            ? 'rgba(88, 18, 32, 0.96)'
-            : 'rgba(14, 52, 82, 0.96)'
-          : isHov
-          ? 'rgba(22, 34, 56, 0.95)'
-          : 'rgba(13, 20, 36, 0.92)',
-        isHov ? '#ffffff' : strokeCol,
-        isSelected ? 2.1 : 1.3,
-        isSelected ? '#ffffff' : isNight ? '#fda4af' : '#94a3b8',
-        11.5,
-        isNight
-          ? i18n.t(
-              `💀 MODO PESADILLA (${NIGHTMARE_ENTRY_COST} CR) • MAPA INFINITO + x2 CR`,
-              `💀 NIGHTMARE MODE (${NIGHTMARE_ENTRY_COST} CR) • INFINITE MAP + 2x CR`
-            )
-          : i18n.t('🛡️ MODO CLÁSICO (GRATIS) • ARENA ESTÁNDAR', '🛡️ CLASSIC MODE (FREE) • STANDARD ARENA'),
-        isSelected ? strokeCol : undefined,
-        isSelected ? 8 : 0
-      );
+        this.drawClippedButton(
+          mBtn,
+          isSelected
+            ? isNight
+              ? 'rgba(88, 18, 32, 0.96)'
+              : 'rgba(14, 52, 82, 0.96)'
+            : isHov
+            ? 'rgba(22, 34, 56, 0.95)'
+            : 'rgba(13, 20, 36, 0.92)',
+          isHov ? '#ffffff' : strokeCol,
+          isSelected ? 2.1 : 1.3,
+          isSelected ? '#ffffff' : isNight ? '#fda4af' : '#94a3b8',
+          11.5,
+          isNight
+            ? i18n.t(
+                `💀 MODO PESADILLA (${NIGHTMARE_ENTRY_COST} CR) • MAPA INFINITO + x2 CR`,
+                `💀 NIGHTMARE MODE (${NIGHTMARE_ENTRY_COST} CR) • INFINITE MAP + 2x CR`
+              )
+            : i18n.t('🛡️ MODO CLÁSICO (GRATIS) • ARENA ESTÁNDAR', '🛡️ CLASSIC MODE (FREE) • STANDARD ARENA'),
+          isSelected ? strokeCol : undefined,
+          isSelected ? 8 : 0
+        );
+      }
     }
 
     this.ctx.save();
@@ -8447,7 +9487,41 @@ export class Game {
     }
     this.ctx.fillText(weaponsLabel, lx + 14, ly + 65);
 
-    // Barra interactiva de Habilidad Activa / Ultimate (cargada por bajas, dura X segundos)
+    // Barra interactiva de Dash Táctico ([Shift]) + Habilidad Activa / Ultimate ([Espacio / E])
+    const dashRect = this.getInGameDashBarRect();
+    const isDashReady = this.player.canDash();
+    const dashRatio = isDashReady
+      ? 1
+      : Math.max(
+          0,
+          Math.min(1, 1 - this.player.dashCooldown / Math.max(0.1, this.player.dashMaxCooldown))
+        );
+    this.ctx.fillStyle = 'rgba(7, 11, 20, 0.95)';
+    this.ctx.fillRect(dashRect.x, dashRect.y, dashRect.width, dashRect.height);
+    if (dashRatio > 0) {
+      this.ctx.fillStyle = isDashReady ? 'rgba(56, 189, 248, 0.85)' : 'rgba(14, 116, 144, 0.75)';
+      this.ctx.fillRect(dashRect.x, dashRect.y, dashRect.width * dashRatio, dashRect.height);
+    }
+    this.ctx.strokeStyle =
+      this.hoveredInGameBtn === 'DASH'
+        ? '#ffffff'
+        : isDashReady
+        ? '#38bdf8'
+        : 'rgba(100, 116, 139, 0.5)';
+    this.ctx.lineWidth = isDashReady ? 1.5 : 1;
+    this.ctx.strokeRect(dashRect.x, dashRect.y, dashRect.width, dashRect.height);
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = isDashReady ? '#ffffff' : '#cbd5e1';
+    this.ctx.font = `bold 9.5px ${FONT_MONO}`;
+    this.ctx.fillText(
+      isDashReady
+        ? '💨 [SHIFT] DASH'
+        : `💨 ${this.player.dashCooldown.toFixed(1)}s`,
+      dashRect.x + dashRect.width / 2,
+      dashRect.y + 13.5,
+      dashRect.width - 8
+    );
+
     const ultRect = this.getInGameUltBarRect();
     const isUltActive = this.player.ultActiveTimer > 0;
     const isUltReady = this.player.canActivateUltimate();
@@ -8482,19 +9556,67 @@ export class Game {
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = isUltReady ? '#fef08a' : '#f8fafc';
-    this.ctx.font = `bold 10px ${FONT_MONO}`;
+    this.ctx.font = `bold 9.5px ${FONT_MONO}`;
     const ultText = isUltActive
       ? `🔥 ${uName}: ${this.player.ultActiveTimer.toFixed(1)}s`
       : isUltReady
-      ? `⚡ [ESPACIO / E] ¡${uName} LISTA!`
+      ? `⚡ [ESP/E] ¡${uName}!`
       : `⚡ [E] ${uName} (${this.player.ultCharge}/${this.player.ultMaxCharge})`;
     this.ctx.fillText(
       ultText,
       ultRect.x + ultRect.width / 2,
       ultRect.y + 13.5,
-      ultRect.width - 12
+      ultRect.width - 10
     );
     this.ctx.restore();
+
+    // HUD Superior Central para el Minijuego Activo (debajo de la tira de armas activas)
+    if (this.activeMinigame !== 'NONE') {
+      const mgBoxW = 540;
+      const mgBoxH = 28;
+      const mgX = w / 2 - mgBoxW / 2;
+      const mgY = 58;
+      const mgCol =
+        this.activeMinigame === 'BULL_ARENA'
+          ? '#f43f5e'
+          : this.activeMinigame === 'BOSS_RUSH'
+          ? '#fbbf24'
+          : this.activeMinigame === 'CORE_DEFENSE'
+          ? '#38bdf8'
+          : '#10b981';
+      this.drawCyberPanel(mgX, mgY, mgBoxW, mgBoxH, 8, 'rgba(11, 19, 34, 0.94)', mgCol, 1.8);
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.font = `bold 12px ${FONT_MONO}`;
+      let mgStatus = '';
+      if (this.activeMinigame === 'BULL_ARENA') {
+        const nextIn = Math.max(0, Math.ceil(this.bullArenaNextSpawnTime - this.elapsedTime));
+        mgStatus = `🐂 EL RUEDO CYBER • TOROS: ${this.enemies.length}/5 • ¡OLÉ!: ${this.bullArenaOleCount} (+25 CR) • +TORO: ${nextIn}s`;
+      } else if (this.activeMinigame === 'BOSS_RUSH') {
+        mgStatus = `⚔️ COLISEO BOSS RUSH • RONDA ${this.bossRushRound}/5 • TIEMPO: ${this.formatTimeMMSS(this.elapsedTime)}`;
+      } else if (this.activeMinigame === 'CORE_DEFENSE') {
+        mgStatus = `🛡️ DEFENSA DEL NÚCLEO • OLEADA ${this.coreDefenseWave}/5 • NÚCLEO: ${Math.ceil(this.coreDefenseHp)}/${this.coreDefenseMaxHp} HP`;
+      } else if (this.activeMinigame === 'VAULT_BLITZ') {
+        mgStatus = `🏁 ATRACO RELÁMPAGO • RELOJ: ${this.vaultBlitzTimeLeft.toFixed(1)}s • BÓVEDAS ROBADAS: ${this.vaultBlitzVaultsCracked}`;
+      }
+      this.ctx.fillText(mgStatus, w / 2, mgY + 19, mgBoxW - 20);
+
+      if (this.activeMinigame === 'CORE_DEFENSE') {
+        const tBtn = this.getInGameTurretButtonRect();
+        const canBuild = this.coreDefenseData >= 15;
+        this.drawClippedButton(
+          tBtn,
+          canBuild ? 'rgba(6, 78, 59, 0.95)' : 'rgba(15, 23, 42, 0.92)',
+          this.hoveredInGameBtn === 'TURRET' ? '#ffffff' : canBuild ? '#10b981' : '#64748b',
+          1.6,
+          canBuild ? '#a7f3d0' : '#94a3b8',
+          11,
+          this.coreDefenseTurrets.length >= 6
+            ? `[T] REPARAR NÚCLEO + MEJORAR TORRETAS (15 DATOS • TIENES ${this.coreDefenseData})`
+            : `[T] DESPLEGAR TORRETA #${this.coreDefenseTurrets.length + 1}/6 (15 DATOS • TIENES ${this.coreDefenseData})`
+        );
+      }
+    }
 
     // ==========================================
     // 2. POD SUPERIOR DERECHO: CRONÓMETRO, BAJAS, CRIPTO, AUDIO Y PAUSA
@@ -9683,9 +10805,84 @@ export class Game {
     }
   }
 
+  private drawCoreDefenseWorldEntities(): void {
+    const cx = LOGICAL_WIDTH / 2;
+    const cy = LOGICAL_HEIGHT / 2;
+    const now = performance.now();
+    const ratio = Math.max(0, Math.min(1, this.coreDefenseHp / Math.max(1, this.coreDefenseMaxHp)));
+
+    this.ctx.save();
+    // Anillo protector del Núcleo Maestro
+    this.ctx.strokeStyle = ratio > 0.35 ? 'rgba(56, 189, 248, 0.45)' : 'rgba(244, 63, 94, 0.65)';
+    this.ctx.lineWidth = 2.5;
+    this.ctx.setLineDash([12, 8]);
+    this.ctx.beginPath();
+    this.ctx.arc(cx, cy, 58, (now * 0.001) % (Math.PI * 2), Math.PI * 2 + (now * 0.001) % (Math.PI * 2));
+    this.ctx.stroke();
+    this.ctx.setLineDash([]);
+
+    // Reactor Hexagonal Central
+    this.ctx.fillStyle = 'rgba(11, 22, 40, 0.96)';
+    this.ctx.strokeStyle = ratio > 0.35 ? '#38bdf8' : '#f43f5e';
+    this.ctx.lineWidth = 3;
+    this.ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (i * Math.PI) / 3;
+      const px = cx + Math.cos(a) * 38;
+      const py = cy + Math.sin(a) * 38;
+      if (i === 0) this.ctx.moveTo(px, py);
+      else this.ctx.lineTo(px, py);
+    }
+    this.ctx.closePath();
+    this.ctx.fill();
+    this.ctx.stroke();
+
+    this.ctx.fillStyle = '#e0f2fe';
+    this.ctx.font = `bold 11px ${FONT_MONO}`;
+    this.ctx.textAlign = 'center';
+    this.ctx.fillText('NÚCLEO', cx, cy - 2);
+    this.ctx.fillStyle = ratio > 0.35 ? '#10b981' : '#f43f5e';
+    this.ctx.fillText(`${Math.ceil(this.coreDefenseHp)}`, cx, cy + 13);
+
+    // Barra de vida sobre el Núcleo
+    const bw = 96;
+    this.ctx.fillStyle = 'rgba(8, 14, 26, 0.95)';
+    this.ctx.fillRect(cx - bw / 2, cy - 54, bw, 8);
+    this.ctx.fillStyle = ratio > 0.5 ? '#10b981' : ratio > 0.25 ? '#fbbf24' : '#f43f5e';
+    this.ctx.fillRect(cx - bw / 2, cy - 54, bw * ratio, 8);
+
+    // Torretas Láser desplegadas por el jugador con [T]
+    for (let i = 0; i < this.coreDefenseTurrets.length; i++) {
+      const t = this.coreDefenseTurrets[i];
+      this.ctx.save();
+      this.ctx.translate(t.x, t.y);
+      this.ctx.fillStyle = 'rgba(12, 26, 46, 0.95)';
+      this.ctx.strokeStyle = t.level >= 3 ? '#fbbf24' : '#38bdf8';
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.arc(0, 0, 15, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.stroke();
+
+      this.ctx.rotate(t.angle);
+      this.ctx.fillStyle = t.level >= 3 ? '#fbbf24' : '#38bdf8';
+      this.ctx.fillRect(0, -3.5, 20, 7);
+      this.ctx.restore();
+
+      this.ctx.fillStyle = '#7dd3fc';
+      this.ctx.font = `bold 9.5px ${FONT_MONO}`;
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(`T${i + 1} Nv${t.level}`, t.x, t.y - 19);
+    }
+
+    this.ctx.restore();
+  }
+
   private drawSystemFailureOverlay(): void {
     const cx = LOGICAL_WIDTH / 2;
     const cy = LOGICAL_HEIGHT / 2;
+    const isWin = this.minigameVictory;
+    const borderCol = isWin ? '#10b981' : '#f43f5e';
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(7, 10, 18, 0.9)';
@@ -9700,17 +10897,23 @@ export class Game {
       boxH,
       16,
       'rgba(14, 16, 28, 0.98)',
-      '#f43f5e',
+      borderCol,
       2.4,
-      '#f43f5e',
+      borderCol,
       20
     );
 
     this.ctx.shadowBlur = 0;
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#fb7185';
+    this.ctx.fillStyle = isWin ? '#6ee7b7' : '#fb7185';
     this.ctx.font = `bold 29px ${FONT_DISPLAY}`;
-    this.ctx.fillText('KERNEL PANIC // SYSTEM COMPROMISED', cx, cy - 235);
+    this.ctx.fillText(
+      isWin
+        ? i18n.t('🏆 ¡MINIJUEGO COMPLETADO // EXTRACCIÓN EXITOSA!', '🏆 MINIGAME CLEARED // EXTRACTION SUCCESSFUL!')
+        : 'KERNEL PANIC // SYSTEM COMPROMISED',
+      cx,
+      cy - 235
+    );
 
     this.ctx.fillStyle = '#38bdf8';
     this.ctx.font = `bold 13.5px ${FONT_MONO}`;

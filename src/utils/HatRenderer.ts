@@ -1252,6 +1252,42 @@ export class HatRenderer {
         ctx.restore();
         break;
 
+      case 'mit_casino': // Corona Real de Cripto-Magnate VIP
+        ctx.save();
+        ctx.fillStyle = '#fbbf24';
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-11, 2);
+        ctx.lineTo(-12.5, -8.5);
+        ctx.lineTo(-5.5, -3);
+        ctx.lineTo(0, -11.5);
+        ctx.lineTo(5.5, -3);
+        ctx.lineTo(12.5, -8.5);
+        ctx.lineTo(11, 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Banda base esmeralda/púrpura VIP
+        ctx.fillStyle = '#7c2d12';
+        ctx.fillRect(-10.5, -0.5, 21, 2.8);
+        // Gemas de plasma en las puntas
+        ctx.fillStyle = '#10b981';
+        ctx.beginPath();
+        ctx.arc(0, -5, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f43f5e';
+        ctx.beginPath();
+        ctx.arc(-6.8, -2.5, 1.6, 0, Math.PI * 2);
+        ctx.arc(6.8, -2.5, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(0, -12.5, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        break;
+
       default:
         this.drawCap(ctx, '#38bdf8', '#0284c7');
         break;
