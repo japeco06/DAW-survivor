@@ -131,7 +131,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.8.0';
+const GAME_VERSION = 'v1.8.1';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v1';
@@ -213,6 +213,9 @@ export class Game {
   private activeMinigame: MinigameMode = 'NONE';
   private hoveredMinigameCard: Exclude<MinigameMode, 'NONE'> | null = null;
   private minigameVictory: boolean = false;
+  private avgFrameDt: number = 0.016;
+  private autoLowFxMode: boolean = false;
+  private crowdPushedFlags: boolean[] = [];
   // Estado de Minijuegos de Acción
   private bullArenaNextSpawnTime: number = 15;
   private bullArenaPassiveRewardTimer: number = 5;
@@ -3729,6 +3732,16 @@ export class Game {
   }
 
   private update(dt: number): void {
+    if (dt > 0.001 && dt < 0.09) {
+      this.avgFrameDt = this.avgFrameDt * 0.92 + dt * 0.08;
+      if (!this.autoLowFxMode && this.avgFrameDt > 0.0235) {
+        this.autoLowFxMode = true;
+        this.particleSystem.lightMode = true;
+      } else if (this.autoLowFxMode && this.avgFrameDt < 0.0185) {
+        this.autoLowFxMode = false;
+        this.particleSystem.lightMode = this.lightGraphicsEnabled;
+      }
+    }
     this.particleSystem.update(dt);
     this.achievementSystem.updateToasts(dt);
     this.dailyMissions.updateToasts(dt);
@@ -5042,13 +5055,13 @@ export class Game {
     }
 
     this.resolveEnemyCrowd();
-    this.projectiles = this.projectiles.filter((p) => p.active);
-    this.pingProjectiles = this.pingProjectiles.filter((p) => p.active);
-    this.quarantineZones = this.quarantineZones.filter((z) => z.active);
-    this.enemies = this.enemies.filter((e) => e.active);
-    this.codeFragments = this.codeFragments.filter((f) => f.active);
-    this.cryptoCoins = this.cryptoCoins.filter((c) => c.active);
-    this.powerUps = this.powerUps.filter((p) => p.active);
+    this.compactActiveList(this.projectiles);
+    this.compactActiveList(this.pingProjectiles);
+    this.compactActiveList(this.quarantineZones);
+    this.compactActiveList(this.enemies);
+    this.compactActiveList(this.codeFragments);
+    this.compactActiveList(this.cryptoCoins);
+    this.compactActiveList(this.powerUps);
     this.achievementSystem.flushPendingSave(false);
     this.dailyMissions.flushPendingSave(false);
 
@@ -5214,12 +5227,32 @@ export class Game {
     }
   }
 
+  private compactActiveList<T extends { active: boolean }>(list: T[]): void {
+    let writeIdx = 0;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].active) {
+        if (writeIdx !== i) {
+          list[writeIdx] = list[i];
+        }
+        writeIdx++;
+      }
+    }
+    list.length = writeIdx;
+  }
+
   private resolveEnemyCrowd(): void {
     const useWallClamp = this.worldEnv.isInfinite;
-    for (let i = 0; i < this.enemies.length; i++) {
+    const len = this.enemies.length;
+    if (useWallClamp) {
+      for (let i = 0; i < len; i++) {
+        this.crowdPushedFlags[i] = false;
+      }
+    }
+
+    for (let i = 0; i < len; i++) {
       const a = this.enemies[i];
       if (!a.active || a.malwareType === 'HARDWARE_BOX') continue;
-      for (let j = i + 1; j < this.enemies.length; j++) {
+      for (let j = i + 1; j < len; j++) {
         const b = this.enemies[j];
         if (!b.active || b.malwareType === 'HARDWARE_BOX') continue;
         const minDistance = (a.size + b.size) * 0.46;
@@ -5239,34 +5272,32 @@ export class Game {
           if (a instanceof ElToroBoss) {
             b.x += nx * overlap * 2;
             b.y += ny * overlap * 2;
-            if (useWallClamp) {
-              const rb = this.worldEnv.resolveCircleCollision(b.x, b.y, b.size * 0.44);
-              b.x = rb.x;
-              b.y = rb.y;
-            }
+            if (useWallClamp) this.crowdPushedFlags[j] = true;
           } else if (b instanceof ElToroBoss) {
             a.x -= nx * overlap * 2;
             a.y -= ny * overlap * 2;
-            if (useWallClamp) {
-              const ra = this.worldEnv.resolveCircleCollision(a.x, a.y, a.size * 0.44);
-              a.x = ra.x;
-              a.y = ra.y;
-            }
+            if (useWallClamp) this.crowdPushedFlags[i] = true;
           } else {
             a.x -= nx * overlap;
             a.y -= ny * overlap;
             b.x += nx * overlap;
             b.y += ny * overlap;
             if (useWallClamp) {
-              const ra = this.worldEnv.resolveCircleCollision(a.x, a.y, a.size * 0.44);
-              a.x = ra.x;
-              a.y = ra.y;
-              const rb = this.worldEnv.resolveCircleCollision(b.x, b.y, b.size * 0.44);
-              b.x = rb.x;
-              b.y = rb.y;
+              this.crowdPushedFlags[i] = true;
+              this.crowdPushedFlags[j] = true;
             }
           }
         }
+      }
+    }
+
+    if (useWallClamp) {
+      for (let i = 0; i < len; i++) {
+        if (!this.crowdPushedFlags[i]) continue;
+        const e = this.enemies[i];
+        const resolved = this.worldEnv.resolveCircleCollision(e.x, e.y, e.size * 0.44);
+        e.x = resolved.x;
+        e.y = resolved.y;
       }
     }
   }
@@ -5346,7 +5377,7 @@ export class Game {
     this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const shake =
-      this.sound.screenShakeEnabled && !this.lightGraphicsEnabled
+      this.sound.screenShakeEnabled && !this.lightGraphicsEnabled && !this.autoLowFxMode
         ? this.particleSystem.getShakeOffset()
         : { x: 0, y: 0 };
     const cam = this.getCameraOrigin();
@@ -5388,6 +5419,11 @@ export class Game {
           this.worldEnv
         );
       } else {
+        const minViewX = cam.x - 140;
+        const maxViewX = cam.x + LOGICAL_WIDTH + 140;
+        const minViewY = cam.y - 140;
+        const maxViewY = cam.y + LOGICAL_HEIGHT + 140;
+
         if (this.isNightmareRun || this.terrainEvents.nodes.length > 0) {
           this.terrainEvents.draw(this.ctx);
         }
@@ -5397,7 +5433,14 @@ export class Game {
         }
 
         for (const zone of this.quarantineZones) {
-          zone.draw(this.ctx);
+          if (
+            zone.x + zone.radius >= minViewX &&
+            zone.x - zone.radius <= maxViewX &&
+            zone.y + zone.radius >= minViewY &&
+            zone.y - zone.radius <= maxViewY
+          ) {
+            zone.draw(this.ctx);
+          }
         }
 
         if (this.player.active && this.showAttackRange) {
@@ -5405,23 +5448,53 @@ export class Game {
         }
 
         for (const fragment of this.codeFragments) {
-          fragment.draw(this.ctx);
+          if (
+            fragment.x >= minViewX &&
+            fragment.x <= maxViewX &&
+            fragment.y >= minViewY &&
+            fragment.y <= maxViewY
+          ) {
+            fragment.draw(this.ctx);
+          }
         }
 
         for (const coin of this.cryptoCoins) {
-          coin.draw(this.ctx);
+          if (
+            coin.x >= minViewX &&
+            coin.x <= maxViewX &&
+            coin.y >= minViewY &&
+            coin.y <= maxViewY
+          ) {
+            coin.draw(this.ctx);
+          }
         }
 
         for (const p of this.powerUps) {
-          p.draw(this.ctx);
+          if (p.x >= minViewX && p.x <= maxViewX && p.y >= minViewY && p.y <= maxViewY) {
+            p.draw(this.ctx);
+          }
         }
 
         for (const proj of this.projectiles) {
-          proj.draw(this.ctx);
+          if (
+            proj.x >= minViewX &&
+            proj.x <= maxViewX &&
+            proj.y >= minViewY &&
+            proj.y <= maxViewY
+          ) {
+            proj.draw(this.ctx);
+          }
         }
 
         for (const ping of this.pingProjectiles) {
-          ping.draw(this.ctx);
+          if (
+            ping.x >= minViewX &&
+            ping.x <= maxViewX &&
+            ping.y >= minViewY &&
+            ping.y <= maxViewY
+          ) {
+            ping.draw(this.ctx);
+          }
         }
 
         this.combatSystem.drawFirewall(this.ctx, this.player);
@@ -5439,10 +5512,17 @@ export class Game {
         }
 
         for (const enemy of this.enemies) {
-          enemy.draw(this.ctx);
+          if (
+            enemy.x >= minViewX &&
+            enemy.x <= maxViewX &&
+            enemy.y >= minViewY &&
+            enemy.y <= maxViewY
+          ) {
+            enemy.draw(this.ctx);
+          }
         }
 
-        this.drawEliteHpBars();
+        this.drawEliteHpBars(minViewX, maxViewX, minViewY, maxViewY);
 
         const nowMs = performance.now();
         if (this.isCoopMode && this.isCoopHost) {
@@ -5574,7 +5654,7 @@ export class Game {
     this.drawTopStatusBanners();
     const achToastH = this.achievementSystem.drawToasts(this.ctx, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     this.dailyMissions.drawToasts(this.ctx, LOGICAL_WIDTH, LOGICAL_HEIGHT, achToastH);
-    if (!this.lightGraphicsEnabled) {
+    if (!this.lightGraphicsEnabled && !this.autoLowFxMode) {
       this.drawCRTScanlines();
     }
     this.drawVersionBadge();
@@ -5841,9 +5921,21 @@ export class Game {
     this.ctx.restore();
   }
 
-  private drawEliteHpBars(): void {
+  private drawEliteHpBars(
+    minViewX: number = -Infinity,
+    maxViewX: number = Infinity,
+    minViewY: number = -Infinity,
+    maxViewY: number = Infinity
+  ): void {
     for (const enemy of this.enemies) {
-      if (!enemy.active) continue;
+      if (
+        !enemy.active ||
+        enemy.x < minViewX ||
+        enemy.x > maxViewX ||
+        enemy.y < minViewY ||
+        enemy.y > maxViewY
+      )
+        continue;
       // Los mini-jefes (RansomwareBoss) ya tienen su propia barra roja de vida;
       // solo dibujamos barra minimalista sobre los otros élites (Gusano Blindado y Evasor).
       const isElite = enemy instanceof ArmoredWorm || enemy instanceof Evasor;
@@ -6689,7 +6781,7 @@ export class Game {
     this.ctx.fillStyle = fill;
     this.ctx.strokeStyle = stroke;
     this.ctx.lineWidth = lineWidth;
-    if (glowColor && glowBlur > 0 && !this.lightGraphicsEnabled) {
+    if (glowColor && glowBlur > 0 && !this.lightGraphicsEnabled && !this.autoLowFxMode) {
       this.ctx.shadowColor = glowColor;
       this.ctx.shadowBlur = glowBlur;
     }

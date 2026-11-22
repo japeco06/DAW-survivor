@@ -1533,7 +1533,7 @@ export class CombatSystem {
         }
       }
     }
-    this.cryoShards = this.cryoShards.filter((s) => s.active);
+    this.compactActiveList(this.cryoShards);
 
     // --- ACTUALIZACIÓN Y DAÑO: Disco Kernel Rotativo ---
     for (const disc of this.sawDiscs) {
@@ -1555,7 +1555,7 @@ export class CombatSystem {
         registerEnemyKillIfDead(hitEnemy);
       }
     }
-    this.sawDiscs = this.sawDiscs.filter((d) => d.active);
+    this.compactActiveList(this.sawDiscs);
 
     // --- ACTUALIZACIÓN Y DAÑO CONTINUO: Zonas de Cuarentena ---
     if (isSharedWorldOwner) {
@@ -1646,7 +1646,7 @@ export class CombatSystem {
         registerEnemyKillIfDead(hit.enemy);
       }
     }
-    this.firewallPulses = this.firewallPulses.filter((p) => p.active);
+    this.compactActiveList(this.firewallPulses);
 
     // --- ACTUALIZACIÓN Y DAÑO PENETRANTE: Rayo SQL Injection ---
     for (const beam of this.sqlBeams) {
@@ -1699,7 +1699,7 @@ export class CombatSystem {
         registerEnemyKillIfDead(hit.enemy);
       }
     }
-    this.sqlBeams = this.sqlBeams.filter((b) => b.active);
+    this.compactActiveList(this.sqlBeams);
 
     // --- COLISIONES: Drones Antivirus (Escudo Reactivo -> Centinelas Omega) vs Enemigos ---
     const targetDroneCount = this.evolvedDrones ? Math.max(6, this.firewallCount) : this.firewallCount;
@@ -1723,7 +1723,7 @@ export class CombatSystem {
     for (const exp of this.droneExplosions) {
       exp.update(dt);
     }
-    this.droneExplosions = this.droneExplosions.filter((e) => e.active);
+    this.compactActiveList(this.droneExplosions);
 
     if (player.active && targetDroneCount > 0) {
       const savedCount = this.firewallCount;
@@ -1920,7 +1920,7 @@ export class CombatSystem {
           }
         }
       }
-      this.enemyProjectiles = this.enemyProjectiles.filter((p) => p.active);
+      this.compactActiveList(this.enemyProjectiles);
     }
 
     // --- COLISIONES: Enemigos vs Jugador ---
@@ -2292,30 +2292,52 @@ export class CombatSystem {
     ctx.restore();
   }
 
+  private compactActiveList<T extends { active: boolean }>(arr: T[]): void {
+    let w = 0;
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].active) {
+        arr[w++] = arr[i];
+      }
+    }
+    arr.length = w;
+  }
+
   private findNearestEnemies(
     player: Player,
     enemies: Adware[],
     count: number,
     worldEnv?: WorldEnvironment
   ): Adware[] {
-    const candidates: { enemy: Adware; dist: number }[] = [];
+    const candidates: { enemy: Adware; distSq: number }[] = [];
+    const range = this.attackRange;
+    const rangeSq = range * range;
+    const px = player.x;
+    const py = player.y;
 
-    for (const enemy of enemies) {
+    for (let i = 0; i < enemies.length; i++) {
+      const enemy = enemies[i];
       if (!enemy.active) continue;
-      const dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
-      if (dist <= this.attackRange) {
-        if (
-          worldEnv?.isInfinite &&
-          worldEnv.segmentHitsObstacle(player.x, player.y, enemy.x, enemy.y, 3)
-        ) {
-          continue;
-        }
-        candidates.push({ enemy, dist });
+      const dx = enemy.x - px;
+      if (dx > range || dx < -range) continue;
+      const dy = enemy.y - py;
+      if (dy > range || dy < -range) continue;
+      const distSq = dx * dx + dy * dy;
+      if (distSq <= rangeSq) {
+        candidates.push({ enemy, distSq });
       }
     }
 
-    candidates.sort((a, b) => a.dist - b.dist);
-    return candidates.slice(0, count).map((c) => c.enemy);
+    candidates.sort((a, b) => a.distSq - b.distSq);
+    const out: Adware[] = [];
+    const checkWalls = Boolean(worldEnv?.isInfinite);
+    for (let i = 0; i < candidates.length && out.length < count; i++) {
+      const foe = candidates[i].enemy;
+      if (checkWalls && worldEnv!.segmentHitsObstacle(px, py, foe.x, foe.y, 3)) {
+        continue;
+      }
+      out.push(foe);
+    }
+    return out;
   }
 
   public decayWhenDowned(dt: number): void {
@@ -2333,7 +2355,7 @@ export class CombatSystem {
     for (const exp of this.droneExplosions) {
       exp.update(dt);
     }
-    this.droneExplosions = this.droneExplosions.filter((e) => e.active);
+    this.compactActiveList(this.droneExplosions);
 
     // Vacía proyectiles propios del aliado abatido para que no queden congelados en el aire
     this.firewallPulses = [];

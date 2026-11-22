@@ -75,6 +75,8 @@ export class CoopRenderer {
   private static enemyTracks: Map<number, InterpTrack> = new Map();
   private static snapRecvMs: number = 0;
   private static avgSpanMs: number = 44;
+  private static scratchEnemyTuple: SnapshotEnemyTuple = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  private static scratchProjTuple: SnapshotProjTuple = [0, 0, 0, 0, 0, 0, 0];
 
   public static resetState(): void {
     this.playerTracks.clear();
@@ -175,8 +177,21 @@ export class CoopRenderer {
     const projElapsedSec =
       this.snapRecvMs > 0 ? Math.min(0.085, Math.max(0, (now - this.snapRecvMs) / 1000)) : 0;
 
+    // Calcular caja de visión activa del Invitado para descartar entidades fuera de pantalla (Viewport Culling)
+    const meSnap = snap.players.find((p) => p.id === myId);
+    const camCx = overrideLocalPos ? overrideLocalPos.x : meSnap ? meSnap.x : 960;
+    const camCy = overrideLocalPos ? overrideLocalPos.y : meSnap ? meSnap.y : 540;
+    const viewMinX = camCx - 1120;
+    const viewMaxX = camCx + 1120;
+    const viewMinY = camCy - 700;
+    const viewMaxY = camCy + 700;
+
     // 1. Zonas de Cuarentena y Eventos de Terreno
     for (const z of snap.zones) {
+      const zr = z[3] + 80;
+      if (z[1] + zr < viewMinX || z[1] - zr > viewMaxX || z[2] + zr < viewMinY || z[2] - zr > viewMaxY) {
+        continue;
+      }
       this.drawZone(ctx, z, now);
     }
 
@@ -184,6 +199,10 @@ export class CoopRenderer {
     if (snap.rings && snap.rings.length > 0) {
       for (const ring of snap.rings) {
         if (ring[3] === 2 || ring[3] === 3) {
+          const rr = ring[2] + 40;
+          if (ring[0] + rr < viewMinX || ring[0] - rr > viewMaxX || ring[1] + rr < viewMinY || ring[1] - rr > viewMaxY) {
+            continue;
+          }
           this.drawRing(ctx, ring, now);
         }
       }
@@ -191,12 +210,18 @@ export class CoopRenderer {
 
     // 2. Recogibles (XP, CryptoCoins, PowerUps)
     for (const p of snap.pickups) {
+      if (p[1] < viewMinX || p[1] > viewMaxX || p[2] < viewMinY || p[2] > viewMaxY) {
+        continue;
+      }
       this.drawPickup(ctx, p, now);
     }
 
     // 3. Pulsos cortafuegos y arcos Tesla
     for (const pulse of snap.pulses) {
       const [px, py, radius, evolved] = pulse;
+      if (px + radius < viewMinX || px - radius > viewMaxX || py + radius < viewMinY || py - radius > viewMaxY) {
+        continue;
+      }
       ctx.save();
       ctx.strokeStyle = evolved ? 'rgba(250, 204, 21, 0.72)' : 'rgba(255, 136, 0, 0.7)';
       ctx.lineWidth = evolved ? 8 : 6;
@@ -238,7 +263,7 @@ export class CoopRenderer {
       ctx.restore();
     }
 
-    // 4. Enemigos y Jefes (con interpolación fluida por netId)
+    // 4. Enemigos y Jefes (con interpolación fluida por netId + Viewport Culling sin allocs)
     for (const e of snap.enemies) {
       const netId = e[8];
       const tr = netId !== undefined ? this.enemyTracks.get(netId) : undefined;
@@ -247,20 +272,32 @@ export class CoopRenderer {
         const t = Math.min(1, rawT);
         tr.drawX = tr.prevX + (tr.targetX - tr.prevX) * t;
         tr.drawY = tr.prevY + (tr.targetY - tr.prevY) * t;
+        const margin = e[3] + 70;
+        if (
+          tr.drawX + margin < viewMinX ||
+          tr.drawX - margin > viewMaxX ||
+          tr.drawY + margin < viewMinY ||
+          tr.drawY - margin > viewMaxY
+        ) {
+          continue;
+        }
         const smoothAngle = lerpAngle(tr.prevAngle, tr.targetAngle, t);
-        const interpTuple: SnapshotEnemyTuple = [
-          e[0],
-          tr.drawX,
-          tr.drawY,
-          e[3],
-          e[4],
-          e[5],
-          smoothAngle,
-          e[7],
-          netId,
-        ];
-        this.drawEnemy(ctx, interpTuple, now);
+        const st = this.scratchEnemyTuple;
+        st[0] = e[0];
+        st[1] = tr.drawX;
+        st[2] = tr.drawY;
+        st[3] = e[3];
+        st[4] = e[4];
+        st[5] = e[5];
+        st[6] = smoothAngle;
+        st[7] = e[7];
+        st[8] = netId;
+        this.drawEnemy(ctx, st, now);
       } else {
+        const margin = e[3] + 70;
+        if (e[1] + margin < viewMinX || e[1] - margin > viewMaxX || e[2] + margin < viewMinY || e[2] - margin > viewMaxY) {
+          continue;
+        }
         this.drawEnemy(ctx, e, now);
       }
     }
@@ -269,16 +306,23 @@ export class CoopRenderer {
     if (snap.rings && snap.rings.length > 0) {
       for (const ring of snap.rings) {
         if (ring[3] !== 2 && ring[3] !== 3) {
+          const rr = ring[2] + 40;
+          if (ring[0] + rr < viewMinX || ring[0] - rr > viewMaxX || ring[1] + rr < viewMinY || ring[1] - rr > viewMaxY) {
+            continue;
+          }
           this.drawRing(ctx, ring, now);
         }
       }
     }
 
-    // 5. Proyectiles "Pro" aliados y enemigos (extrapolación suave + recorte contra muros)
+    // 5. Proyectiles "Pro" aliados y enemigos (extrapolación suave + recorte contra muros + Viewport Culling)
     for (const proj of snap.projectiles) {
       const [kind, px, py, vx, vy, evolved, size] = proj;
       const ex = px + vx * projElapsedSec;
       const ey = py + vy * projElapsedSec;
+      if (ex < viewMinX - 80 || ex > viewMaxX + 80 || ey < viewMinY - 80 || ey > viewMaxY + 80) {
+        continue;
+      }
       if (
         worldEnv?.isInfinite &&
         (vx !== 0 || vy !== 0) &&
@@ -286,7 +330,15 @@ export class CoopRenderer {
       ) {
         continue;
       }
-      this.drawProjectile(ctx, [kind, ex, ey, vx, vy, evolved, size], now);
+      const sp = this.scratchProjTuple;
+      sp[0] = kind;
+      sp[1] = ex;
+      sp[2] = ey;
+      sp[3] = vx;
+      sp[4] = vy;
+      sp[5] = evolved;
+      sp[6] = size;
+      this.drawProjectile(ctx, sp, now);
     }
 
     // 5b. Mascotas invocadas (Morcillita y ramas) y Drones orbitales del escuadrón
