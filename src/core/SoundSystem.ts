@@ -21,6 +21,10 @@ export class SoundSystem {
   private masterGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
+  private snareFilter: BiquadFilterNode | null = null;
+  private hihatFilter: BiquadFilterNode | null = null;
+  private bassFilter: BiquadFilterNode | null = null;
+  private explosionFilter: BiquadFilterNode | null = null;
 
   public masterVolume: number = 0.8;
   public sfxVolume: number = 0.8;
@@ -110,6 +114,28 @@ export class SoundSystem {
         this.musicGain.connect(this.masterGain);
         this.masterGain.connect(this.ctx.destination);
 
+        // Buses de filtrado persistentes (evitan instanciar y fugar BiquadFilterNodes en iPad/Android)
+        this.snareFilter = this.ctx.createBiquadFilter();
+        this.snareFilter.type = 'highpass';
+        this.snareFilter.frequency.value = 1000;
+        this.snareFilter.connect(this.musicGain);
+
+        this.hihatFilter = this.ctx.createBiquadFilter();
+        this.hihatFilter.type = 'highpass';
+        this.hihatFilter.frequency.value = 7000;
+        this.hihatFilter.connect(this.musicGain);
+
+        this.bassFilter = this.ctx.createBiquadFilter();
+        this.bassFilter.type = 'lowpass';
+        this.bassFilter.frequency.value = 340;
+        this.bassFilter.connect(this.musicGain);
+
+        this.explosionFilter = this.ctx.createBiquadFilter();
+        this.explosionFilter.type = 'bandpass';
+        this.explosionFilter.frequency.value = 1100;
+        this.explosionFilter.Q.value = 1.2;
+        this.explosionFilter.connect(this.sfxGain);
+
         this.applyVolumes();
       }
     }
@@ -156,10 +182,10 @@ export class SoundSystem {
     this.nextNoteTime = this.ctx.currentTime + 0.05;
     this.musicStep = 0;
 
-    // Scheduler periódico cada 35ms que programa las notas con anticipación exacta
+    // Scheduler periódico cada 75ms que programa las notas con anticipación exacta
     this.musicIntervalId = window.setInterval(() => {
       this.scheduleMusic();
-    }, 35);
+    }, 75);
   }
 
   private scheduleMusic(): void {
@@ -171,7 +197,7 @@ export class SoundSystem {
     const tempoBpm =
       this.currentTrack === 'FINAL_BOSS' ? 146 : this.currentTrack === 'BOSS' ? 138 : 124;
     const stepDuration = 60 / tempoBpm / 4; // Duración de una semicorchea (1/16 de compás)
-    const scheduleAheadTime = 0.15; // Adelanto de 150ms
+    const scheduleAheadTime = 0.22; // Adelanto de 220ms
 
     // Evitar avalanchas de nodos si el temporizador se retrasó (ej. cambio de pestaña o tirón de CPU)
     if (this.nextNoteTime < this.ctx.currentTime - 0.12) {
@@ -291,6 +317,17 @@ export class SoundSystem {
     }
   }
 
+  private bindAutoDisconnect(source: AudioScheduledSourceNode, gain: GainNode): void {
+    source.onended = () => {
+      try {
+        source.disconnect();
+        gain.disconnect();
+      } catch {
+        // Ignorar si ya fue desconectado
+      }
+    };
+  }
+
   private synthKick(time: number, startF: number, endF: number, dur: number, vol: number): void {
     if (!this.ctx || !this.musicGain) return;
     const osc = this.ctx.createOscillator();
@@ -304,6 +341,7 @@ export class SoundSystem {
 
     osc.connect(gain);
     gain.connect(this.musicGain);
+    this.bindAutoDisconnect(osc, gain);
 
     osc.start(time);
     osc.stop(time + dur);
@@ -314,17 +352,13 @@ export class SoundSystem {
     const noise = this.ctx.createBufferSource();
     noise.buffer = this.getNoiseBuffer(this.ctx);
 
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.setValueAtTime(1000, time);
-
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(vol, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
 
-    noise.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.musicGain);
+    noise.connect(gain);
+    gain.connect(this.snareFilter ?? this.musicGain);
+    this.bindAutoDisconnect(noise, gain);
 
     noise.start(time);
     noise.stop(time + dur);
@@ -335,17 +369,13 @@ export class SoundSystem {
     const noise = this.ctx.createBufferSource();
     noise.buffer = this.getNoiseBuffer(this.ctx);
 
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.setValueAtTime(7000, time);
-
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(vol, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
 
-    noise.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.musicGain);
+    noise.connect(gain);
+    gain.connect(this.hihatFilter ?? this.musicGain);
+    this.bindAutoDisconnect(noise, gain);
 
     noise.start(time);
     noise.stop(time + dur);
@@ -360,22 +390,17 @@ export class SoundSystem {
   ): void {
     if (!this.ctx || !this.musicGain) return;
     const osc = this.ctx.createOscillator();
-    const filter = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
 
     osc.type = type;
     osc.frequency.setValueAtTime(freq, time);
 
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(450, time);
-    filter.frequency.exponentialRampToValueAtTime(180, time + dur);
-
     gain.gain.setValueAtTime(vol, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
 
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.musicGain);
+    osc.connect(gain);
+    gain.connect(this.bassFilter ?? this.musicGain);
+    this.bindAutoDisconnect(osc, gain);
 
     osc.start(time);
     osc.stop(time + dur);
@@ -400,6 +425,7 @@ export class SoundSystem {
 
     osc.connect(gain);
     gain.connect(this.musicGain);
+    this.bindAutoDisconnect(osc, gain);
 
     osc.start(time);
     osc.stop(time + dur);
@@ -411,7 +437,7 @@ export class SoundSystem {
 
   public playShoot(isHoming: boolean = false): void {
     const now = performance.now();
-    if (now - this.lastShootSoundTime < 35) return;
+    if (now - this.lastShootSoundTime < 65) return;
     this.lastShootSoundTime = now;
 
     const ctx = this.ensureContext();
@@ -432,6 +458,7 @@ export class SoundSystem {
 
     osc.connect(gain);
     gain.connect(this.sfxGain);
+    this.bindAutoDisconnect(osc, gain);
 
     osc.start();
     osc.stop(ctx.currentTime + 0.07);
@@ -439,7 +466,7 @@ export class SoundSystem {
 
   public playExplosion(isBoss: boolean = false): void {
     const now = performance.now();
-    if (!isBoss && now - this.lastStaticSoundTime < 25) return;
+    if (!isBoss && now - this.lastStaticSoundTime < 55) return;
     this.lastStaticSoundTime = now;
 
     const ctx = this.ensureContext();
@@ -449,18 +476,13 @@ export class SoundSystem {
     const noise = ctx.createBufferSource();
     noise.buffer = this.getNoiseBuffer(ctx);
 
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(isBoss ? 600 : 1400, ctx.currentTime);
-    filter.Q.setValueAtTime(1.2, ctx.currentTime);
-
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(isBoss ? 0.35 : 0.18, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.005, ctx.currentTime + duration);
 
-    noise.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.sfxGain);
+    noise.connect(gain);
+    gain.connect(this.explosionFilter ?? this.sfxGain);
+    this.bindAutoDisconnect(noise, gain);
 
     noise.start();
     noise.stop(ctx.currentTime + duration);
@@ -468,7 +490,7 @@ export class SoundSystem {
 
   public playCoinPickup(): void {
     const now = performance.now();
-    if (now - this.lastCoinSoundTime < 35) return;
+    if (now - this.lastCoinSoundTime < 45) return;
     this.lastCoinSoundTime = now;
 
     const ctx = this.ensureContext();
@@ -486,6 +508,7 @@ export class SoundSystem {
 
     osc.connect(gain);
     gain.connect(this.sfxGain);
+    this.bindAutoDisconnect(osc, gain);
 
     osc.start();
     osc.stop(ctx.currentTime + 0.12);
@@ -512,6 +535,7 @@ export class SoundSystem {
 
       osc.connect(gain);
       gain.connect(this.sfxGain!);
+      this.bindAutoDisconnect(osc, gain);
 
       osc.start(startTime);
       osc.stop(startTime + 0.23);
@@ -538,6 +562,7 @@ export class SoundSystem {
 
     osc.connect(gain);
     gain.connect(this.sfxGain);
+    this.bindAutoDisconnect(osc, gain);
 
     osc.start();
     osc.stop(ctx.currentTime + 0.55);
@@ -562,6 +587,7 @@ export class SoundSystem {
 
     osc.connect(gain);
     gain.connect(this.sfxGain);
+    this.bindAutoDisconnect(osc, gain);
     osc.start(now);
     osc.stop(now + 0.155);
   }
@@ -585,6 +611,7 @@ export class SoundSystem {
 
     osc.connect(gain);
     gain.connect(this.sfxGain);
+    this.bindAutoDisconnect(osc, gain);
     osc.start(now);
     osc.stop(now + 0.045);
   }
@@ -611,6 +638,7 @@ export class SoundSystem {
 
       osc.connect(gain);
       gain.connect(this.sfxGain!);
+      this.bindAutoDisconnect(osc, gain);
       osc.start(startTime);
       osc.stop(startTime + (isJackpot ? 0.29 : 0.19));
     });

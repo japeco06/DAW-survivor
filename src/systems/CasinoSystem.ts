@@ -1684,24 +1684,22 @@ export class CasinoSystem {
           ctx.translate(-(cx + cellW / 2), -(cy + cellH / 2));
         }
 
-        // Tarjeta del símbolo con degradado vertical de cristal
-        const cellGrad = ctx.createLinearGradient(cx, cy, cx, cy + cellH);
-        cellGrad.addColorStop(0, sym.bg);
-        cellGrad.addColorStop(1, 'rgba(7, 11, 22, 0.96)');
-
+        // Tarjeta del símbolo con brillo superior de cristal (sin crear CanvasGradient por celda cada frame)
         this.drawBox(
           ctx,
           cx,
           cy,
           cellW,
           cellH,
-          cellGrad,
+          sym.bg,
           isWinCell ? '#ffffff' : sym.color,
           isWinCell ? 2.6 : 1.3
         );
+        ctx.fillStyle = 'rgba(4, 8, 18, 0.38)';
+        ctx.fillRect(cx + 3, cy + cellH * 0.52, cellW - 6, cellH * 0.44);
 
         // Brillo superior especular en la celda
-        ctx.fillStyle = isWinCell ? 'rgba(255, 255, 255, 0.18)' : 'rgba(255, 255, 255, 0.06)';
+        ctx.fillStyle = isWinCell ? 'rgba(255, 255, 255, 0.18)' : 'rgba(255, 255, 255, 0.07)';
         ctx.fillRect(cx + 4, cy + 2, cellW - 8, 10);
 
         // Arte vectorial de alta definición del símbolo
@@ -1730,14 +1728,10 @@ export class CasinoSystem {
         ctx.restore();
       }
 
-      // Sombra cilíndrica 3D superior e inferior sobre el tambor
-      const drumShade = ctx.createLinearGradient(0, startY, 0, startY + colH);
-      drumShade.addColorStop(0, 'rgba(2, 6, 14, 0.55)');
-      drumShade.addColorStop(0.15, 'rgba(2, 6, 14, 0)');
-      drumShade.addColorStop(0.85, 'rgba(2, 6, 14, 0)');
-      drumShade.addColorStop(1, 'rgba(2, 6, 14, 0.55)');
-      ctx.fillStyle = drumShade;
-      ctx.fillRect(colX, startY, cellW, colH);
+      // Sombra cilíndrica 3D superior e inferior sobre el tambor (sin crear CanvasGradient por columna)
+      ctx.fillStyle = 'rgba(2, 6, 14, 0.46)';
+      ctx.fillRect(colX, startY, cellW, 14);
+      ctx.fillRect(colX, startY + colH - 14, cellW, 14);
 
       if (spinning) {
         // Estelas láser verticales de alta velocidad durante el giro
@@ -1916,13 +1910,10 @@ export class CasinoSystem {
     ctx.save();
     ctx.translate(cx, cy);
 
-    // Aura luminosa de fondo detrás del icono
-    const aura = ctx.createRadialGradient(0, 0, 2, 0, 0, 20);
-    aura.addColorStop(0, isWinning ? 'rgba(255, 255, 255, 0.35)' : `${sym.color}33`);
-    aura.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = aura;
+    // Aura luminosa de fondo detrás del icono (sin crear CanvasGradient por símbolo cada frame)
+    ctx.fillStyle = isWinning ? 'rgba(255, 255, 255, 0.24)' : `${sym.color}26`;
     ctx.beginPath();
-    ctx.arc(0, 0, 20, 0, Math.PI * 2);
+    ctx.arc(0, 0, 17, 0, Math.PI * 2);
     ctx.fill();
 
     if (sym.id === 'CROWN') {
@@ -1986,11 +1977,7 @@ export class CasinoSystem {
       ctx.stroke();
     } else if (sym.id === 'BELL') {
       // Campana dorada 3D de Casino
-      const bg = ctx.createLinearGradient(-10, -12, 10, 10);
-      bg.addColorStop(0, '#fde047');
-      bg.addColorStop(0.6, '#f59e0b');
-      bg.addColorStop(1, '#b45309');
-      ctx.fillStyle = bg;
+      ctx.fillStyle = '#f59e0b';
       ctx.strokeStyle = '#fef9c3';
       ctx.lineWidth = 1.4;
       ctx.beginPath();
@@ -2000,6 +1987,10 @@ export class CasinoSystem {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      ctx.fillStyle = '#fde047';
+      ctx.beginPath();
+      ctx.arc(-2.5, -4.5, 4.2, Math.PI, 0, false);
+      ctx.fill();
       // Badajo inferior
       ctx.fillStyle = '#fef08a';
       ctx.beginPath();
@@ -2041,20 +2032,16 @@ export class CasinoSystem {
       // Limón neón brillante con gajos
       ctx.save();
       ctx.rotate(-0.35);
-      const lg = ctx.createRadialGradient(-3, -3, 1, 0, 0, 13);
-      lg.addColorStop(0, '#fef9c3');
-      lg.addColorStop(0.6, '#facc15');
-      lg.addColorStop(1, '#ca8a04');
-      ctx.fillStyle = lg;
+      ctx.fillStyle = '#facc15';
       ctx.strokeStyle = '#fef08a';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.ellipse(0, 0, 12.5, 8.5, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = '#fef9c3';
       ctx.beginPath();
-      ctx.arc(-4, -2.5, 1.6, 0, Math.PI * 2);
+      ctx.arc(-4, -2.5, 2.2, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     } else if (sym.id === 'WILD') {
@@ -2374,24 +2361,21 @@ export class CasinoSystem {
       const revealed = this.minesRevealed[idx];
       const isMine = this.minesBoard[idx];
 
-      const tg = ctx.createLinearGradient(x, y, x, y + cellS);
+      let tileBg = 'rgba(16, 28, 52, 0.96)';
       let stroke = 'rgba(56, 189, 248, 0.55)';
       if (revealed) {
         if (isMine) {
-          tg.addColorStop(0, 'rgba(153, 27, 27, 0.98)');
-          tg.addColorStop(1, 'rgba(69, 10, 10, 0.98)');
+          tileBg = 'rgba(115, 18, 24, 0.98)';
           stroke = '#f43f5e';
         } else {
-          tg.addColorStop(0, 'rgba(6, 95, 70, 0.98)');
-          tg.addColorStop(1, 'rgba(4, 47, 46, 0.98)');
+          tileBg = 'rgba(6, 78, 59, 0.98)';
           stroke = '#10b981';
         }
-      } else {
-        tg.addColorStop(0, 'rgba(24, 38, 66, 0.96)');
-        tg.addColorStop(1, 'rgba(12, 20, 38, 0.96)');
       }
 
-      this.drawBox(ctx, x, y, cellS, cellS, tg, stroke, revealed ? 2.0 : 1.3);
+      this.drawBox(ctx, x, y, cellS, cellS, tileBg, stroke, revealed ? 2.0 : 1.3);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+      ctx.fillRect(x + 3, y + 2, cellS - 6, 8);
       const cxTile = x + cellS / 2;
       const cyTile = y + cellS / 2;
 

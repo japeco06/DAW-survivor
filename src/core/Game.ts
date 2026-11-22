@@ -131,10 +131,10 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.8.1';
+const GAME_VERSION = 'v1.8.2';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
-const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v1';
+const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v2';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -215,12 +215,15 @@ export class Game {
   private minigameVictory: boolean = false;
   private avgFrameDt: number = 0.016;
   private autoLowFxMode: boolean = false;
+  private isTouchDevice: boolean = false;
+  private cachedCanvasRect: DOMRect | null = null;
   private crowdPushedFlags: boolean[] = [];
   // Estado de Minijuegos de Acción
   private bullArenaNextSpawnTime: number = 15;
   private bullArenaPassiveRewardTimer: number = 5;
   private bullArenaOleCount: number = 0;
   private bullLastOleTime: Map<ElToroBoss, number> = new Map();
+  private bullLastOleDashSeq: Map<ElToroBoss, number> = new Map();
   private bossRushRound: number = 1;
   private coreDefenseHp: number = 2500;
   private coreDefenseMaxHp: number = 2500;
@@ -300,13 +303,20 @@ export class Game {
     }
     this.ctx = context;
 
+    this.isTouchDevice =
+      typeof window !== 'undefined' &&
+      ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
     try {
-      const savedLight =
-        localStorage.getItem(LIGHT_GFX_STORAGE_KEY) ||
-        localStorage.getItem('cyber_survivor_light_gfx_v1');
-      this.lightGraphicsEnabled = savedLight === '1';
+      const savedLight = localStorage.getItem(LIGHT_GFX_STORAGE_KEY);
+      if (savedLight !== null) {
+        this.lightGraphicsEnabled = savedLight === '1';
+      } else {
+        // En tablets y móviles activamos por defecto el Modo Rendimiento Táctil (1280x720 sin sobrecarga de GPU)
+        this.lightGraphicsEnabled = this.isTouchDevice;
+      }
     } catch {
-      this.lightGraphicsEnabled = false;
+      this.lightGraphicsEnabled = this.isTouchDevice;
     }
 
     this.input = new Input();
@@ -329,6 +339,17 @@ export class Game {
     window.addEventListener('resize', () => {
       this.resize();
     });
+    window.addEventListener('orientationchange', () => {
+      this.cachedCanvasRect = null;
+      this.resize();
+    });
+    window.addEventListener(
+      'scroll',
+      () => {
+        this.cachedCanvasRect = null;
+      },
+      { passive: true }
+    );
 
     this.dailyMissions = new DailyMissionSystem();
     this.dailyMissions.onCompleteCallback = (mission) => {
@@ -409,7 +430,10 @@ export class Game {
   }
 
   private getCanvasClientPos(clientXCoord: number, clientYCoord: number): { x: number; y: number } {
-    const rect = this.canvas.getBoundingClientRect();
+    if (!this.cachedCanvasRect || this.cachedCanvasRect.width === 0) {
+      this.cachedCanvasRect = this.canvas.getBoundingClientRect();
+    }
+    const rect = this.cachedCanvasRect;
     const canvasAspect = LOGICAL_WIDTH / LOGICAL_HEIGHT;
     const rectAspect = rect.width / Math.max(1, rect.height);
 
@@ -2553,6 +2577,7 @@ export class Game {
         e.preventDefault();
         unlockAudio();
         this.input.hasUsedTouch = true;
+        this.cachedCanvasRect = this.canvas.getBoundingClientRect();
 
         for (let i = 0; i < e.changedTouches.length; i++) {
           const touch = e.changedTouches[i];
@@ -2575,11 +2600,40 @@ export class Game {
             }
             if (
               this.player.canActivateUltimate() &&
-              this.isPointInRect(pt.x, pt.y, this.getInGameUltBarRect())
+              (this.isPointInRect(pt.x, pt.y, this.getInGameUltBarRect()) ||
+                Math.hypot(pt.x - (LOGICAL_WIDTH - 268), pt.y - (LOGICAL_HEIGHT - 135)) <= 54)
             ) {
               this.tryTriggerPlayerUltimate();
               this.lastTouchTapTime = performance.now();
               continue;
+            }
+            if (
+              this.isPointInRect(pt.x, pt.y, this.getInGameDashBarRect()) ||
+              Math.hypot(pt.x - (LOGICAL_WIDTH - 140), pt.y - (LOGICAL_HEIGHT - 150)) <= 64
+            ) {
+              this.tryTriggerPlayerDash();
+              this.lastTouchTapTime = performance.now();
+              continue;
+            }
+            if (
+              this.activeMinigame === 'CORE_DEFENSE' &&
+              this.isPointInRect(pt.x, pt.y, this.getInGameTurretButtonRect())
+            ) {
+              this.tryDeployCoreTurret();
+              this.lastTouchTapTime = performance.now();
+              continue;
+            }
+            const hackNode = this.terrainEvents.getNearbyHackableNode(this.player);
+            if (
+              hackNode &&
+              Math.hypot(pt.x - (LOGICAL_WIDTH - 140), pt.y - (LOGICAL_HEIGHT - 275)) <= 56
+            ) {
+              const nextDir = hackNode.hackSequence[hackNode.hackStep];
+              if (nextDir) {
+                this.tryHandleLiveHackInput(nextDir);
+                this.lastTouchTapTime = performance.now();
+                continue;
+              }
             }
             if (!this.input.isTouchActive()) {
               this.input.startTouch(touch.identifier, pt.x, pt.y);
@@ -3149,14 +3203,17 @@ export class Game {
   }
 
   private resize(): void {
-    const targetW = this.lightGraphicsEnabled ? 1280 : LOGICAL_WIDTH;
-    const targetH = this.lightGraphicsEnabled ? 720 : LOGICAL_HEIGHT;
+    const useCompactBuffer =
+      this.lightGraphicsEnabled || this.autoLowFxMode || this.isTouchDevice;
+    const targetW = useCompactBuffer ? 1280 : LOGICAL_WIDTH;
+    const targetH = useCompactBuffer ? 720 : LOGICAL_HEIGHT;
     if (this.canvas.width !== targetW || this.canvas.height !== targetH) {
       this.canvas.width = targetW;
       this.canvas.height = targetH;
       this.bgCacheCanvas = null;
       this.infiniteTileCache = null;
     }
+    this.cachedCanvasRect = this.canvas.getBoundingClientRect();
   }
 
   private startNewRun(): void {
@@ -3289,7 +3346,12 @@ export class Game {
     this.spawner = new Spawner();
     this.spawner.isNightmareMode = false;
     this.spawner.isInfiniteMap = false;
-    this.worldEnv.reset(Math.floor(Math.random() * 0xffffffff) >>> 0, false);
+    // En El Ruedo Cyber (BULL_ARENA) NO aparecen Oasis
+    this.worldEnv.reset(
+      Math.floor(Math.random() * 0xffffffff) >>> 0,
+      false,
+      mode !== 'BULL_ARENA'
+    );
     this.particleSystem.clear();
     this.elapsedTime = 0;
     this.killCount = 0;
@@ -3303,6 +3365,7 @@ export class Game {
     this.damageVignetteAlpha = 0;
     this.coreDefenseTurrets = [];
     this.bullLastOleTime.clear();
+    this.bullLastOleDashSeq.clear();
 
     if (mode === 'BULL_ARENA') {
       this.player.dashMaxCooldown = 1.45;
@@ -3311,6 +3374,7 @@ export class Game {
       this.bullArenaPassiveRewardTimer = 5;
       this.bullArenaOleCount = 0;
       const firstBull = new ElToroBoss(LOGICAL_WIDTH / 2, 140);
+      firstBull.dashInterval = 4.2;
       this.finalBoss = firstBull;
       this.enemies.push(firstBull);
       this.sound.setTrack('FINAL_BOSS');
@@ -3389,6 +3453,42 @@ export class Game {
     ];
   }
 
+  private pointToSegmentDistance(
+    px: number,
+    py: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+  ): number {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq <= 0.0001) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+    const projX = x1 + t * dx;
+    const projY = y1 + t * dy;
+    return Math.hypot(px - projX, py - projY);
+  }
+
+  private awardBullArenaOle(bull: ElToroBoss): void {
+    this.bullLastOleTime.set(bull, this.elapsedTime);
+    this.bullLastOleDashSeq.set(bull, this.player.dashSeq);
+    this.bullArenaOleCount++;
+    this.runCoinsCollected += 25;
+    this.metaSystem.addCoins(25);
+    this.player.addUltCharge(6);
+    this.sound.playCasinoWin(false);
+    this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#fbbf24', 14, true);
+    this.particleSystem.spawnFloatingText(
+      this.player.x,
+      this.player.y - 40,
+      `🐂 ¡OLÉ! CAPOTAZO #${this.bullArenaOleCount} (+25 CR)`,
+      '#fbbf24',
+      1.42
+    );
+  }
+
   private updateMinigameRuntime(dt: number): void {
     if (this.activeMinigame === 'BULL_ARENA') {
       this.bullArenaPassiveRewardTimer -= dt;
@@ -3415,6 +3515,7 @@ export class Game {
         ];
         const pick = corners[this.enemies.length % corners.length];
         const nextBull = new ElToroBoss(pick.x, pick.y);
+        nextBull.dashInterval = 4.5;
         this.enemies.push(nextBull);
         this.runCoinsCollected += 15;
         this.metaSystem.addCoins(15);
@@ -3432,26 +3533,59 @@ export class Game {
 
       for (const e of this.enemies) {
         if (!(e instanceof ElToroBoss) || !e.active) continue;
-        const dist = Math.hypot(e.x - this.player.x, e.y - this.player.y);
-        const hitDist = (e.size + this.player.size) * 0.42;
+        const currDist = Math.hypot(e.x - this.player.x, e.y - this.player.y);
+        const segDist = this.pointToSegmentDistance(
+          this.player.x,
+          this.player.y,
+          e.prevX,
+          e.prevY,
+          e.x,
+          e.y
+        );
+        const minDist = Math.min(currDist, segDist);
+        const dashStartDist = Math.hypot(
+          e.x - this.player.dashStartX,
+          e.y - this.player.dashStartY
+        );
+        const hitDist = (e.size + this.player.size) * 0.39;
+        const isDashingOrGrace =
+          this.player.dashActiveTimer > 0 || this.player.dashGraceTimer > 0;
         const lastOle = this.bullLastOleTime.get(e) ?? -10;
+        const lastOleDashSeq = this.bullLastOleDashSeq.get(e) ?? -1;
+        const isFreshDash =
+          this.player.dashGraceTimer > 0 && this.player.dashSeq !== lastOleDashSeq;
+        const canAwardOle = this.elapsedTime - lastOle >= 0.75 || isFreshDash;
 
-        if (dist <= hitDist) {
-          if (this.player.dashActiveTimer > 0) {
-            if (this.elapsedTime - lastOle >= 1.4) {
-              this.bullLastOleTime.set(e, this.elapsedTime);
-              this.bullArenaOleCount++;
-              this.runCoinsCollected += 25;
-              this.metaSystem.addCoins(25);
-              this.player.addUltCharge(6);
-              this.sound.playCasinoWin(false);
-              this.particleSystem.spawnFloatingText(
-                this.player.x,
-                this.player.y - 38,
-                '🐂 ¡OLÉ! CAPOTAZO +25 CR',
-                '#fbbf24',
-                1.4
-              );
+        // Comprobar si el jugador está o salió del corredor rojo de embestida durante TELEGRAPH
+        let inOrEscapedTelegraphLane = false;
+        if (e.state === 'TELEGRAPH' && (isDashingOrGrace || this.player.isMoving)) {
+          const relX = this.player.x - e.x;
+          const relY = this.player.y - e.y;
+          const cosA = Math.cos(e.dashAngle);
+          const sinA = Math.sin(e.dashAngle);
+          const along = relX * cosA + relY * sinA;
+          const cross = Math.abs(-relX * sinA + relY * cosA);
+          if (along > -20 && along <= 520 && cross <= 115) {
+            inOrEscapedTelegraphLane = true;
+          } else if (isDashingOrGrace) {
+            const sRelX = this.player.dashStartX - e.x;
+            const sRelY = this.player.dashStartY - e.y;
+            const sAlong = sRelX * cosA + sRelY * sinA;
+            const sCross = Math.abs(-sRelX * sinA + sRelY * cosA);
+            if (sAlong > -20 && sAlong <= 520 && sCross <= 115) {
+              inOrEscapedTelegraphLane = true;
+            }
+          }
+        }
+
+        if (currDist <= hitDist) {
+          if (
+            this.player.dashActiveTimer > 0 ||
+            this.player.invulnerabilityTimer > 0 ||
+            this.player.dashGraceTimer > 0.25
+          ) {
+            if (canAwardOle) {
+              this.awardBullArenaOle(e);
             }
           } else if (this.player.takeDamage(28)) {
             this.damageVignetteAlpha = 0.7;
@@ -3462,24 +3596,24 @@ export class Game {
               return;
             }
           }
-        } else if (
-          dist <= 118 &&
-          (e.state === 'DASH' || this.player.dashActiveTimer > 0) &&
-          this.elapsedTime - lastOle >= 1.5
-        ) {
-          this.bullLastOleTime.set(e, this.elapsedTime);
-          this.bullArenaOleCount++;
-          this.runCoinsCollected += 25;
-          this.metaSystem.addCoins(25);
-          this.player.addUltCharge(5);
-          this.sound.playCasinoWin(false);
-          this.particleSystem.spawnFloatingText(
-            this.player.x,
-            this.player.y - 38,
-            '🐂 ¡OLÉ! CAPOTAZO +25 CR',
-            '#fbbf24',
-            1.38
-          );
+        } else if (canAwardOle) {
+          const dashCapotazo =
+            isDashingOrGrace && (minDist <= 240 || dashStartDist <= 240);
+          const chargePassCapotazo = e.state === 'DASH' && minDist <= 220;
+          const closeMuletaPass =
+            this.player.isMoving && minDist <= 152 && e.state !== 'CHASE';
+          const tightChasePass =
+            this.player.isMoving && minDist <= 136 && e.state === 'CHASE';
+
+          if (
+            dashCapotazo ||
+            chargePassCapotazo ||
+            inOrEscapedTelegraphLane ||
+            closeMuletaPass ||
+            tightChasePass
+          ) {
+            this.awardBullArenaOle(e);
+          }
         }
       }
       return;
@@ -3737,9 +3871,11 @@ export class Game {
       if (!this.autoLowFxMode && this.avgFrameDt > 0.0235) {
         this.autoLowFxMode = true;
         this.particleSystem.lightMode = true;
-      } else if (this.autoLowFxMode && this.avgFrameDt < 0.0185) {
+        this.resize();
+      } else if (this.autoLowFxMode && this.avgFrameDt < 0.0175 && !this.isTouchDevice) {
         this.autoLowFxMode = false;
         this.particleSystem.lightMode = this.lightGraphicsEnabled;
+        this.resize();
       }
     }
     this.particleSystem.update(dt);
@@ -4157,11 +4293,6 @@ export class Game {
       this.triggerFinalBossArrival();
     }
 
-    if (this.activeMinigame !== 'NONE') {
-      this.updateMinigameRuntime(dt);
-      if (this.gameState !== 'PLAYING') return;
-    }
-
     const prevThreat = this.spawner.currentThreatLevel;
     const prevBossAlert = this.spawner.activeBossAlertTimer;
 
@@ -4182,50 +4313,52 @@ export class Game {
       }
     }
 
-    // Oasis dinámicos con recompensas (desaparecen al recogerse y reaparecen en otra zona)
-    const { rewards: oasisRewards, spawned: oasisSpawned } = this.worldEnv.updateOases(
-      dt,
-      alivePosList,
-      true,
-      this.elapsedTime
-    );
-    for (const sp of oasisSpawned) {
-      this.particleSystem.spawnExplosion(sp.x, sp.y, '#34d399', 18, false);
-      this.addTerminalLog('✦ NEW OASIS DETECTED! (+HP +CRYPTO +XP)');
-    }
-    for (const ow of oasisRewards) {
-      this.sound.playAchievement();
-      this.particleSystem.spawnExplosion(ow.x, ow.y, '#10b981', 36, true);
-      if (!this.coopSelfDowned && this.player.active) {
-        this.player.heal(ow.heal);
-        this.player.speedBonusMultiplier = 1.25;
-        this.player.speedBoostTimer = 4.0;
+    // Oasis dinámicos con recompensas (deshabilitados en El Ruedo Cyber / BULL_ARENA)
+    if (this.activeMinigame !== 'BULL_ARENA') {
+      const { rewards: oasisRewards, spawned: oasisSpawned } = this.worldEnv.updateOases(
+        dt,
+        alivePosList,
+        true,
+        this.elapsedTime
+      );
+      for (const sp of oasisSpawned) {
+        this.particleSystem.spawnExplosion(sp.x, sp.y, '#34d399', 18, false);
+        this.addTerminalLog('✦ NEW OASIS DETECTED! (+HP +CRYPTO +XP)');
       }
-      if (this.isCoopMode && this.isCoopHost) {
-        for (const peer of this.coopPeers.values()) {
-          if (!peer.downed && peer.player.active) {
-            peer.player.heal(ow.heal);
-            peer.player.speedBonusMultiplier = 1.25;
-            peer.player.speedBoostTimer = 4.0;
+      for (const ow of oasisRewards) {
+        this.sound.playAchievement();
+        this.particleSystem.spawnExplosion(ow.x, ow.y, '#10b981', 36, true);
+        if (!this.coopSelfDowned && this.player.active) {
+          this.player.heal(ow.heal);
+          this.player.speedBonusMultiplier = 1.25;
+          this.player.speedBoostTimer = 4.0;
+        }
+        if (this.isCoopMode && this.isCoopHost) {
+          for (const peer of this.coopPeers.values()) {
+            if (!peer.downed && peer.player.active) {
+              peer.player.heal(ow.heal);
+              peer.player.speedBonusMultiplier = 1.25;
+              peer.player.speedBoostTimer = 4.0;
+            }
           }
         }
-      }
-      const coinBonus = this.isNightmareRun ? ow.coins * 2 : ow.coins;
-      this.runCoinsCollected += coinBonus;
-      this.metaSystem.addCoins(coinBonus);
-      this.dailyMissions.reportProgress('COINS', coinBonus);
-      this.spawnCodeFragment(ow.x, ow.y, ow.xp);
-      this.particleSystem.spawnFloatingText(
-        ow.x,
-        ow.y - 28,
-        i18n.t(`✦ ¡OASIS: +${ow.heal} HP +${coinBonus} CR +TURBO!`, `✦ OASIS: +${ow.heal} HP +${coinBonus} CR +SPEED!`),
-        '#34d399',
-        1.35
-      );
-      const msg = `OASIS: +${ow.heal} HP, +${coinBonus} CR & +4s Speed Boost!`;
-      this.addTerminalLog(msg);
-      if (this.isCoopMode && this.isCoopHost) {
-        this.mpClient.sendGameEvent({ type: 'REVIVE', x: ow.x, y: ow.y, text: msg });
+        const coinBonus = this.isNightmareRun ? ow.coins * 2 : ow.coins;
+        this.runCoinsCollected += coinBonus;
+        this.metaSystem.addCoins(coinBonus);
+        this.dailyMissions.reportProgress('COINS', coinBonus);
+        this.spawnCodeFragment(ow.x, ow.y, ow.xp);
+        this.particleSystem.spawnFloatingText(
+          ow.x,
+          ow.y - 28,
+          i18n.t(`✦ ¡OASIS: +${ow.heal} HP +${coinBonus} CR +TURBO!`, `✦ OASIS: +${ow.heal} HP +${coinBonus} CR +SPEED!`),
+          '#34d399',
+          1.35
+        );
+        const msg = `OASIS: +${ow.heal} HP, +${coinBonus} CR & +4s Speed Boost!`;
+        this.addTerminalLog(msg);
+        if (this.isCoopMode && this.isCoopHost) {
+          this.mpClient.sendGameEvent({ type: 'REVIVE', x: ow.x, y: ow.y, text: msg });
+        }
       }
     }
 
@@ -4368,6 +4501,11 @@ export class Game {
         this.enemies.push(...enemy.pendingMinions);
         enemy.pendingMinions = [];
       }
+    }
+
+    if (this.activeMinigame !== 'NONE') {
+      this.updateMinigameRuntime(dt);
+      if (this.gameState !== 'PLAYING') return;
     }
 
     if (this.thermalOverclockTimer > 0) {
@@ -5373,8 +5511,6 @@ export class Game {
   private render(): void {
     const scale = this.canvas.width / LOGICAL_WIDTH;
     this.ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    this.ctx.fillStyle = '#060a13';
-    this.ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const shake =
       this.sound.screenShakeEnabled && !this.lightGraphicsEnabled && !this.autoLowFxMode
@@ -9360,21 +9496,25 @@ export class Game {
   }
 
   private ensureBgCache(): HTMLCanvasElement {
-    const w = LOGICAL_WIDTH;
-    const h = LOGICAL_HEIGHT;
+    const physW = this.canvas.width || LOGICAL_WIDTH;
+    const physH = this.canvas.height || LOGICAL_HEIGHT;
     if (
       this.bgCacheCanvas &&
-      this.bgCacheCanvas.width === w &&
-      this.bgCacheCanvas.height === h
+      this.bgCacheCanvas.width === physW &&
+      this.bgCacheCanvas.height === physH
     ) {
       return this.bgCacheCanvas;
     }
 
     const cache = document.createElement('canvas');
-    cache.width = w;
-    cache.height = h;
+    cache.width = physW;
+    cache.height = physH;
     const bgCtx = cache.getContext('2d', { alpha: false }) || cache.getContext('2d');
     if (bgCtx) {
+      const w = LOGICAL_WIDTH;
+      const h = LOGICAL_HEIGHT;
+      const scale = physW / w;
+      bgCtx.setTransform(scale, 0, 0, scale, 0, 0);
       const gridSize = 64;
       const majorSize = gridSize * 4;
 
@@ -9486,9 +9626,9 @@ export class Game {
     const tSec = performance.now() * 0.001;
 
     this.ctx.save();
-    this.ctx.drawImage(this.ensureBgCache(), 0, 0);
+    this.ctx.drawImage(this.ensureBgCache(), 0, 0, w, h);
 
-    if (!this.lightGraphicsEnabled) {
+    if (!this.lightGraphicsEnabled && !this.autoLowFxMode) {
       // Pulso horizontal suave de escaneo de bus (sin recrear gradientes cada frame)
       const scanY = ((tSec * 82) % (h + 160)) - 80;
       this.ctx.drawImage(this.ensureScanLineCache(), 0, scanY - 40, w, 80);
@@ -9522,12 +9662,10 @@ export class Game {
     this.ctx.fillRect(0, 0, w, barHeight);
 
     if (fillW > 0) {
-      const xpGrad = this.ctx.createLinearGradient(0, 0, Math.max(40, fillW), 0);
-      xpGrad.addColorStop(0, '#0284c7');
-      xpGrad.addColorStop(0.65, '#38bdf8');
-      xpGrad.addColorStop(1, '#10b981');
-      this.ctx.fillStyle = xpGrad;
+      this.ctx.fillStyle = '#10b981';
       this.ctx.fillRect(0, 0, fillW, barHeight);
+      this.ctx.fillStyle = '#38bdf8';
+      this.ctx.fillRect(0, 0, fillW * 0.65, barHeight);
 
       this.ctx.fillStyle = '#ffffff';
       this.ctx.fillRect(Math.max(0, fillW - 3), 0, Math.min(3, fillW), barHeight);
@@ -9596,18 +9734,8 @@ export class Game {
     this.ctx.fillRect(hpBarX, hpBarY, hpBarW, hpBarH);
 
     if (hpRatio > 0) {
-      const hpGrad = this.ctx.createLinearGradient(hpBarX, 0, hpBarX + hpBarW * hpRatio, 0);
-      if (hpRatio > 0.5) {
-        hpGrad.addColorStop(0, '#059669');
-        hpGrad.addColorStop(1, '#10b981');
-      } else if (hpRatio > 0.25) {
-        hpGrad.addColorStop(0, '#d97706');
-        hpGrad.addColorStop(1, '#fbbf24');
-      } else {
-        hpGrad.addColorStop(0, '#b91c1c');
-        hpGrad.addColorStop(1, '#f43f5e');
-      }
-      this.ctx.fillStyle = hpGrad;
+      this.ctx.fillStyle =
+        hpRatio > 0.5 ? '#10b981' : hpRatio > 0.25 ? '#fbbf24' : '#f43f5e';
       this.ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, hpBarH);
 
       this.ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
@@ -10886,6 +11014,125 @@ export class Game {
     if (this.gameState !== 'PLAYING' || this.isPaused || this.upgradeSystem.isChoosingUpgrade()) {
       return;
     }
+
+    // Botones táctiles ergonómicos para pulgar derecho en tablets/móviles (DASH, ULT y HACK)
+    if (this.input.hasUsedTouch) {
+      this.ctx.save();
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+
+      // 1. Botón grande de DASH (esquina inferior derecha)
+      const dashX = LOGICAL_WIDTH - 140;
+      const dashY = LOGICAL_HEIGHT - 150;
+      const dashR = 54;
+      const dashReady = this.player.canDash();
+      const dashRatio = dashReady
+        ? 1
+        : Math.max(0, 1 - this.player.dashCooldown / Math.max(0.1, this.player.dashMaxCooldown));
+
+      this.ctx.fillStyle = dashReady
+        ? 'rgba(14, 116, 144, 0.72)'
+        : 'rgba(15, 23, 42, 0.65)';
+      this.ctx.strokeStyle = dashReady ? '#38bdf8' : 'rgba(148, 163, 184, 0.45)';
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.arc(dashX, dashY, dashR, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.stroke();
+
+      if (!dashReady && dashRatio > 0) {
+        this.ctx.strokeStyle = '#38bdf8';
+        this.ctx.lineWidth = 4;
+        this.ctx.beginPath();
+        this.ctx.arc(
+          dashX,
+          dashY,
+          dashR,
+          -Math.PI / 2,
+          -Math.PI / 2 + Math.PI * 2 * dashRatio
+        );
+        this.ctx.stroke();
+      }
+
+      this.ctx.fillStyle = dashReady ? '#ffffff' : '#94a3b8';
+      this.ctx.font = `bold 14px ${FONT_DISPLAY}`;
+      this.ctx.fillText('💨 DASH', dashX, dashY - 6);
+      this.ctx.font = `bold 11px ${FONT_MONO}`;
+      this.ctx.fillStyle = dashReady ? '#7dd3fc' : '#64748b';
+      this.ctx.fillText(
+        dashReady ? i18n.t('LISTO', 'READY') : `${this.player.dashCooldown.toFixed(1)}s`,
+        dashX,
+        dashY + 14
+      );
+
+      // 2. Botón táctil de ULTIMATE
+      const ultX = LOGICAL_WIDTH - 268;
+      const ultY = LOGICAL_HEIGHT - 135;
+      const ultR = 44;
+      const ultReady = this.player.canActivateUltimate();
+      const ultRatio = Math.max(
+        0,
+        Math.min(1, this.player.ultCharge / Math.max(1, this.player.ultMaxCharge))
+      );
+
+      this.ctx.fillStyle = ultReady
+        ? 'rgba(180, 83, 9, 0.82)'
+        : 'rgba(15, 23, 42, 0.65)';
+      this.ctx.strokeStyle = ultReady ? '#fbbf24' : 'rgba(148, 163, 184, 0.4)';
+      this.ctx.lineWidth = 2.6;
+      this.ctx.beginPath();
+      this.ctx.arc(ultX, ultY, ultR, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.stroke();
+
+      this.ctx.fillStyle = ultReady ? '#fef08a' : '#94a3b8';
+      this.ctx.font = `bold 13px ${FONT_DISPLAY}`;
+      this.ctx.fillText('⚡ ULT', ultX, ultY - 5);
+      this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+      this.ctx.fillText(
+        ultReady ? i18n.t('¡TOCA!', 'TAP!') : `${Math.floor(ultRatio * 100)}%`,
+        ultX,
+        ultY + 13
+      );
+
+      // 3. Botón contextual de HACKEO EN VIVO si hay una bóveda/servidor cerca
+      const hackNode = this.terrainEvents.getNearbyHackableNode(this.player);
+      if (hackNode) {
+        const hackX = LOGICAL_WIDTH - 140;
+        const hackY = LOGICAL_HEIGHT - 275;
+        const hackR = 46;
+        const dirArrows: Record<HackDirection, string> = {
+          UP: '▲',
+          RIGHT: '►',
+          DOWN: '▼',
+          LEFT: '◄',
+        };
+        const nextDir = hackNode.hackSequence[hackNode.hackStep];
+
+        this.ctx.fillStyle = 'rgba(6, 95, 70, 0.88)';
+        this.ctx.strokeStyle = '#10b981';
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.arc(hackX, hackY, hackR, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = '#fef08a';
+        this.ctx.font = `bold 18px ${FONT_MONO}`;
+        this.ctx.fillText(`⚡ ${dirArrows[nextDir] || '▲'}`, hackX, hackY - 6);
+        this.ctx.fillStyle = '#a7f3d0';
+        this.ctx.font = `bold 10px ${FONT_MONO}`;
+        this.ctx.fillText(
+          `HACK ${hackNode.hackStep + 1}/4`,
+          hackX,
+          hackY + 14
+        );
+      }
+
+      this.ctx.textBaseline = 'alphabetic';
+      this.ctx.restore();
+    }
+
     const joy = this.input.getJoystickState();
     if (!joy.active) {
       if (this.input.hasUsedTouch && this.elapsedTime < 8) {

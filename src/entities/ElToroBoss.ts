@@ -25,22 +25,28 @@ export class ElToroBoss extends Adware {
   private readonly speedScaleInterval: number = 15.0;
 
   private dashCycleTimer: number = 0;
-  private readonly dashInterval: number = 10.0;
+  public dashInterval: number = 10.0;
   private readonly telegraphDuration: number = 1.5;
   private readonly dashDuration: number = 0.65;
   private stateTimer: number = 0;
 
-  private dashAngle: number = 0;
+  public dashAngle: number = 0;
+  public prevX: number = 0;
+  public prevY: number = 0;
   private dashSpeed: number = 780;
   private animTimer: number = 0;
 
   constructor(x: number, y: number) {
     super(x, y, 116, 175, '#dc2626', 1000000, 50, 0);
+    this.prevX = x;
+    this.prevY = y;
     this.malwareType = 'FINAL_BOSS';
     this.knockbackResistance = 1.0;
   }
 
   public override update(dt: number, player: Player): void {
+    this.prevX = this.x;
+    this.prevY = this.y;
     this.animTimer += dt;
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);
@@ -83,10 +89,12 @@ export class ElToroBoss extends Adware {
         this.facingAngle = this.dashAngle;
       }
     } else if (this.state === 'TELEGRAPH') {
-      // Se detiene por completo durante 1.5 segundos apuntando hacia la posición del jugador
+      // Se detiene durante 1.5s apuntando al jugador y fija el ángulo en los últimos 0.42s para permitir el capotazo
       this.speed = 0;
-      this.dashAngle = Math.atan2(player.y - this.y, player.x - this.x);
-      this.facingAngle = this.dashAngle;
+      if (this.stateTimer > 0.42) {
+        this.dashAngle = Math.atan2(player.y - this.y, player.x - this.x);
+        this.facingAngle = this.dashAngle;
+      }
 
       this.stateTimer -= dt;
       if (this.stateTimer <= 0) {

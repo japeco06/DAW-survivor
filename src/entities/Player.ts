@@ -44,6 +44,10 @@ export class Player extends Entity {
   public dashCooldown: number = 0;
   public dashMaxCooldown: number = 2.6;
   public dashActiveTimer: number = 0;
+  public dashGraceTimer: number = 0;
+  public dashSeq: number = 0;
+  public dashStartX: number = 0;
+  public dashStartY: number = 0;
   public readonly dashDuration: number = 0.17;
   private dashDirX: number = 1;
   private dashDirY: number = 0;
@@ -187,6 +191,9 @@ export class Player extends Entity {
 
     if (this.dashCooldown > 0) {
       this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    }
+    if (this.dashGraceTimer > 0) {
+      this.dashGraceTimer = Math.max(0, this.dashGraceTimer - dt);
     }
     const isDashing = this.dashActiveTimer > 0;
     if (isDashing) {
@@ -348,9 +355,13 @@ export class Player extends Entity {
     this.dashDirX = dx;
     this.dashDirY = dy;
     this.facingAngle = Math.atan2(dy, dx);
+    this.dashStartX = this.x;
+    this.dashStartY = this.y;
+    this.dashSeq++;
     this.dashActiveTimer = this.dashDuration;
+    this.dashGraceTimer = 0.52;
     this.dashCooldown = this.dashMaxCooldown;
-    this.invulnerabilityTimer = Math.max(this.invulnerabilityTimer, 0.25);
+    this.invulnerabilityTimer = Math.max(this.invulnerabilityTimer, 0.28);
     return true;
   }
 

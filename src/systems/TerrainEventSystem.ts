@@ -112,10 +112,7 @@ export class TerrainEventSystem {
     });
   }
 
-  public handleHackDirectionInput(
-    player: Player,
-    dir: HackDirection
-  ): { matched: boolean; completed: boolean; node: TerrainNode | null } {
+  public getNearbyHackableNode(player: Player): TerrainNode | null {
     let target: TerrainNode | null = null;
     let bestDist = Infinity;
     for (const node of this.nodes) {
@@ -126,6 +123,14 @@ export class TerrainEventSystem {
         target = node;
       }
     }
+    return target;
+  }
+
+  public handleHackDirectionInput(
+    player: Player,
+    dir: HackDirection
+  ): { matched: boolean; completed: boolean; node: TerrainNode | null } {
+    const target = this.getNearbyHackableNode(player);
     if (!target) return { matched: false, completed: false, node: null };
 
     const expected = target.hackSequence[target.hackStep];
