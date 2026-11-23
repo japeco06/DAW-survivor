@@ -131,10 +131,10 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.8.2';
+const GAME_VERSION = 'v1.8.3';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
-const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v2';
+const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v3';
 export const FINAL_BOSS_ARRIVAL_TIME = 700; // 11 minutos y 40 segundos (~11-12 min)
 
 export class Game {
@@ -213,9 +213,7 @@ export class Game {
   private activeMinigame: MinigameMode = 'NONE';
   private hoveredMinigameCard: Exclude<MinigameMode, 'NONE'> | null = null;
   private minigameVictory: boolean = false;
-  private avgFrameDt: number = 0.016;
-  private autoLowFxMode: boolean = false;
-  private isTouchDevice: boolean = false;
+  private isMobileOrTablet: boolean = false;
   private cachedCanvasRect: DOMRect | null = null;
   private crowdPushedFlags: boolean[] = [];
   // Estado de Minijuegos de Acción
@@ -303,20 +301,25 @@ export class Game {
     }
     this.ctx = context;
 
-    this.isTouchDevice =
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    const isIpadOS =
+      typeof navigator !== 'undefined' &&
+      navigator.platform === 'MacIntel' &&
+      navigator.maxTouchPoints > 1 &&
       typeof window !== 'undefined' &&
-      ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      !window.matchMedia('(pointer: fine)').matches;
+    this.isMobileOrTablet = /Android|iPad|iPhone|iPod|Mobile|Tablet/i.test(ua) || isIpadOS;
 
     try {
       const savedLight = localStorage.getItem(LIGHT_GFX_STORAGE_KEY);
       if (savedLight !== null) {
         this.lightGraphicsEnabled = savedLight === '1';
       } else {
-        // En tablets y móviles activamos por defecto el Modo Rendimiento Táctil (1280x720 sin sobrecarga de GPU)
-        this.lightGraphicsEnabled = this.isTouchDevice;
+        // Solo en móviles/tablets reales (Android / iPad / iPhone) activamos 1280x720 por defecto; en PC siempre Full HD 1920x1080
+        this.lightGraphicsEnabled = this.isMobileOrTablet;
       }
     } catch {
-      this.lightGraphicsEnabled = this.isTouchDevice;
+      this.lightGraphicsEnabled = this.isMobileOrTablet;
     }
 
     this.input = new Input();
@@ -3203,10 +3206,8 @@ export class Game {
   }
 
   private resize(): void {
-    const useCompactBuffer =
-      this.lightGraphicsEnabled || this.autoLowFxMode || this.isTouchDevice;
-    const targetW = useCompactBuffer ? 1280 : LOGICAL_WIDTH;
-    const targetH = useCompactBuffer ? 720 : LOGICAL_HEIGHT;
+    const targetW = this.lightGraphicsEnabled ? 1280 : LOGICAL_WIDTH;
+    const targetH = this.lightGraphicsEnabled ? 720 : LOGICAL_HEIGHT;
     if (this.canvas.width !== targetW || this.canvas.height !== targetH) {
       this.canvas.width = targetW;
       this.canvas.height = targetH;
@@ -3866,18 +3867,6 @@ export class Game {
   }
 
   private update(dt: number): void {
-    if (dt > 0.001 && dt < 0.09) {
-      this.avgFrameDt = this.avgFrameDt * 0.92 + dt * 0.08;
-      if (!this.autoLowFxMode && this.avgFrameDt > 0.0235) {
-        this.autoLowFxMode = true;
-        this.particleSystem.lightMode = true;
-        this.resize();
-      } else if (this.autoLowFxMode && this.avgFrameDt < 0.0175 && !this.isTouchDevice) {
-        this.autoLowFxMode = false;
-        this.particleSystem.lightMode = this.lightGraphicsEnabled;
-        this.resize();
-      }
-    }
     this.particleSystem.update(dt);
     this.achievementSystem.updateToasts(dt);
     this.dailyMissions.updateToasts(dt);
@@ -5513,7 +5502,7 @@ export class Game {
     this.ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
     const shake =
-      this.sound.screenShakeEnabled && !this.lightGraphicsEnabled && !this.autoLowFxMode
+      this.sound.screenShakeEnabled && !this.lightGraphicsEnabled
         ? this.particleSystem.getShakeOffset()
         : { x: 0, y: 0 };
     const cam = this.getCameraOrigin();
@@ -5790,7 +5779,7 @@ export class Game {
     this.drawTopStatusBanners();
     const achToastH = this.achievementSystem.drawToasts(this.ctx, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     this.dailyMissions.drawToasts(this.ctx, LOGICAL_WIDTH, LOGICAL_HEIGHT, achToastH);
-    if (!this.lightGraphicsEnabled && !this.autoLowFxMode) {
+    if (!this.lightGraphicsEnabled) {
       this.drawCRTScanlines();
     }
     this.drawVersionBadge();
@@ -6917,7 +6906,7 @@ export class Game {
     this.ctx.fillStyle = fill;
     this.ctx.strokeStyle = stroke;
     this.ctx.lineWidth = lineWidth;
-    if (glowColor && glowBlur > 0 && !this.lightGraphicsEnabled && !this.autoLowFxMode) {
+    if (glowColor && glowBlur > 0 && !this.lightGraphicsEnabled) {
       this.ctx.shadowColor = glowColor;
       this.ctx.shadowBlur = glowBlur;
     }
@@ -9628,7 +9617,7 @@ export class Game {
     this.ctx.save();
     this.ctx.drawImage(this.ensureBgCache(), 0, 0, w, h);
 
-    if (!this.lightGraphicsEnabled && !this.autoLowFxMode) {
+    if (!this.lightGraphicsEnabled) {
       // Pulso horizontal suave de escaneo de bus (sin recrear gradientes cada frame)
       const scanY = ((tSec * 82) % (h + 160)) - 80;
       this.ctx.drawImage(this.ensureScanLineCache(), 0, scanY - 40, w, 80);
