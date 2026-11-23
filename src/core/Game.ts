@@ -131,7 +131,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.8.3';
+const GAME_VERSION = 'v1.8.4';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v3';
@@ -3381,8 +3381,8 @@ export class Game {
       this.sound.setTrack('FINAL_BOSS');
       this.showStatusToast(
         i18n.t(
-          '🐂 EL RUEDO CYBER: ¡SIN ARMAS! ESQUIVA CON [SHIFT] DASH PARA HACER "¡OLÉ!" (+25 CR)',
-          '🐂 CYBER BULLRING: NO WEAPONS! DODGE WITH [SHIFT] DASH FOR "¡OLÉ!" (+25 CR)'
+          '🐂 EL RUEDO CYBER: ¡SIN ARMAS! ESQUIVA CON [SHIFT] DASH PARA HACER "¡OLÉ!" (+5 CR)',
+          '🐂 CYBER BULLRING: NO WEAPONS! DODGE WITH [SHIFT] DASH FOR "¡OLÉ!" (+5 CR)'
         ),
         '#fbbf24',
         3600
@@ -3476,17 +3476,17 @@ export class Game {
     this.bullLastOleTime.set(bull, this.elapsedTime);
     this.bullLastOleDashSeq.set(bull, this.player.dashSeq);
     this.bullArenaOleCount++;
-    this.runCoinsCollected += 25;
-    this.metaSystem.addCoins(25);
-    this.player.addUltCharge(6);
+    this.runCoinsCollected += 5;
+    this.metaSystem.addCoins(5);
+    this.player.addUltCharge(5);
     this.sound.playCasinoWin(false);
     this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#fbbf24', 14, true);
     this.particleSystem.spawnFloatingText(
       this.player.x,
       this.player.y - 40,
-      `🐂 ¡OLÉ! CAPOTAZO #${this.bullArenaOleCount} (+25 CR)`,
+      `🐂 ¡OLÉ! CAPOTAZO #${this.bullArenaOleCount} (+5 CR)`,
       '#fbbf24',
-      1.42
+      1.35
     );
   }
 
@@ -3553,31 +3553,9 @@ export class Game {
           this.player.dashActiveTimer > 0 || this.player.dashGraceTimer > 0;
         const lastOle = this.bullLastOleTime.get(e) ?? -10;
         const lastOleDashSeq = this.bullLastOleDashSeq.get(e) ?? -1;
-        const isFreshDash =
-          this.player.dashGraceTimer > 0 && this.player.dashSeq !== lastOleDashSeq;
-        const canAwardOle = this.elapsedTime - lastOle >= 0.75 || isFreshDash;
-
-        // Comprobar si el jugador está o salió del corredor rojo de embestida durante TELEGRAPH
-        let inOrEscapedTelegraphLane = false;
-        if (e.state === 'TELEGRAPH' && (isDashingOrGrace || this.player.isMoving)) {
-          const relX = this.player.x - e.x;
-          const relY = this.player.y - e.y;
-          const cosA = Math.cos(e.dashAngle);
-          const sinA = Math.sin(e.dashAngle);
-          const along = relX * cosA + relY * sinA;
-          const cross = Math.abs(-relX * sinA + relY * cosA);
-          if (along > -20 && along <= 520 && cross <= 115) {
-            inOrEscapedTelegraphLane = true;
-          } else if (isDashingOrGrace) {
-            const sRelX = this.player.dashStartX - e.x;
-            const sRelY = this.player.dashStartY - e.y;
-            const sAlong = sRelX * cosA + sRelY * sinA;
-            const sCross = Math.abs(-sRelX * sinA + sRelY * cosA);
-            if (sAlong > -20 && sAlong <= 520 && sCross <= 115) {
-              inOrEscapedTelegraphLane = true;
-            }
-          }
-        }
+        const canAwardOle =
+          this.elapsedTime - lastOle >= 1.6 &&
+          (!isDashingOrGrace || this.player.dashSeq !== lastOleDashSeq);
 
         if (currDist <= hitDist) {
           if (
@@ -3599,20 +3577,10 @@ export class Game {
           }
         } else if (canAwardOle) {
           const dashCapotazo =
-            isDashingOrGrace && (minDist <= 240 || dashStartDist <= 240);
-          const chargePassCapotazo = e.state === 'DASH' && minDist <= 220;
-          const closeMuletaPass =
-            this.player.isMoving && minDist <= 152 && e.state !== 'CHASE';
-          const tightChasePass =
-            this.player.isMoving && minDist <= 136 && e.state === 'CHASE';
+            isDashingOrGrace && (minDist <= 175 || dashStartDist <= 175);
+          const chargePassCapotazo = e.state === 'DASH' && minDist <= 175;
 
-          if (
-            dashCapotazo ||
-            chargePassCapotazo ||
-            inOrEscapedTelegraphLane ||
-            closeMuletaPass ||
-            tightChasePass
-          ) {
+          if (dashCapotazo || chargePassCapotazo) {
             this.awardBullArenaOle(e);
           }
         }
@@ -6464,7 +6432,7 @@ export class Game {
           'Entras sin armas a una plaza cerrada. Cada 15s salta otro Toro más al ruedo. Esquiva rozando sus embestidas con [Shift] Dash para hacer "¡OLÉ!".',
           'Enter a closed ring with no weapons. Every 15s another Bull joins. Dodge charges closely with [Shift] Dash for "¡OLÉ!".'
         ),
-        rewardText: i18n.t('★ +25 CR por Capotazo "¡OLÉ!" + 5 CR/5s', '★ +25 CR per "¡OLÉ!" Dodge + 5 CR/5s'),
+        rewardText: i18n.t('★ +5 CR por Capotazo "¡OLÉ!" + 5 CR/5s', '★ +5 CR per "¡OLÉ!" Dodge + 5 CR/5s'),
         color: '#f43f5e',
       },
       {
