@@ -27,11 +27,11 @@ export class Evasor extends Adware {
       x,
       y,
       22,
-      138,
+      160,
       '#22d3ee',
-      Math.round(38 * hpMultiplier),
-      14,
-      36
+      Math.round(64 * hpMultiplier),
+      21,
+      26
     );
     this.malwareType = 'EVASOR';
   }

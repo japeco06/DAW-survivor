@@ -22,10 +22,10 @@ export class Adware extends Entity {
   private static nextNetId: number = 1;
   public readonly netId: number = Adware.nextNetId++;
   public malwareType: MalwareType = 'ADWARE';
-  public maxHp: number = 25;
-  public hp: number = 25;
-  public damage: number = 12;
-  public xpValue: number = 20;
+  public maxHp: number = 42;
+  public hp: number = 42;
+  public damage: number = 18;
+  public xpValue: number = 14;
   public knockbackResistance: number = 0; // 0 = retroceso normal, 1 = inmune
   public networkFreezeTimer: number = 0; // Congelación de Red (Fibra Óptica Lvl 10 / EMP: -80% velocidad)
   public cryoSlowTimer: number = 0; // Ralentización criogénica (-45% a -65% velocidad)
@@ -39,11 +39,11 @@ export class Adware extends Entity {
     x: number,
     y: number,
     size: number = 22,
-    speed: number = 115,
+    speed: number = 134,
     color: string = '#ff1e42',
-    hp: number = 25,
-    damage: number = 12,
-    xpValue: number = 20
+    hp: number = 42,
+    damage: number = 18,
+    xpValue: number = 14
   ) {
     super(x, y, size, speed, color);
     this.maxHp = hp;

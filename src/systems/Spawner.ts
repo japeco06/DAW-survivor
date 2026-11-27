@@ -477,11 +477,11 @@ export class Spawner {
       4.4,
       Math.min(3.2, hpMultiplier) * (1 + timeMinutes * 0.05)
     );
-    adware.maxHp = Math.round(25 * progressiveHpMult);
+    adware.maxHp = Math.round(42 * progressiveHpMult);
     adware.hp = adware.maxHp;
 
     const speedBonus = Math.min(36, timeMinutes * 3.2);
-    adware.speed = Math.round(115 + speedBonus);
+    adware.speed = Math.round(134 + speedBonus);
 
     const dmgMultiplier = this.getGlobalDamageMultiplier(elapsedTime);
     adware.damage = Math.round(adware.damage * dmgMultiplier);

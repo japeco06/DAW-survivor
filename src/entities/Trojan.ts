@@ -14,11 +14,11 @@ export class Trojan extends Adware {
       x,
       y,
       18,
-      205, // Mucho más rápido que el Adware estándar
+      232, // Mucho más rápido que el Adware estándar
       '#facc15',
-      Math.round(16 * Math.min(4.2, hpMultiplier)),
-      15,
-      30
+      Math.round(28 * Math.min(4.2, hpMultiplier)),
+      22,
+      22
     );
     this.malwareType = 'TROJAN';
   }

@@ -392,14 +392,29 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │   ├── **Dash Táctico cada `2.5s` (`Player.ts`)**: ajustado el enfriamiento base del Dash de `2.6s → 2.5s`
 │   └── **Escalado acelerado en Minijuegos (`Spawner.ts`, `Game.ts`)**: nuevo modo `isMinigameFastScale` que arranca los enemigos un `+45%` más resistentes (`+20%` daño, `+8%` velocidad), acelera la línea temporal de oleadas (`35s + t * 2.4`) y multiplica la velocidad de escalado para partidas cortas
 │
-└── v1.9.5 — Bóvedas Más Raras en Modo Normal y Modo Pesadilla (ACTUAL)
-    ├── **Modo Normal / Clásico (`Game.ts`, `TerrainEventSystem.ts`)**: eliminada la bóveda gratuita al segundo `0`, primer evento retrasado (`10s → 38s`), intervalo ampliado (`22s → 55s`), máximo `1` evento activo simultáneo y menor probabilidad de Bóveda (`55% → 30%`)
-    └── **Modo Pesadilla (`TerrainEventSystem.ts`)**: sin bóveda inicial inmediata, intervalo de generación ampliado (`8.5s → 22s`), máximo `3` objetivos simultáneos (máximo `1` Bóveda activa a la vez) y probabilidad reducida (`30% → 16%`)
+├── v1.9.5 — Bóvedas Más Raras en Modo Normal y Modo Pesadilla
+│   ├── **Modo Normal / Clásico (`Game.ts`, `TerrainEventSystem.ts`)**: eliminada la bóveda gratuita al segundo `0`, primer evento retrasado (`10s → 38s`), intervalo ampliado (`22s → 55s`), máximo `1` evento activo simultáneo y menor probabilidad de Bóveda (`55% → 30%`)
+│   └── **Modo Pesadilla (`TerrainEventSystem.ts`)**: sin bóveda inicial inmediata, intervalo de generación ampliado (`8.5s → 22s`), máximo `3` objetivos simultáneos (máximo `1` Bóveda activa a la vez) y probabilidad reducida (`30% → 16%`)
+│
+└── v1.9.6 — Enemigos Base Mucho Más Duros y Curva de Experiencia Inicial Frenada (ACTUAL)
+    ├── **Subida clara de estadísticas base de todos los enemigos** (`Adware`, `Trojan`, `TrojanShooter`, `Worm`, `ArmoredWorm`, `Evasor` sin tocar el escalado): +65–75% HP base, +40–50% daño base, +13–29% velocidad base y proyectiles más rápidos/frecuentes en `TrojanShooter`
+    └── **Progresión inicial de niveles equilibrada** (`UpgradeSystem.ts` y XP de enemigos): `xpToNextLevel` inicial subido de `150 → 320` (`* 1.16 + 24` por nivel) y XP base por enemigo reducida ~28% para evitar subir varios niveles de golpe al empezar
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.9.6] - 2026-11-27
+- **Aumento Directo de Dificultad en Enemigos Base (sin alterar fórmulas de escalado)**:
+  - `Adware`: HP `25 → 42`, Daño `12 → 18`, Velocidad `115 → 134` (`Adware.ts`, `Spawner.ts`).
+  - `Trojan`: HP `16 → 28`, Daño `15 → 22`, Velocidad `205 → 232` (`Trojan.ts`).
+  - `TrojanShooter`: HP `36 → 60`, Daño `14 → 20`, Velocidad `105 → 122`, cadencia `2.1s → 1.65s` y velocidad de proyectil `290 → 340` (`TrojanShooter.ts`).
+  - `Worm`: HP `85 → 140` (crías `20 → 36`), Daño `18 → 26` (crías `10 → 16`), Velocidad `82 → 96` (crías `155 → 178`) (`Worm.ts`).
+  - `ArmoredWorm`: HP `95 → 160`, Daño `20 → 28`, Velocidad `48 → 62` (`ArmoredWorm.ts`).
+  - `Evasor`: HP `38 → 64`, Daño `14 → 21`, Velocidad `138 → 160` (`Evasor.ts`).
+- **Curva de Experiencia Temprana Más Pausada (`src/systems/UpgradeSystem.ts`)**:
+  - Aumentada la XP requerida para el primer nivel (`150 → 320`) con crecimiento `* 1.16 + 24`, y reducida la XP base de cada enemigo (`Adware 20→14`, `Trojan 30→22`, `Worm 45→34`, `TrojanShooter 42→30`, `Evasor 36→26`, `ArmoredWorm 55→40`) para evitar saltos múltiples de nivel en los primeros segundos.
 
 ### [v1.9.5] - 2026-11-27
 - **Menor Frecuencia de Bóvedas en Normal y Pesadilla (`src/core/Game.ts`, `src/systems/TerrainEventSystem.ts`)**:

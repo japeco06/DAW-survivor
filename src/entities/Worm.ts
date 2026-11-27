@@ -10,9 +10,9 @@ export class Worm extends Adware {
 
   constructor(x: number, y: number, hpMultiplier: number = 1, isSplitChild: boolean = false) {
     const size = isSplitChild ? 16 : 30;
-    const speed = isSplitChild ? 155 : 82;
-    const baseHp = isSplitChild ? 20 : 85;
-    const xp = isSplitChild ? 15 : 45;
+    const speed = isSplitChild ? 178 : 96;
+    const baseHp = isSplitChild ? 36 : 140;
+    const xp = isSplitChild ? 10 : 34;
 
     super(
       x,
@@ -21,7 +21,7 @@ export class Worm extends Adware {
       speed,
       '#a855f7',
       Math.round(baseHp * hpMultiplier),
-      isSplitChild ? 10 : 18,
+      isSplitChild ? 16 : 26,
       xp
     );
     this.malwareType = 'WORM';

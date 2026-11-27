@@ -13,11 +13,11 @@ export class ArmoredWorm extends Adware {
       x,
       y,
       34,
-      48,
+      62,
       '#14b8a6',
-      Math.round(95 * hpMultiplier),
-      20,
-      55
+      Math.round(160 * hpMultiplier),
+      28,
+      40
     );
     this.malwareType = 'ARMORED_WORM';
     this.knockbackResistance = 0.8;

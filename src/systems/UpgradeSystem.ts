@@ -35,7 +35,7 @@ export const MAX_WEAPON_SLOTS = 5;
 export class UpgradeSystem {
   public level: number = 1;
   public currentXp: number = 0;
-  public xpToNextLevel: number = 150;
+  public xpToNextLevel: number = 320;
   public pendingLevelUps: number = 0;
   public rerollsRemaining: number = 3;
 
@@ -641,7 +641,7 @@ export class UpgradeSystem {
     while (this.currentXp >= this.xpToNextLevel) {
       this.currentXp -= this.xpToNextLevel;
       this.level++;
-      this.xpToNextLevel = Math.round(this.xpToNextLevel * 1.15 + 12);
+      this.xpToNextLevel = Math.round(this.xpToNextLevel * 1.16 + 24);
       this.pendingLevelUps++;
     }
 

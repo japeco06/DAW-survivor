@@ -73,11 +73,11 @@ export class EnemyProjectile extends Entity {
 
 export class TrojanShooter extends Adware {
   private angle: number = 0;
-  private shootTimer: number = 0.8;
-  private readonly shootCooldown: number = 2.1;
+  private shootTimer: number = 0.7;
+  private readonly shootCooldown: number = 1.65;
   private readonly preferredMinRange: number = 230;
   private readonly preferredMaxRange: number = 330;
-  private readonly maxFireRange: number = 470;
+  private readonly maxFireRange: number = 490;
   public pendingProjectiles: EnemyProjectile[] = [];
 
   constructor(x: number, y: number, hpMultiplier: number = 1) {
@@ -85,11 +85,11 @@ export class TrojanShooter extends Adware {
       x,
       y,
       24,
-      105,
+      122,
       '#f97316',
-      Math.round(36 * hpMultiplier),
-      14,
-      42
+      Math.round(60 * hpMultiplier),
+      20,
+      30
     );
     this.malwareType = 'TROJAN_SHOOTER';
   }
@@ -122,7 +122,7 @@ export class TrojanShooter extends Adware {
         const muzzleX = this.x + Math.cos(this.angle) * (this.size * 0.65);
         const muzzleY = this.y + Math.sin(this.angle) * (this.size * 0.65);
         this.pendingProjectiles.push(
-          new EnemyProjectile(muzzleX, muzzleY, this.angle, 290, this.damage)
+          new EnemyProjectile(muzzleX, muzzleY, this.angle, 340, this.damage)
         );
       }
     }
