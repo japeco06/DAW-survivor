@@ -49,12 +49,12 @@ export class Spawner {
     originY: number = 0,
     worldEnv?: WorldEnvironment
   ): void {
-    const initialCount = this.isNightmareMode ? 12 : 8;
+    const initialCount = this.isNightmareMode ? 12 : this.isMinigameFastScale ? 11 : 8;
     const cx = originX + canvasWidth / 2;
     const cy = originY + canvasHeight / 2;
     const radiusX = canvasWidth * 0.44;
     const radiusY = canvasHeight * 0.44;
-    const mult = this.isNightmareMode ? 1.4 : 1;
+    const mult = this.isNightmareMode ? 1.4 : this.isMinigameFastScale ? 1.5 : 1;
 
     for (let i = 0; i < initialCount; i++) {
       const ang = (i / initialCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
@@ -82,6 +82,7 @@ export class Spawner {
   private nextFlankWaveInterval: number = 17;
   public finalBossMode: boolean = false;
   public isNightmareMode: boolean = false;
+  public isMinigameFastScale: boolean = false;
   public isInfiniteMap: boolean = false;
   public coopPlayerCount: number = 1;
 
@@ -134,26 +135,36 @@ export class Spawner {
    * - Velocidad: escala suavemente (+1.8% por minuto) para exigir mejor posicionamiento.
    */
   public getGlobalHpMultiplier(elapsedTime: number, playerLevel: number): number {
-    const earlyLevelBonus = Math.max(0, playerLevel - 1) * 0.035;
-    const lateLevelBonus = Math.max(0, playerLevel - 6) * 0.07;
-    const timeBonus = (elapsedTime / 60) * 0.075;
+    const earlyLevelBonus = Math.max(0, playerLevel - 1) * (this.isMinigameFastScale ? 0.06 : 0.035);
+    const lateLevelBonus = Math.max(0, playerLevel - 6) * (this.isMinigameFastScale ? 0.11 : 0.07);
+    const timeBonus = (elapsedTime / 60) * (this.isMinigameFastScale ? 0.48 : 0.075);
     const nightmareMult = this.isNightmareMode ? 1.45 : 1.0;
+    const minigameStartMult = this.isMinigameFastScale ? 1.45 : 1.0;
     const coopMult = 1 + Math.max(0, this.coopPlayerCount - 1) * 0.5;
 
     return Number(
-      ((1 + earlyLevelBonus + lateLevelBonus + timeBonus) * nightmareMult * coopMult).toFixed(2)
+      (
+        (1 + earlyLevelBonus + lateLevelBonus + timeBonus) *
+        nightmareMult *
+        minigameStartMult *
+        coopMult
+      ).toFixed(2)
     );
   }
 
   public getGlobalDamageMultiplier(elapsedTime: number): number {
     const timeMinutes = elapsedTime / 60;
-    const base = Math.min(1.28, 1 + timeMinutes * 0.025);
+    const base = this.isMinigameFastScale
+      ? Math.min(1.85, 1.2 + timeMinutes * 0.14)
+      : Math.min(1.28, 1 + timeMinutes * 0.025);
     return this.isNightmareMode ? base * 1.25 : base;
   }
 
   public getGlobalSpeedMultiplier(elapsedTime: number): number {
     const timeMinutes = elapsedTime / 60;
-    const base = Math.min(1.14, 1 + timeMinutes * 0.012);
+    const base = this.isMinigameFastScale
+      ? Math.min(1.32, 1.08 + timeMinutes * 0.055)
+      : Math.min(1.14, 1 + timeMinutes * 0.012);
     return this.isNightmareMode ? base * 1.12 : base;
   }
 

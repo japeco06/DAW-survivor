@@ -32,7 +32,7 @@ export class Player extends Entity {
 
   // Sistema de Habilidad Activa / Ultimate (cargada por bajas, dura X segundos)
   public ultCharge: number = 0;
-  public ultMaxCharge: number = 35;
+  public ultMaxCharge: number = 100;
   public ultActiveTimer: number = 0;
   public ultDuration: number = 6.0;
   public ultPulseTimer: number = 0;
@@ -42,7 +42,7 @@ export class Player extends Entity {
 
   // Sistema de Dash Táctico ([Shift])
   public dashCooldown: number = 0;
-  public dashMaxCooldown: number = 2.6;
+  public dashMaxCooldown: number = 2.5;
   public dashActiveTimer: number = 0;
   public dashGraceTimer: number = 0;
   public dashSeq: number = 0;
@@ -105,7 +105,7 @@ export class Player extends Entity {
       this.ultName = profile.ultName;
       this.ultNameEn = profile.ultNameEn;
       this.ultDuration = profile.ultDuration;
-      this.ultMaxCharge = Math.max(18, Math.round(profile.ultKillsRequired * lab.ultChargeMult));
+      this.ultMaxCharge = Math.max(50, Math.round(profile.ultKillsRequired * lab.ultChargeMult));
       if (profile.id === 'MORCILLITA') {
         this.isSummoner = true;
         this.companion = new CompanionPet(x, y);

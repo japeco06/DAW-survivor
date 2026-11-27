@@ -137,7 +137,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.9.3';
+const GAME_VERSION = 'v1.9.4';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v3';
@@ -3425,6 +3425,7 @@ export class Game {
     }
     this.upgradeSystem = new UpgradeSystem();
     this.spawner = new Spawner();
+    this.spawner.isMinigameFastScale = true;
     this.spawner.isNightmareMode = false;
     this.spawner.isInfiniteMap = false;
     // En El Ruedo Cyber (BULL_ARENA) NO aparecen Oasis
@@ -4508,9 +4509,11 @@ export class Game {
 
     this.spawner.coopPlayerCount = this.isCoopMode ? Math.max(1, 1 + this.coopPeers.size) : 1;
     if (this.activeMinigame !== 'BULL_ARENA' && this.activeMinigame !== 'BOSS_RUSH') {
+      const spawnerElapsed =
+        this.activeMinigame !== 'NONE' ? 35 + this.elapsedTime * 2.4 : this.elapsedTime;
       this.spawner.update(
         dt,
-        this.elapsedTime,
+        spawnerElapsed,
         this.upgradeSystem.level,
         this.enemies,
         LOGICAL_WIDTH,

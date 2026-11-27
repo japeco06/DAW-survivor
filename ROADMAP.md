@@ -382,15 +382,28 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │   ├── **Coliseo Boss Rush (`BOSS_RUSH`) mucho más desafiante (`Game.ts`)**: escalado real de vida (`bossLevel` 3–7 + `hpMultiplier` 3.0–5.4), velocidad (`+12%..+20%`) y daño (`+20%..+40%`), rondas con jefes dobles desde la Ronda 2 y Trío Final de Élite en Ronda 5, curación entre rondas ajustada (`40% → 25%`) y corrección del doble conteo de jefes purgados
 │   └── **Power-Ups realmente raros (`NUKE` Bomba, `FRENZY` Cadencia, `FREEZE` Hielo)**: probabilidades reducidas en Cajas de Hardware (`25% → 7%`), Jefes de Oleada (`100% → 22%` / `12%` en Boss Rush) y enemigos comunes (`1% → 0.22%`), más enfriamiento global de `18s` entre drops
 │
-└── v1.9.3 — Bóvedas Siempre Visibles, Hackeo con Flechas/WASD, HUD Principal Mejorado y Ultimate Exclusiva en [ESPACIO] (ACTUAL)
-    ├── **Bóvedas y Eventos de Terreno (`TerrainEventSystem.ts`)**: márgenes seguros ampliados al aparecer en arena (`240px` lateral, `215px` superior, evitando la zona del HUD) y recorte automático (*clamping*) de la caja de flechas dentro de pantalla para que nunca quede cortada
-    ├── **Hackeo en Vivo compatible con `WASD` (`Game.ts`)**: mantiene la interfaz limpia mostrando solo las flechas (`▲ ▼ ◄ ►`), pero ahora también acepta `W/A/S/D` para completar la secuencia
-    └── **HUD Superior Izquierdo de Alta Visibilidad y Ultimate en `[ESPACIO]` (`Game.ts`)**: panel ampliado (`420×136`) con barra de `❤ VIDA` más grande, botones claros de `💨 [SHIFT] DASH` y `⚡ [ESPACIO] ULTIMATE` (desactivada la tecla `E` para la Ultimate)
+├── v1.9.3 — Bóvedas Siempre Visibles, Hackeo con Flechas/WASD, HUD Principal Mejorado y Ultimate Exclusiva en [ESPACIO]
+│   ├── **Bóvedas y Eventos de Terreno (`TerrainEventSystem.ts`)**: márgenes seguros ampliados al aparecer en arena (`240px` lateral, `215px` superior, evitando la zona del HUD) y recorte automático (*clamping*) de la caja de flechas dentro de pantalla para que nunca quede cortada
+│   ├── **Hackeo en Vivo compatible con `WASD` (`Game.ts`)**: mantiene la interfaz limpia mostrando solo las flechas (`▲ ▼ ◄ ►`), pero ahora también acepta `W/A/S/D` para completar la secuencia
+│   └── **HUD Superior Izquierdo de Alta Visibilidad y Ultimate en `[ESPACIO]` (`Game.ts`)**: panel ampliado (`420×136`) con barra de `❤ VIDA` más grande, botones claros de `💨 [SHIFT] DASH` y `⚡ [ESPACIO] ULTIMATE` (desactivada la tecla `E` para la Ultimate)
+│
+└── v1.9.4 — Balanceo de Ultimates (100 Bajas), Dash 2.5s y Escalado Acelerado en Minijuegos (ACTUAL)
+    ├── **Ultimates cada 100 bajas (`MetaSystem.ts`, `Player.ts`)**: coste base unificado de `35 → 100` bajas para todos los agentes (con mínimo `50` tras mejoras de Laboratorio)
+    ├── **Dash Táctico cada `2.5s` (`Player.ts`)**: ajustado el enfriamiento base del Dash de `2.6s → 2.5s`
+    └── **Escalado acelerado en Minijuegos (`Spawner.ts`, `Game.ts`)**: nuevo modo `isMinigameFastScale` que arranca los enemigos un `+45%` más resistentes (`+20%` daño, `+8%` velocidad), acelera la línea temporal de oleadas (`35s + t * 2.4`) y multiplica la velocidad de escalado para partidas cortas
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.9.4] - 2026-11-27
+- **Coste de Ultimates a 100 Bajas (`src/systems/MetaSystem.ts`, `src/entities/Player.ts`)**:
+  - Aumentado `ultKillsRequired` de `35` a `100` bajas en todos los perfiles de agentes (y `ultMaxCharge` por defecto a `100`, con suelo mínimo de `50` al aplicar descuentos del Laboratorio Kernel).
+- **Enfriamiento del Dash Táctico a `2.5s` (`src/entities/Player.ts`)**:
+  - Ajustado `dashMaxCooldown` base de `2.6s` a `2.5s`.
+- **Escalado Rápido de Enemigos en Minijuegos (`src/systems/Spawner.ts`, `src/core/Game.ts`)**:
+  - Activado `isMinigameFastScale` al iniciar minijuegos (`CORE_DEFENSE`, `VAULT_BLITZ`): oleada inicial más densa y resistente (`1.5x` HP), multiplicadores de vida (`1.45x` base + escalado temporal acelerado), daño (`1.2x..1.85x`) y velocidad (`1.08x..1.32x`), además de avanzar la curva de oleadas (`35 + elapsedTime * 2.4`) para que los enemigos avanzados aparezcan desde el primer momento.
 
 ### [v1.9.3] - 2026-11-27
 - **Visibilidad Garantizada en Eventos de Bóveda y Hackeo (`src/systems/TerrainEventSystem.ts`, `src/core/Game.ts`)**:
