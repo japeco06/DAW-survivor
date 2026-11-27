@@ -31,6 +31,7 @@ export class Adware extends Entity {
   public cryoSlowTimer: number = 0; // Ralentización criogénica (-45% a -65% velocidad)
   public cryoSlowFactor: number = 0.58;
   public hitFlashTimer: number = 0;
+  public hitSquashTimer: number = 0;
   public facingAngle: number = 0;
   protected readonly animSeed: number = Math.random() * 100;
 
@@ -52,6 +53,9 @@ export class Adware extends Entity {
   }
 
   protected tickSpeedMultiplier(dt: number): number {
+    if (this.hitSquashTimer > 0) {
+      this.hitSquashTimer = Math.max(0, this.hitSquashTimer - dt);
+    }
     let slowFactor = this.networkFreezeTimer > 0 ? 0.2 : 1.0;
     if (this.networkFreezeTimer > 0) {
       this.networkFreezeTimer = Math.max(0, this.networkFreezeTimer - dt);
@@ -93,6 +97,7 @@ export class Adware extends Entity {
   public takeDamage(amount: number, knockbackX: number = 0, knockbackY: number = 0): void {
     this.hp -= amount;
     this.hitFlashTimer = 0.08;
+    this.hitSquashTimer = 0.095;
 
     const kbFactor = Math.max(0, 1 - this.knockbackResistance);
     this.x += knockbackX * kbFactor;

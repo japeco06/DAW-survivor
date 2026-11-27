@@ -79,9 +79,22 @@ export class TerrainEventSystem {
     canvasHeight: number,
     forcedType?: TerrainEventType
   ): void {
-    const margin = 170;
-    const x = margin + Math.random() * Math.max(200, canvasWidth - margin * 2);
-    const y = margin + Math.random() * Math.max(200, canvasHeight - margin * 2);
+    const marginX = 240;
+    const marginTop = 215;
+    const marginBottom = 160;
+    const usableW = Math.max(200, canvasWidth - marginX * 2);
+    const usableH = Math.max(200, canvasHeight - marginTop - marginBottom);
+    let x = marginX + Math.random() * usableW;
+    let y = marginTop + Math.random() * usableH;
+    // Evitar que la bóveda o su barra de flechas aparezcan debajo del HUD superior izquierdo
+    for (let attempt = 0; attempt < 12; attempt++) {
+      if (!(x < 520 && y < 265)) break;
+      x = marginX + Math.random() * usableW;
+      y = marginTop + Math.random() * usableH;
+    }
+    if (x < 520 && y < 265) {
+      y = Math.max(y, 275);
+    }
     let type: TerrainEventType = forcedType ?? 'CORRUPTED_VAULT';
     if (!forcedType) {
       const r = Math.random();
@@ -391,7 +404,10 @@ export class TerrainEventSystem {
     return killed;
   }
 
-  public draw(ctx: CanvasRenderingContext2D): void {
+  public draw(
+    ctx: CanvasRenderingContext2D,
+    viewBounds?: { minX: number; maxX: number; minY: number; maxY: number }
+  ): void {
     for (const node of this.nodes) {
       if (!node.active) continue;
       const color = this.getColorForType(node.type);
@@ -487,8 +503,28 @@ export class TerrainEventSystem {
       if (node.type !== 'DATA_STORM' && !node.hackBonusTriggered && node.hackSequence.length > 0) {
         const barW = 148;
         const barH = 34;
-        const bx = -barW / 2;
-        const by = -node.radius - 52;
+        let bx = -barW / 2;
+        let by = -node.radius - 52;
+
+        // Mantener la caja de flechas siempre visible dentro de los bordes de pantalla
+        if (viewBounds) {
+          const padX = 16;
+          const padTop = 26;
+          const padBottom = 16;
+          const worldLeft = node.x + bx;
+          const worldTop = node.y + by;
+          const clampedWorldLeft = Math.max(
+            viewBounds.minX + padX,
+            Math.min(viewBounds.maxX - barW - padX, worldLeft)
+          );
+          const clampedWorldTop = Math.max(
+            viewBounds.minY + padTop,
+            Math.min(viewBounds.maxY - barH - padBottom, worldTop)
+          );
+          bx = clampedWorldLeft - node.x;
+          by = clampedWorldTop - node.y;
+        }
+        const barCenterX = bx + barW / 2;
 
         ctx.fillStyle = 'rgba(7, 13, 25, 0.94)';
         ctx.strokeStyle = node.hackStep > 0 ? '#10b981' : color;
@@ -498,7 +534,7 @@ export class TerrainEventSystem {
 
         ctx.fillStyle = '#fde047';
         ctx.font = 'bold 8.5px "JetBrains Mono", Consolas, monospace';
-        ctx.fillText('⚡ HACKEO CRÍTICO (x3) [FLECHAS]', 0, by - 4);
+        ctx.fillText('⚡ HACKEO CRÍTICO (x3) [FLECHAS]', barCenterX, by - 4);
 
         const arrowGlyph: Record<HackDirection, string> = {
           UP: '▲',

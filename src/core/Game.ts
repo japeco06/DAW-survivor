@@ -19,6 +19,12 @@ import { Spawner } from '../systems/Spawner';
 import { CombatSystem } from '../systems/CombatSystem';
 import { UpgradeSystem } from '../systems/UpgradeSystem';
 import { ParticleSystem } from '../systems/ParticleSystem';
+import {
+  VisualFXSystem,
+  ArenaThemeId,
+  ARENA_ORDER,
+  ARENA_THEMES,
+} from '../systems/VisualFXSystem';
 import { AchievementSystem } from '../systems/AchievementSystem';
 import { DailyMissionSystem } from '../systems/DailyMissionSystem';
 import { TerrainEventSystem, HackDirection } from '../systems/TerrainEventSystem';
@@ -131,7 +137,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.8.4';
+const GAME_VERSION = 'v1.9.3';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v3';
@@ -154,12 +160,19 @@ export class Game {
   private codeFragments: CodeFragment[] = [];
   private cryptoCoins: CryptoCoin[] = [];
   private powerUps: PowerUpItem[] = [];
+  private powerUpDropCooldown: number = 0;
   private systemFreezeTimer: number = 0;
   private thermalOverclockTimer: number = 0;
   private spawner: Spawner;
   private combatSystem: CombatSystem;
   private upgradeSystem: UpgradeSystem;
   private particleSystem: ParticleSystem;
+  private visualFX: VisualFXSystem;
+  private hoveredArenaBtn: ArenaThemeId | null = null;
+  private afterimageTimer: number = 0;
+  private hudTrailHpRatio: number = 1;
+  private bossTrailHpRatio: number = 1;
+  private lastBossTrackKey: string = '';
 
   private isPaused: boolean = false;
   private hoveredPauseAction: 'RESUME' | 'SETTINGS' | 'EXIT_TO_MENU' | null = null;
@@ -337,6 +350,8 @@ export class Game {
     this.upgradeSystem = new UpgradeSystem();
     this.particleSystem = new ParticleSystem();
     this.particleSystem.lightMode = this.lightGraphicsEnabled;
+    this.visualFX = new VisualFXSystem();
+    this.visualFX.lightMode = this.lightGraphicsEnabled;
 
     this.resize();
     window.addEventListener('resize', () => {
@@ -1050,6 +1065,10 @@ export class Game {
     this.coopSelfReviveProgress = 0;
     this.coopWaitingUpgrade = false;
     this.coopUpgradePickedIds.clear();
+    this.visualFX.resetRunFX();
+    this.visualFX.triggerTransition(0.65);
+    this.hudTrailHpRatio = 1;
+    this.bossTrailHpRatio = 1;
     this.coopUpgradeStatusText = '';
     this.coopSnapshot = null;
     this.coopSnapshotTimer = 0;
@@ -1080,6 +1099,7 @@ export class Game {
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.powerUps = [];
+    this.powerUpDropCooldown = 0;
     this.systemFreezeTimer = 0;
     this.thermalOverclockTimer = 0;
     this.finalBoss = null;
@@ -1218,6 +1238,10 @@ export class Game {
     };
     const choicesByPlayer: Record<string, SerializedUpgradeCard[]> = {};
     this.coopUpgradePickedIds.clear();
+    this.visualFX.resetRunFX();
+    this.visualFX.triggerTransition(0.65);
+    this.hudTrailHpRatio = 1;
+    this.bossTrailHpRatio = 1;
     this.coopWaitingUpgrade = true;
     this.coopUpgradeTimer = 18.0;
 
@@ -1265,6 +1289,10 @@ export class Game {
       }
       this.coopWaitingUpgrade = false;
       this.coopUpgradePickedIds.clear();
+    this.visualFX.resetRunFX();
+    this.visualFX.triggerTransition(0.65);
+    this.hudTrailHpRatio = 1;
+    this.bossTrailHpRatio = 1;
       this.coopUpgradeStatusText = '';
       this.upgradeSystem.clearExternalChoices();
       this.mpClient.sendResumeFromUpgrade();
@@ -1781,6 +1809,8 @@ export class Game {
     const uName = i18n.currentLang === 'EN' ? this.player.ultNameEn : this.player.ultName;
     this.sound.playAchievement();
     this.particleSystem.triggerShake(8, 0.24);
+    this.visualFX.triggerHitstop(0.038, this.isCoopMode);
+    this.visualFX.spawnDecal(this.player.x, this.player.y, 72, this.player.color, 'EMP', 4.5);
     this.particleSystem.spawnExplosion(this.player.x, this.player.y, this.player.color, 36, true);
     this.particleSystem.spawnFloatingText(
       this.player.x,
@@ -1818,6 +1848,7 @@ export class Game {
     if (!this.player.tryTriggerDash(dir.x, dir.y)) return false;
 
     this.sound.playDash();
+    this.visualFX.spawnAfterimage(this.player.x, this.player.y, this.player.size * 0.56, this.player.color, 0.24);
     this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#38bdf8', 18, false);
     this.particleSystem.spawnFloatingText(
       this.player.x,
@@ -1980,6 +2011,7 @@ export class Game {
   private toggleLightGraphics(): void {
     this.lightGraphicsEnabled = !this.lightGraphicsEnabled;
     this.particleSystem.lightMode = this.lightGraphicsEnabled;
+    this.visualFX.lightMode = this.lightGraphicsEnabled;
     try {
       localStorage.setItem(LIGHT_GFX_STORAGE_KEY, this.lightGraphicsEnabled ? '1' : '0');
     } catch {
@@ -2303,7 +2335,7 @@ export class Game {
       if (
         this.gameState === 'PLAYING' &&
         !this.upgradeSystem.isChoosingUpgrade() &&
-        (key === ' ' || key === 'e')
+        key === ' '
       ) {
         e.preventDefault();
         this.tryTriggerPlayerUltimate();
@@ -2334,16 +2366,29 @@ export class Game {
       if (
         this.gameState === 'PLAYING' &&
         !this.upgradeSystem.isChoosingUpgrade() &&
-        (key === 'arrowup' || key === 'arrowdown' || key === 'arrowleft' || key === 'arrowright')
+        (key === 'arrowup' ||
+          key === 'arrowdown' ||
+          key === 'arrowleft' ||
+          key === 'arrowright' ||
+          key === 'w' ||
+          key === 's' ||
+          key === 'a' ||
+          key === 'd')
       ) {
         const dirMap: Record<string, HackDirection> = {
           arrowup: 'UP',
           arrowdown: 'DOWN',
           arrowleft: 'LEFT',
           arrowright: 'RIGHT',
+          w: 'UP',
+          s: 'DOWN',
+          a: 'LEFT',
+          d: 'RIGHT',
         };
         if (this.tryHandleLiveHackInput(dirMap[key])) {
-          e.preventDefault();
+          if (key.startsWith('arrow')) {
+            e.preventDefault();
+          }
           return;
         }
       }
@@ -2462,6 +2507,14 @@ export class Game {
         this.hoveredSettingsBtn = this.isPointInRect(mx, my, this.getSettingsButtonRect());
         this.hoveredFullscreenBtn = this.isPointInRect(mx, my, this.getFullscreenButtonRect());
         this.hoveredStartBtn = this.isPointInRect(mx, my, this.getStartButtonRect());
+
+        this.hoveredArenaBtn = null;
+        for (const aBtn of this.getArenaSelectorRects()) {
+          if (this.isPointInRect(mx, my, aBtn)) {
+            this.hoveredArenaBtn = aBtn.id;
+            break;
+          }
+        }
 
         for (const mBtn of this.getGameModeButtonRects()) {
           if (this.isPointInRect(mx, my, mBtn)) {
@@ -2992,6 +3045,14 @@ export class Game {
       }
 
       if (this.activeMenuTab !== 'CASINO' && this.activeMenuTab !== 'MINIGAMES') {
+        this.hoveredArenaBtn = null;
+        for (const aBtn of this.getArenaSelectorRects()) {
+          if (this.isPointInRect(mx, my, aBtn)) {
+            this.hoveredArenaBtn = aBtn.id;
+            break;
+          }
+        }
+
         for (const mBtn of this.getGameModeButtonRects()) {
           if (this.isPointInRect(mx, my, mBtn)) {
             this.selectedGameMode = mBtn.mode;
@@ -3008,6 +3069,18 @@ export class Game {
             this.sound.playShoot(false);
             return;
           }
+        }
+      }
+
+      for (const aBtn of this.getArenaSelectorRects()) {
+        if (this.isPointInRect(mx, my, aBtn)) {
+          this.visualFX.setArena(aBtn.id);
+          this.sound.playShoot(false);
+          this.menuFeedbackMessage = i18n.t(
+            `Arena seleccionada: ${this.visualFX.getArenaLabel(aBtn.id)}`,
+            `Arena selected: ${this.visualFX.getArenaLabel(aBtn.id)}`
+          );
+          return;
         }
       }
 
@@ -3155,6 +3228,10 @@ export class Game {
     this.coopPeers.clear();
     this.coopWaitingUpgrade = false;
     this.coopUpgradePickedIds.clear();
+    this.visualFX.resetRunFX();
+    this.visualFX.triggerTransition(0.65);
+    this.hudTrailHpRatio = 1;
+    this.bossTrailHpRatio = 1;
     this.coopUpgradeStatusText = '';
     this.coopSnapshot = null;
     this.coopLastSnapSeq = 0;
@@ -3181,6 +3258,7 @@ export class Game {
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.powerUps = [];
+    this.powerUpDropCooldown = 0;
     this.systemFreezeTimer = 0;
     this.thermalOverclockTimer = 0;
     this.finalBoss = null;
@@ -3251,6 +3329,7 @@ export class Game {
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.powerUps = [];
+    this.powerUpDropCooldown = 0;
     this.systemFreezeTimer = 0;
     this.thermalOverclockTimer = 0;
     this.finalBoss = null;
@@ -3332,6 +3411,7 @@ export class Game {
     this.codeFragments = [];
     this.cryptoCoins = [];
     this.powerUps = [];
+    this.powerUpDropCooldown = 0;
     this.terrainEvents.nodes = [];
     this.systemFreezeTimer = 0;
     this.thermalOverclockTimer = 0;
@@ -3390,14 +3470,13 @@ export class Game {
     } else if (mode === 'BOSS_RUSH') {
       this.bossRushRound = 1;
       this.upgradeSystem.level = 10;
-      this.combatSystem.multiShotCount += 2;
-      this.combatSystem.projectileDamage += 18;
-      this.combatSystem.fireCooldown = Math.max(0.18, this.combatSystem.fireCooldown * 0.72);
-      this.combatSystem.pingTrackerLevel = 2;
+      this.combatSystem.multiShotCount += 1;
+      this.combatSystem.projectileDamage += 10;
+      this.combatSystem.fireCooldown = Math.max(0.22, this.combatSystem.fireCooldown * 0.85);
+      this.combatSystem.pingTrackerLevel = 1;
       this.combatSystem.firewallPulseLevel = 1;
       this.upgradeSystem.addXp(this.upgradeSystem.xpToNextLevel, this.player);
-      const r1Boss = new RansomwareBoss(LOGICAL_WIDTH / 2, 150, 1.15);
-      this.enemies.push(r1Boss);
+      this.spawnBossRushRound(1);
       this.sound.setTrack('BOSS');
       this.showStatusToast(
         i18n.t(
@@ -3476,6 +3555,8 @@ export class Game {
     this.bullLastOleTime.set(bull, this.elapsedTime);
     this.bullLastOleDashSeq.set(bull, this.player.dashSeq);
     this.bullArenaOleCount++;
+    this.visualFX.triggerHitstop(0.032, this.isCoopMode);
+    this.visualFX.spawnDecal(this.player.x, this.player.y, 44, '#fbbf24', 'EMP', 4.0);
     this.runCoinsCollected += 5;
     this.metaSystem.addCoins(5);
     this.player.addUltCharge(5);
@@ -3488,6 +3569,82 @@ export class Game {
       '#fbbf24',
       1.35
     );
+  }
+
+  private spawnBossRushRound(round: number): void {
+    const buffColiseumBoss = (boss: WaveBoss, speedMult: number, dmgMult: number): WaveBoss => {
+      boss.speed = Math.round(boss.speed * speedMult);
+      boss.damage = Math.round(boss.damage * dmgMult);
+      return boss;
+    };
+
+    if (round === 1) {
+      this.enemies.push(
+        buffColiseumBoss(
+          new RansomwareBoss(LOGICAL_WIDTH / 2, 150, { bossLevel: 3, hpMultiplier: 3.0 }),
+          1.12,
+          1.2
+        )
+      );
+    } else if (round === 2) {
+      this.enemies.push(
+        buffColiseumBoss(
+          new WormPrimeBoss(420, 160, { bossLevel: 4, hpMultiplier: 3.6 }),
+          1.14,
+          1.25
+        ),
+        buffColiseumBoss(
+          new RansomwareBoss(LOGICAL_WIDTH - 420, 160, { bossLevel: 3.5, hpMultiplier: 3.0 }),
+          1.14,
+          1.25
+        )
+      );
+    } else if (round === 3) {
+      this.enemies.push(
+        buffColiseumBoss(
+          new SpywareSpecterBoss(400, 160, { bossLevel: 5, hpMultiplier: 4.2 }),
+          1.16,
+          1.3
+        ),
+        buffColiseumBoss(
+          new WormPrimeBoss(LOGICAL_WIDTH - 400, 160, { bossLevel: 4.5, hpMultiplier: 3.8 }),
+          1.16,
+          1.3
+        )
+      );
+    } else if (round === 4) {
+      this.enemies.push(
+        buffColiseumBoss(
+          new RootkitTitanBoss(380, 160, { bossLevel: 6, hpMultiplier: 4.8 }),
+          1.18,
+          1.35
+        ),
+        buffColiseumBoss(
+          new SpywareSpecterBoss(LOGICAL_WIDTH - 380, 160, { bossLevel: 5.5, hpMultiplier: 4.4 }),
+          1.18,
+          1.35
+        )
+      );
+    } else {
+      // Ronda 5/5: Trío Final del Coliseo
+      this.enemies.push(
+        buffColiseumBoss(
+          new RootkitTitanBoss(LOGICAL_WIDTH / 2, 140, { bossLevel: 7, hpMultiplier: 5.4 }),
+          1.2,
+          1.4
+        ),
+        buffColiseumBoss(
+          new RansomwareBoss(340, 200, { bossLevel: 6, hpMultiplier: 4.8 }),
+          1.2,
+          1.4
+        ),
+        buffColiseumBoss(
+          new SpywareSpecterBoss(LOGICAL_WIDTH - 340, 200, { bossLevel: 6, hpMultiplier: 4.8 }),
+          1.2,
+          1.4
+        )
+      );
+    }
   }
 
   private updateMinigameRuntime(dt: number): void {
@@ -3569,6 +3726,7 @@ export class Game {
           } else if (this.player.takeDamage(28)) {
             this.damageVignetteAlpha = 0.7;
             this.particleSystem.triggerShake(10, 0.25);
+            this.visualFX.triggerGlitch(1.15, 0.14);
             this.sound.playExplosion(false);
             if (!this.player.active || this.player.hp <= 0) {
               this.triggerGameOverSequence();
@@ -3596,7 +3754,6 @@ export class Game {
         const roundCoins = this.bossRushRound * 45;
         this.runCoinsCollected += roundCoins;
         this.metaSystem.addCoins(roundCoins);
-        this.runBossesKilled++;
         this.sound.playAchievement();
 
         if (this.bossRushRound >= 5) {
@@ -3616,26 +3773,14 @@ export class Game {
         }
 
         this.bossRushRound++;
-        this.player.heal(Math.round(this.player.maxHp * 0.4));
+        this.player.heal(Math.round(this.player.maxHp * 0.25));
         this.upgradeSystem.addXp(this.upgradeSystem.xpToNextLevel, this.player);
-
-        if (this.bossRushRound === 2) {
-          this.enemies.push(new WormPrimeBoss(LOGICAL_WIDTH / 2, 150, 1.35));
-        } else if (this.bossRushRound === 3) {
-          this.enemies.push(new SpywareSpecterBoss(LOGICAL_WIDTH / 2, 150, 1.55));
-        } else if (this.bossRushRound === 4) {
-          this.enemies.push(new RootkitTitanBoss(LOGICAL_WIDTH / 2, 150, 1.8));
-        } else if (this.bossRushRound === 5) {
-          this.enemies.push(
-            new RansomwareBoss(380, 160, 2.0),
-            new RootkitTitanBoss(LOGICAL_WIDTH - 380, 160, 2.0)
-          );
-        }
+        this.spawnBossRushRound(this.bossRushRound);
 
         this.showStatusToast(
           i18n.t(
-            `⚔️ ¡RONDA ${this.bossRushRound}/5 DEL COLISEO! (+${roundCoins} CR +40% HP)`,
-            `⚔️ COLISEUM ROUND ${this.bossRushRound}/5! (+${roundCoins} CR +40% HP)`
+            `⚔️ ¡RONDA ${this.bossRushRound}/5 DEL COLISEO! (+${roundCoins} CR +25% HP)`,
+            `⚔️ COLISEUM ROUND ${this.bossRushRound}/5! (+${roundCoins} CR +25% HP)`
           ),
           '#fbbf24',
           3000
@@ -3800,6 +3945,9 @@ export class Game {
 
     this.sound.playExplosion(true);
     this.particleSystem.triggerShake(18, 0.7);
+    this.visualFX.triggerGlitch(1.4, 0.18);
+    this.visualFX.triggerHitstop(0.045, this.isCoopMode);
+    this.visualFX.spawnDecal(this.finalBoss.x, this.finalBoss.y, 110, '#dc2626', 'SCORCH', 7.0);
     this.particleSystem.spawnExplosion(this.finalBoss.x, this.finalBoss.y, '#dc2626', 100, true);
     this.particleSystem.spawnFloatingText(
       this.player.x,
@@ -3835,6 +3983,7 @@ export class Game {
   }
 
   private update(dt: number): void {
+    this.visualFX.update(dt);
     this.particleSystem.update(dt);
     this.achievementSystem.updateToasts(dt);
     this.dailyMissions.updateToasts(dt);
@@ -3846,12 +3995,47 @@ export class Game {
       this.damageVignetteAlpha = Math.max(0, this.damageVignetteAlpha - dt * 1.8);
     }
 
+    // Suavizado de barra fantasma de vida (Player + Boss)
+    if (this.gameState === 'PLAYING') {
+      const curHpRatio = Math.max(0, Math.min(1, this.player.hp / Math.max(1, this.player.maxHp)));
+      if (this.hudTrailHpRatio > curHpRatio) {
+        this.hudTrailHpRatio = Math.max(curHpRatio, this.hudTrailHpRatio - dt * 0.42);
+      } else {
+        this.hudTrailHpRatio = curHpRatio;
+      }
+
+      // Estelas fantasma (Afterimages) durante Dash o Ultimate
+      if (
+        !this.isPaused &&
+        !this.lightGraphicsEnabled &&
+        this.player.active &&
+        (this.player.dashActiveTimer > 0 || this.player.ultActiveTimer > 0)
+      ) {
+        this.afterimageTimer -= dt;
+        if (this.afterimageTimer <= 0) {
+          this.afterimageTimer = this.player.dashActiveTimer > 0 ? 0.028 : 0.075;
+          this.visualFX.spawnAfterimage(
+            this.player.x,
+            this.player.y,
+            this.player.size * 0.52,
+            this.player.dashActiveTimer > 0 ? '#38bdf8' : this.player.color,
+            this.player.dashActiveTimer > 0 ? 0.2 : 0.28
+          );
+        }
+      }
+    }
+
     if (this.gameState === 'MENU') {
       this.casinoSystem.update(dt, this.metaSystem, this.sound);
       return;
     }
 
     if (this.gameState !== 'PLAYING') {
+      return;
+    }
+
+    // Hitstop selectivo (solo en solitario; nunca en Co-op para no desincronizar)
+    if (!this.isCoopMode && this.visualFX.consumeHitstop(dt)) {
       return;
     }
 
@@ -3918,6 +4102,9 @@ export class Game {
     }
 
     this.elapsedTime += dt;
+    if (this.powerUpDropCooldown > 0) {
+      this.powerUpDropCooldown = Math.max(0, this.powerUpDropCooldown - dt);
+    }
     const cam = this.getCameraOrigin();
 
     if (this.finalBoss && this.finalBoss.active) {
@@ -4717,8 +4904,8 @@ export class Game {
         this.sound.playCoinPickup();
         this.showStatusToast(
           i18n.t(
-            `⚡ ¡ULTIMATE LISTA: ${uName}! PULSA [ESPACIO] O [E]`,
-            `⚡ ULTIMATE READY: ${uName}! PRESS [SPACE] OR [E]`
+            `⚡ ¡ULTIMATE LISTA: ${uName}! PULSA [ESPACIO]`,
+            `⚡ ULTIMATE READY: ${uName}! PRESS [SPACE]`
           ),
           '#fbbf24',
           2600
@@ -4913,11 +5100,12 @@ export class Game {
             35
           );
         }
-        // 25% de probabilidad de soltar un power-up raro (Nuke, Freeze, Frenzy)
-        if (Math.random() < 0.25) {
+        // 7% de probabilidad de soltar un power-up raro (Nuke, Freeze, Frenzy) con enfriamiento global
+        if (this.powerUpDropCooldown <= 0 && Math.random() < 0.07) {
           const pTypes: PowerUpType[] = ['NUKE', 'FREEZE', 'FRENZY'];
           const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
           this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
+          this.powerUpDropCooldown = 18;
         }
         this.particleSystem.spawnFloatingText(
           this.player.x,
@@ -4972,7 +5160,7 @@ export class Game {
       this.spawnCodeFragment(drop.x, drop.y, drop.xpValue);
 
       if (isBoss) {
-        // Jefe de oleada derrotado: suelta 5 CryptoCoins y un PowerUp garantizado
+        // Jefe de oleada derrotado: suelta 5 CryptoCoins y probabilidad rara de PowerUp
         for (let c = 0; c < 5; c++) {
           this.spawnCryptoCoin(
             drop.x + (Math.random() - 0.5) * 44,
@@ -4980,15 +5168,20 @@ export class Game {
             1
           );
         }
-        const pTypes: PowerUpType[] = ['NUKE', 'FREEZE', 'FRENZY'];
-        const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
-        this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
-      } else {
-        // 1% de probabilidad de soltar un power-up raro en enemigos comunes
-        if (Math.random() < 0.01) {
+        const bossPowerUpChance = this.activeMinigame === 'BOSS_RUSH' ? 0.12 : 0.22;
+        if (this.powerUpDropCooldown <= 0 && Math.random() < bossPowerUpChance) {
           const pTypes: PowerUpType[] = ['NUKE', 'FREEZE', 'FRENZY'];
           const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
           this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
+          this.powerUpDropCooldown = 18;
+        }
+      } else {
+        // 0.22% de probabilidad de soltar un power-up raro en enemigos comunes (con cooldown global de 18s)
+        if (this.powerUpDropCooldown <= 0 && Math.random() < 0.0022) {
+          const pTypes: PowerUpType[] = ['NUKE', 'FREEZE', 'FRENZY'];
+          const pType = pTypes[Math.floor(Math.random() * pTypes.length)];
+          this.powerUps.push(new PowerUpItem(drop.x, drop.y, pType));
+          this.powerUpDropCooldown = 18;
         }
         let maxBonusCoinDrop = this.player.bonusCoinDropChance;
         for (const peerPl of alivePeerPlayers) {
@@ -5035,6 +5228,8 @@ export class Game {
     if (combatEvents.playerHit) {
       this.particleSystem.triggerShake(8, 0.28);
       this.damageVignetteAlpha = 0.65;
+      this.visualFX.triggerGlitch(1.0, 0.13);
+      this.visualFX.spawnDecal(this.player.x, this.player.y, 38, '#ff1e42', 'SCORCH', 4.5);
       this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#ff1e42', 16, false);
       this.addTerminalLog(`ALERT: Kernel integrity damaged! HP: ${Math.ceil(this.player.hp)}/${this.player.maxHp}`);
     }
@@ -5447,7 +5642,8 @@ export class Game {
   }
 
   private drawInfiniteCyberGrid(camX: number, camY: number): void {
-    const tile = this.ensureInfiniteTileCache();
+    const theme = this.visualFX.getActiveTheme(this.activeMinigame, this.isNightmareRun);
+    const tile = this.visualFX.ensureInfiniteTileCache(theme, this.isNightmareRun);
     const ox = ((camX % 256) + 256) % 256;
     const oy = ((camY % 256) + 256) % 256;
 
@@ -5457,11 +5653,101 @@ export class Game {
         this.ctx.drawImage(tile, x, y);
       }
     }
-    // Tinte carmesí sutil solo en Pesadilla; azul limpio en Co-op Clásico
+
+    // Capa profunda en parallax 0.5x para sensación de profundidad real sobre la placa base
+    if (!this.lightGraphicsEnabled) {
+      const pTile = this.visualFX.ensureParallaxTileCache(theme);
+      const pox = (((camX * 0.5) % 512) + 512) % 512;
+      const poy = (((camY * 0.5) % 512) + 512) % 512;
+      for (let x = -pox - 64; x < LOGICAL_WIDTH + 64; x += 512) {
+        for (let y = -poy - 64; y < LOGICAL_HEIGHT + 64; y += 512) {
+          this.ctx.drawImage(pTile, x, y);
+        }
+      }
+    }
+
+    // Tinte carmesí sutil solo en Pesadilla
     if (this.isNightmareRun) {
       this.ctx.fillStyle = 'rgba(127, 29, 29, 0.08)';
       this.ctx.fillRect(-24, -24, LOGICAL_WIDTH + 48, LOGICAL_HEIGHT + 48);
     }
+    this.ctx.restore();
+  }
+
+  /**
+   * Pasada de iluminación neón aditiva ("Fake Bloom") sin shadowBlur.
+   * Usa sprites radiales pre-cacheados y un límite estricto por frame para mantener 60 FPS en cualquier PC.
+   */
+  private drawAdditiveBloomPass(
+    minViewX: number,
+    maxViewX: number,
+    minViewY: number,
+    maxViewY: number
+  ): void {
+    if (this.lightGraphicsEnabled) return;
+    let budget = 85;
+
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'lighter';
+
+    // 1. Halo del jugador (intensificado durante Dash o Ultimate)
+    if (this.player.active) {
+      const isUlt = this.player.ultActiveTimer > 0;
+      const isDash = this.player.dashActiveTimer > 0;
+      this.visualFX.drawGlow(
+        this.ctx,
+        this.player.x,
+        this.player.y,
+        isUlt ? 86 : isDash ? 64 : 46,
+        isUlt ? 'gold' : isDash ? 'cyan' : 'cyan',
+        isUlt ? 0.52 : isDash ? 0.44 : 0.24
+      );
+      budget--;
+    }
+
+    // 2. Proyectiles activos (límite generoso pero acotado)
+    const projStep = this.projectiles.length > 42 ? 2 : 1;
+    for (let i = 0; i < this.projectiles.length && budget > 18; i += projStep) {
+      const proj = this.projectiles[i];
+      if (
+        proj.x >= minViewX &&
+        proj.x <= maxViewX &&
+        proj.y >= minViewY &&
+        proj.y <= maxViewY
+      ) {
+        this.visualFX.drawGlow(
+          this.ctx,
+          proj.x,
+          proj.y,
+          proj.isEvolved ? 28 : 20,
+          proj.isEvolved ? 'gold' : 'cyan',
+          proj.isEvolved ? 0.42 : 0.32
+        );
+        budget--;
+      }
+    }
+
+    // 3. Power-ups y Jefes visibles
+    for (let i = 0; i < this.powerUps.length && budget > 10; i++) {
+      const p = this.powerUps[i];
+      if (p.x >= minViewX && p.x <= maxViewX && p.y >= minViewY && p.y <= maxViewY) {
+        this.visualFX.drawGlow(this.ctx, p.x, p.y, 34, 'emerald', 0.36);
+        budget--;
+      }
+    }
+
+    for (let i = 0; i < this.enemies.length && budget > 0; i++) {
+      const e = this.enemies[i];
+      if (e.x < minViewX || e.x > maxViewX || e.y < minViewY || e.y > maxViewY) continue;
+      if (e instanceof WaveBoss || e instanceof ElToroBoss) {
+        this.visualFX.drawGlow(this.ctx, e.x, e.y, e.size * 1.45, 'red', 0.44);
+        budget--;
+      } else if (e.hitFlashTimer > 0 && budget > 4) {
+        this.visualFX.drawGlow(this.ctx, e.x, e.y, e.size * 1.1, 'white', 0.34);
+        budget--;
+      }
+    }
+
     this.ctx.restore();
   }
 
@@ -5517,8 +5803,15 @@ export class Game {
         const minViewY = cam.y - 140;
         const maxViewY = cam.y + LOGICAL_HEIGHT + 140;
 
+        this.visualFX.drawDecals(this.ctx, minViewX, maxViewX, minViewY, maxViewY);
+
         if (this.isNightmareRun || this.terrainEvents.nodes.length > 0) {
-          this.terrainEvents.draw(this.ctx);
+          this.terrainEvents.draw(this.ctx, {
+            minX: minViewX,
+            maxX: maxViewX,
+            minY: minViewY,
+            maxY: maxViewY,
+          });
         }
 
         if (this.activeMinigame === 'CORE_DEFENSE') {
@@ -5611,7 +5904,19 @@ export class Game {
             enemy.y >= minViewY &&
             enemy.y <= maxViewY
           ) {
-            enemy.draw(this.ctx);
+            if (!this.lightGraphicsEnabled && enemy.hitSquashTimer > 0) {
+              const s = enemy.hitSquashTimer / 0.095;
+              const sx = 1 + 0.16 * s;
+              const sy = 1 - 0.14 * s;
+              this.ctx.save();
+              this.ctx.translate(enemy.x, enemy.y);
+              this.ctx.scale(sx, sy);
+              this.ctx.translate(-enemy.x, -enemy.y);
+              enemy.draw(this.ctx);
+              this.ctx.restore();
+            } else {
+              enemy.draw(this.ctx);
+            }
           }
         }
 
@@ -5681,9 +5986,11 @@ export class Game {
           }
         }
 
+        this.visualFX.drawAfterimages(this.ctx);
         if (this.player.active) {
           this.player.draw(this.ctx);
         }
+        this.drawAdditiveBloomPass(minViewX, maxViewX, minViewY, maxViewY);
       }
 
       this.particleSystem.draw(this.ctx);
@@ -5709,6 +6016,11 @@ export class Game {
 
     if (this.damageVignetteAlpha > 0) {
       this.drawDamageVignette();
+    }
+
+    if (this.gameState !== 'MENU') {
+      this.visualFX.drawVignette(this.ctx, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+      this.visualFX.drawGlitchPass(this.ctx, this.canvas, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     }
 
     if (this.gameState === 'MENU') {
@@ -5750,6 +6062,7 @@ export class Game {
     if (!this.lightGraphicsEnabled) {
       this.drawCRTScanlines();
     }
+    this.visualFX.drawTransitionOverlay(this.ctx, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     this.drawVersionBadge();
   }
 
@@ -6515,18 +6828,18 @@ export class Game {
   private getInGameDashBarRect(): { x: number; y: number; width: number; height: number } {
     return {
       x: 30,
-      y: 91,
-      width: 108,
-      height: 20,
+      y: 112,
+      width: 146,
+      height: 28,
     };
   }
 
   private getInGameUltBarRect(): { x: number; y: number; width: number; height: number } {
     return {
-      x: 144,
-      y: 91,
-      width: 214,
-      height: 20,
+      x: 184,
+      y: 112,
+      width: 238,
+      height: 28,
     };
   }
 
@@ -6639,6 +6952,29 @@ export class Game {
         height: btnH,
       },
     ];
+  }
+
+  private getArenaSelectorRects(): {
+    id: ArenaThemeId;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] {
+    const { cx, py, panelH } = this.getMenuLayout();
+    const pillW = 192;
+    const pillH = 38;
+    const gap = 10;
+    const totalW = ARENA_ORDER.length * pillW + (ARENA_ORDER.length - 1) * gap;
+    const startX = cx - totalW / 2;
+    const y = py + panelH + 18;
+    return ARENA_ORDER.map((id, idx) => ({
+      id,
+      x: startX + idx * (pillW + gap),
+      y,
+      width: pillW,
+      height: pillH,
+    }));
   }
 
   private getGachaPullButtonRects(): {
@@ -8377,6 +8713,42 @@ export class Game {
       }
     }
 
+    // Selector de Arena Visual (5 escenarios distintos con vista previa en vivo)
+    const arenaRects = this.getArenaSelectorRects();
+    if (arenaRects.length > 0) {
+      const dockY = arenaRects[0].y;
+      this.ctx.save();
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#94a3b8';
+      this.ctx.font = `bold 10.5px ${FONT_MONO}`;
+      this.ctx.fillText(
+        i18n.t(
+          '— SELECCIONAR ARENA DE COMBATE (CLÁSICO / PESADILLA / CO-OP) —',
+          '— SELECT COMBAT ARENA (CLASSIC / NIGHTMARE / CO-OP) —'
+        ),
+        LOGICAL_WIDTH / 2,
+        dockY - 5
+      );
+      this.ctx.restore();
+
+      for (const aBtn of arenaRects) {
+        const cfg = ARENA_THEMES[aBtn.id];
+        const isSel = this.visualFX.selectedArena === aBtn.id;
+        const isHov = this.hoveredArenaBtn === aBtn.id;
+        this.drawClippedButton(
+          aBtn,
+          isSel ? 'rgba(15, 29, 52, 0.97)' : isHov ? 'rgba(20, 32, 54, 0.94)' : 'rgba(9, 15, 28, 0.9)',
+          isHov ? '#ffffff' : isSel ? cfg.accent : 'rgba(100, 116, 139, 0.45)',
+          isSel ? 2.1 : 1.2,
+          isSel ? '#ffffff' : isHov ? '#e2e8f0' : '#94a3b8',
+          11,
+          `${cfg.icon} ${i18n.t(cfg.nameEs, cfg.nameEn)}`,
+          isSel ? cfg.accent : undefined,
+          isSel ? 8 : 0
+        );
+      }
+    }
+
     this.ctx.save();
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#38bdf8';
@@ -9581,23 +9953,35 @@ export class Game {
     const w = LOGICAL_WIDTH;
     const h = LOGICAL_HEIGHT;
     const tSec = performance.now() * 0.001;
+    const theme = this.visualFX.getActiveTheme(
+      this.gameState === 'MENU' ? 'NONE' : this.activeMinigame,
+      this.isNightmareRun
+    );
+    const physW = this.canvas.width || LOGICAL_WIDTH;
+    const physH = this.canvas.height || LOGICAL_HEIGHT;
 
     this.ctx.save();
-    this.ctx.drawImage(this.ensureBgCache(), 0, 0, w, h);
+    this.ctx.drawImage(
+      this.visualFX.ensureClassicBgCache(theme, physW, physH, w, h),
+      0,
+      0,
+      w,
+      h
+    );
 
     if (!this.lightGraphicsEnabled) {
       // Pulso horizontal suave de escaneo de bus (sin recrear gradientes cada frame)
       const scanY = ((tSec * 82) % (h + 160)) - 80;
-      this.ctx.drawImage(this.ensureScanLineCache(), 0, scanY - 40, w, 80);
+      this.ctx.drawImage(this.visualFX.ensureScanLineCache(theme), 0, scanY - 40, w, 80);
 
-      // Paquetes ambientales discretos circulando por el silicio
+      // Paquetes ambientales discretos circulando según la temática de la arena
       for (let i = 0; i < this.ambientNodes.length; i++) {
         const node = this.ambientNodes[i];
         const nx = (((node.x + node.vx * tSec) % w) + w) % w;
         const ny = (((node.y + node.vy * tSec) % h) + h) % h;
         const pulse = 0.65 + 0.35 * Math.sin(tSec * 2.1 + i);
-        this.ctx.fillStyle = i % 3 === 0 ? '#38bdf8' : '#10b981';
-        this.ctx.globalAlpha = node.alpha * 0.75 * pulse;
+        this.ctx.fillStyle = i % 3 === 0 ? theme.ambientPrimary : theme.ambientSecondary;
+        this.ctx.globalAlpha = node.alpha * 0.78 * pulse;
         this.ctx.fillRect(nx - node.size * 0.5, ny - node.size * 0.5, node.size, node.size);
       }
     }
@@ -9649,67 +10033,73 @@ export class Game {
     this.ctx.save();
 
     // ==========================================
-    // 1. POD SUPERIOR IZQUIERDO: AGENTE, NIVEL, HP BAR, ARSENAL Y ULTIMATE
+    // 1. POD SUPERIOR IZQUIERDO: AGENTE, NIVEL, HP BAR, ARSENAL, DASH Y ULTIMATE
     // ==========================================
     const lx = 16;
-    const ly = 18;
-    const lw = 356;
-    const lh = 100;
-    this.drawCyberPanel(lx, ly, lw, lh, 10, 'rgba(11, 19, 34, 0.9)', 'rgba(56, 189, 248, 0.55)', 1.5);
+    const ly = 16;
+    const lw = 420;
+    const lh = 136;
+    this.drawCyberPanel(lx, ly, lw, lh, 12, 'rgba(7, 13, 26, 0.94)', 'rgba(56, 189, 248, 0.85)', 2.0);
 
     this.ctx.save();
-    this.traceChamferRect(lx + 2, ly + 2, lw - 4, lh - 4, 8);
+    this.traceChamferRect(lx + 2, ly + 2, lw - 4, lh - 4, 10);
     this.ctx.clip();
 
     this.ctx.fillStyle = this.player.color;
     this.ctx.beginPath();
-    this.ctx.arc(lx + 18, ly + 17, 4.5, 0, Math.PI * 2);
+    this.ctx.arc(lx + 20, ly + 20, 5.5, 0, Math.PI * 2);
     this.ctx.fill();
 
     this.ctx.textAlign = 'left';
-    this.ctx.fillStyle = '#f8fafc';
-    this.ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
-    this.ctx.fillText(this.player.profileName, lx + 29, ly + 22);
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.font = `bold 15px ${FONT_DISPLAY}`;
+    this.ctx.fillText(this.player.profileName, lx + 32, ly + 25);
 
     const nameW = this.ctx.measureText(this.player.profileName).width;
     this.ctx.fillStyle = '#38bdf8';
-    this.ctx.font = `bold 11.5px ${FONT_MONO}`;
-    this.ctx.fillText(`LVL ${this.upgradeSystem.level}.0`, lx + 38 + nameW, ly + 22);
+    this.ctx.font = `bold 12.5px ${FONT_MONO}`;
+    this.ctx.fillText(`LVL ${this.upgradeSystem.level}.0`, lx + 42 + nameW, ly + 25);
 
     this.ctx.textAlign = 'right';
-    this.ctx.fillStyle = '#10b981';
-    this.ctx.font = `bold 11.5px ${FONT_MONO}`;
-    this.ctx.fillText(`XP x${this.player.xpMultiplier.toFixed(2)}`, lx + lw - 14, ly + 22);
+    this.ctx.fillStyle = '#34d399';
+    this.ctx.font = `bold 12.5px ${FONT_MONO}`;
+    this.ctx.fillText(`XP x${this.player.xpMultiplier.toFixed(2)}`, lx + lw - 14, ly + 25);
 
-    // Barra gráfica de HP
+    // Barra gráfica de HP más grande y visible
     const hpBarX = lx + 14;
-    const hpBarY = ly + 31;
+    const hpBarY = ly + 35;
     const hpBarW = lw - 28;
-    const hpBarH = 17;
+    const hpBarH = 24;
 
-    this.ctx.fillStyle = 'rgba(7, 11, 20, 0.95)';
+    this.ctx.fillStyle = 'rgba(4, 8, 16, 0.96)';
     this.ctx.fillRect(hpBarX, hpBarY, hpBarW, hpBarH);
+
+    // Barra fantasma de daño reciente (Trailing Ghost Bar)
+    if (this.hudTrailHpRatio > hpRatio + 0.004) {
+      this.ctx.fillStyle = 'rgba(254, 240, 138, 0.82)';
+      this.ctx.fillRect(hpBarX, hpBarY, hpBarW * this.hudTrailHpRatio, hpBarH);
+    }
 
     if (hpRatio > 0) {
       this.ctx.fillStyle =
         hpRatio > 0.5 ? '#10b981' : hpRatio > 0.25 ? '#fbbf24' : '#f43f5e';
       this.ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, hpBarH);
 
-      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-      this.ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, 4);
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.26)';
+      this.ctx.fillRect(hpBarX, hpBarY, hpBarW * hpRatio, 6);
     }
 
-    this.ctx.strokeStyle = hpRatio <= 0.25 ? '#fb7185' : 'rgba(148, 163, 184, 0.35)';
-    this.ctx.lineWidth = 1;
+    this.ctx.strokeStyle = hpRatio <= 0.25 ? '#fb7185' : 'rgba(226, 232, 240, 0.65)';
+    this.ctx.lineWidth = 1.6;
     this.ctx.strokeRect(hpBarX, hpBarY, hpBarW, hpBarH);
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#ffffff';
-    this.ctx.font = `bold 11px ${FONT_MONO}`;
+    this.ctx.font = `bold 13px ${FONT_MONO}`;
     this.ctx.fillText(
-      `HP ${Math.max(0, Math.ceil(this.player.hp))} / ${this.player.maxHp}`,
+      `❤ ${i18n.t('VIDA', 'HP')}  ${Math.max(0, Math.ceil(this.player.hp))} / ${this.player.maxHp}`,
       hpBarX + hpBarW / 2,
-      hpBarY + 12.5
+      hpBarY + 16.5
     );
 
     // Armas activas con auto-fit
@@ -9723,7 +10113,7 @@ export class Game {
     const weaponsStatus = weaponsList.join(' • ');
     const weaponsLabel = `${i18n.t('ARMAS', 'WEAPONS')}: ${weaponsStatus}`;
     this.ctx.textAlign = 'left';
-    this.ctx.fillStyle = '#7dd3fc';
+    this.ctx.fillStyle = '#bae6fd';
     let wFont = 11.5;
     const maxWeaponW = lw - 28;
     this.ctx.font = `bold ${wFont}px ${FONT_DISPLAY}`;
@@ -9732,9 +10122,9 @@ export class Game {
       wFont = Math.max(9.5, Math.floor(11.5 * (maxWeaponW / wMetrics)));
       this.ctx.font = `bold ${wFont}px ${FONT_DISPLAY}`;
     }
-    this.ctx.fillText(weaponsLabel, lx + 14, ly + 65);
+    this.ctx.fillText(weaponsLabel, lx + 14, ly + 80);
 
-    // Barra interactiva de Dash Táctico ([Shift]) + Habilidad Activa / Ultimate ([Espacio / E])
+    // Barra interactiva de Dash Táctico ([SHIFT]) + Habilidad Activa / Ultimate ([ESPACIO])
     const dashRect = this.getInGameDashBarRect();
     const isDashReady = this.player.canDash();
     const dashRatio = isDashReady
@@ -9743,30 +10133,34 @@ export class Game {
           0,
           Math.min(1, 1 - this.player.dashCooldown / Math.max(0.1, this.player.dashMaxCooldown))
         );
-    this.ctx.fillStyle = 'rgba(7, 11, 20, 0.95)';
+    this.ctx.fillStyle = 'rgba(4, 8, 16, 0.96)';
     this.ctx.fillRect(dashRect.x, dashRect.y, dashRect.width, dashRect.height);
     if (dashRatio > 0) {
-      this.ctx.fillStyle = isDashReady ? 'rgba(56, 189, 248, 0.85)' : 'rgba(14, 116, 144, 0.75)';
+      this.ctx.fillStyle = isDashReady ? 'rgba(14, 165, 233, 0.9)' : 'rgba(14, 116, 144, 0.72)';
       this.ctx.fillRect(dashRect.x, dashRect.y, dashRect.width * dashRatio, dashRect.height);
+      if (isDashReady) {
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        this.ctx.fillRect(dashRect.x, dashRect.y, dashRect.width, 6);
+      }
     }
     this.ctx.strokeStyle =
       this.hoveredInGameBtn === 'DASH'
         ? '#ffffff'
         : isDashReady
-        ? '#38bdf8'
-        : 'rgba(100, 116, 139, 0.5)';
-    this.ctx.lineWidth = isDashReady ? 1.5 : 1;
+        ? '#7dd3fc'
+        : 'rgba(148, 163, 184, 0.65)';
+    this.ctx.lineWidth = isDashReady ? 2.0 : 1.3;
     this.ctx.strokeRect(dashRect.x, dashRect.y, dashRect.width, dashRect.height);
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = isDashReady ? '#ffffff' : '#cbd5e1';
-    this.ctx.font = `bold 9.5px ${FONT_MONO}`;
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.font = `bold 11px ${FONT_MONO}`;
     this.ctx.fillText(
       isDashReady
         ? '💨 [SHIFT] DASH'
-        : `💨 ${this.player.dashCooldown.toFixed(1)}s`,
+        : `💨 [SHIFT] ${this.player.dashCooldown.toFixed(1)}s`,
       dashRect.x + dashRect.width / 2,
-      dashRect.y + 13.5,
-      dashRect.width - 8
+      dashRect.y + 18,
+      dashRect.width - 10
     );
 
     const ultRect = this.getInGameUltBarRect();
@@ -9778,16 +10172,20 @@ export class Game {
     const uName = i18n.currentLang === 'EN' ? this.player.ultNameEn : this.player.ultName;
     const ultPulse = 0.72 + 0.28 * Math.sin(performance.now() * 0.012);
 
-    this.ctx.fillStyle = 'rgba(7, 11, 20, 0.95)';
+    this.ctx.fillStyle = 'rgba(4, 8, 16, 0.96)';
     this.ctx.fillRect(ultRect.x, ultRect.y, ultRect.width, ultRect.height);
 
     if (ultRatio > 0) {
       this.ctx.fillStyle = isUltActive
         ? '#f97316'
         : isUltReady
-        ? `rgba(16, 185, 129, ${0.7 + 0.3 * ultPulse})`
+        ? `rgba(245, 158, 11, ${0.78 + 0.22 * ultPulse})`
         : '#0284c7';
       this.ctx.fillRect(ultRect.x, ultRect.y, ultRect.width * ultRatio, ultRect.height);
+      if (isUltReady || isUltActive) {
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+        this.ctx.fillRect(ultRect.x, ultRect.y, ultRect.width * ultRatio, 6);
+      }
     }
 
     this.ctx.strokeStyle =
@@ -9796,24 +10194,27 @@ export class Game {
         : isUltActive
         ? '#fbbf24'
         : isUltReady
-        ? '#34d399'
-        : 'rgba(56, 189, 248, 0.45)';
-    this.ctx.lineWidth = isUltReady || isUltActive ? 1.6 : 1;
+        ? '#fde047'
+        : 'rgba(56, 189, 248, 0.7)';
+    this.ctx.lineWidth = isUltReady || isUltActive ? 2.2 : 1.4;
     this.ctx.strokeRect(ultRect.x, ultRect.y, ultRect.width, ultRect.height);
 
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = isUltReady ? '#fef08a' : '#f8fafc';
-    this.ctx.font = `bold 9.5px ${FONT_MONO}`;
+    this.ctx.fillStyle = isUltReady ? '#fef9c3' : '#ffffff';
+    this.ctx.font = `bold 11px ${FONT_MONO}`;
     const ultText = isUltActive
       ? `🔥 ${uName}: ${this.player.ultActiveTimer.toFixed(1)}s`
       : isUltReady
-      ? `⚡ [ESP/E] ¡${uName}!`
-      : `⚡ [E] ${uName} (${this.player.ultCharge}/${this.player.ultMaxCharge})`;
+      ? i18n.t(`★ [ESPACIO] ¡${uName}!`, `★ [SPACE] ${uName}!`)
+      : i18n.t(
+          `⚡ [ESPACIO] ${uName} (${this.player.ultCharge}/${this.player.ultMaxCharge})`,
+          `⚡ [SPACE] ${uName} (${this.player.ultCharge}/${this.player.ultMaxCharge})`
+        );
     this.ctx.fillText(
       ultText,
       ultRect.x + ultRect.width / 2,
-      ultRect.y + 13.5,
-      ultRect.width - 10
+      ultRect.y + 18,
+      ultRect.width - 12
     );
     this.ctx.restore();
 
@@ -10192,12 +10593,28 @@ export class Game {
 
       this.drawCyberPanel(x, y, barWidth, barHeight, 4, 'rgba(11, 19, 34, 0.94)', 'rgba(226, 232, 240, 0.75)', 1.4);
 
-      if (ratio > 0) {
+      const bossTrackKey = `LOCAL_${activeBoss.netId}`;
+      if (this.lastBossTrackKey !== bossTrackKey) {
+        this.lastBossTrackKey = bossTrackKey;
+        this.bossTrailHpRatio = ratio;
+      } else if (this.bossTrailHpRatio > ratio) {
+        this.bossTrailHpRatio = Math.max(ratio, this.bossTrailHpRatio - 0.008);
+      } else {
+        this.bossTrailHpRatio = ratio;
+      }
+
+      if (ratio > 0 || this.bossTrailHpRatio > 0) {
         this.ctx.save();
         this.traceChamferRect(x + 1, y + 1, barWidth - 2, barHeight - 2, 3);
         this.ctx.clip();
+        if (this.bossTrailHpRatio > ratio + 0.003) {
+          this.ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+          this.ctx.fillRect(x, y, barWidth * this.bossTrailHpRatio, barHeight);
+        }
         this.ctx.fillStyle = bossColor;
         this.ctx.fillRect(x, y, barWidth * ratio, barHeight);
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+        this.ctx.fillRect(x, y, barWidth * ratio, 4);
         this.ctx.restore();
       }
     }

@@ -355,16 +355,85 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │   ├── Toasts de Logros y Misiones Diarias reubicados en pila limpia en esquina inferior derecha (sin tapar jamás la barra de armas ni alertas) y pila dinámica `drawTopStatusBanners()` para Enjambre, Jefes, Hielo y Overclock sin colisiones verticales
 │   └── Flechas de aliados Co-op elevadas automáticamente por encima de la barra inferior de Jefes y `El Toro`
 │
-└── v1.7.0 — Habilidades Ultimate por Agente, Laboratorio Permanente, Tabla MVP Co-op y Complejos de Obstáculos Soldados (ACTUAL)
-    ├── Habilidad Activa / Ultimate única para cada uno de los 8 Agentes (se carga con bajas `35` y dura `5.5–7.5 s`, activable con `[Espacio]` / `[E]` o clic en la barra HUD en Solo y Co-op)
-    ├── Pestaña `[U] LABORATORIO` (`KERNEL LAB`) en el Hangar con 6 módulos permanentes (`Nv 0..5`) comprables con CryptoCoins y sincronizados con la nube
-    ├── Pantalla Post-Partida con Tabla MVP del Escuadrón Co-op (medallas de Daño y Médico, daño total, mejor arma, reanimaciones), desglose real de daño por arma en Invitados y botones interactivos
-    └── Complejos de obstáculos mejorados en Mapa Infinito: 2 nuevos módulos (`CRYO_SILO` y `PLASMA_BARRIER`), prevención de pasillos trampa (`>= 88 px`), renderizado en 3 pasadas (sombra unificada -> cuerpos -> abrazaderas de soldadura) y elección del rodeo más corto
+├── v1.7.0 — Habilidades Ultimate por Agente, Laboratorio Permanente, Tabla MVP Co-op y Complejos de Obstáculos Soldados
+│   ├── Habilidad Activa / Ultimate única para cada uno de los 8 Agentes (se carga con bajas `35` y dura `5.5–7.5 s`, activable con `[Espacio]` / `[E]` o clic en la barra HUD en Solo y Co-op)
+│   ├── Pestaña `[U] LABORATORIO` (`KERNEL LAB`) en el Hangar con 6 módulos permanentes (`Nv 0..5`) comprables con CryptoCoins y sincronizados con la nube
+│   ├── Pantalla Post-Partida con Tabla MVP del Escuadrón Co-op (medallas de Daño y Médico, daño total, mejor arma, reanimaciones), desglose real de daño por arma en Invitados y botones interactivos
+│   └── Complejos de obstáculos mejorados en Mapa Infinito: 2 nuevos módulos (`CRYO_SILO` y `PLASMA_BARRIER`), prevención de pasillos trampa (`>= 88 px`), renderizado en 3 pasadas (sombra unificada -> cuerpos -> abrazaderas de soldadura) y elección del rodeo más corto
+│
+├── v1.8.0 – v1.8.4 — Dash Táctico, Hackeo en Vivo, Minijuegos, Cripto-Casino VIP, Gacha Singularidad y Optimización Móvil/Tablet
+│   ├── Dash Táctico (`[Shift]`) con i-frames sincronizado en Co-op 4P + Hackeo en Vivo (`[Flechas ↑↓←→]`) con captura instantánea, `x3 CR` y pulso EMP
+│   ├── 4 Minijuegos (`[J] MINIJUEGOS`): *El Ruedo Cyber*, *Coliseo Boss Rush*, *Defensa del Núcleo* (Tower Defense) y *Atraco Relámpago*
+│   ├── Cripto-Casino VIP (`[C] CASINO`: Slots 5×3, Cripto-Crash `$DAW`, Firewall Mines 5×5, Ruleta Cuántica) + Cofre `🌌 SINGULARIDAD VIP` (600 CR) + Laboratorio escalado a `Nv 8`
+│   └── Rendimiento extremo: Frustum Culling, compactación *in-place* sin GC, colisión $O(N)$ con muros, corrección de fuga `BiquadFilterNode` en `SoundSystem.ts` y modo ligero `1280×720` fijo solo en móviles/tablets
+│
+├── v1.9.0 — Overhaul Gráfico HD, 5 Arenas Temáticas, Extrusión 2.5D, Fake Bloom Aditivo y Blindaje de Rendimiento
+│   ├── 5 Arenas seleccionables en vivo (`⚡ PLACA BASE`, `❄️ CRYO LAB`, `🌋 VOLCÁN KERNEL`, `🌃 NEÓN TOKYO`, `🌌 VACÍO CUÁNTICO`) + paletas automáticas por Minijuego con parallax profundo `0.5x`
+│   ├── Iluminación neón aditiva (*Fake Bloom* pre-cacheado con `lighter` sin `shadowBlur`, tope 85 destellos/frame) + Viñeta cinematográfica cacheada + Glitch horizontal seguro en impactos fuertes + Transición cyber
+│   ├── Obstáculos con relieve 2.5D (cara frontal extruida `12px` + *rim highlight* superior), chispas vectoriales direccionales, textos flotantes con rebote *pop* y contorno oscuro
+│   └── Game Feel & Estabilidad: *Squash & Stretch* en impactos, *Afterimages* en Dash/Ult, *Hitstop* selectivo (desactivado en Co-op), barras de vida con *Trailing Ghost Bar* y degradación automática total en Modo Ligero
+│
+├── v1.9.1 — Rediseño Completo de Ruleta Neón 0-18 (Bola Física + Tapete) y Corona VIP Exclusiva de Cyber-Slots
+│   ├── Nueva **Ruleta Europea Neón 0–18** (`CasinoSystem.ts`): rotor giratorio de 19 casillas (0 verde + 1..18 alternando Rojo/Negro), pista con 8 deflectores diamante, torreta central giratoria con visor del último ganador y bola física plateada en contra-giro que cae en espiral en la casilla ganadora
+│   ├── **Tapete de Apuestas Interactivo** completo: Pleno a cualquier número (`1–18` paga `x18`, `0` paga `x20`), Terceras (`1–6`, `7–12`, `13–18` pagan `x3`), Dobles (`Rojo`, `Negro`, `Par`, `Impar` pagan `x2`), resaltado dinámico de casillas cubiertas e historial visual de los últimos 8 números
+│   └── **Exclusividad de la Corona Cripto-Magnate VIP (`mit_casino`)**: eliminada de la Ruleta (y de Crash/Mines) para que solo pueda obtenerse mediante el Mega Jackpot en **Cyber-Slots 5×3**
+│
+├── v1.9.2 — Rebalanceo de Coliseo Boss Rush (Dificultad Épica) y Rareza de Power-Ups
+│   ├── **Coliseo Boss Rush (`BOSS_RUSH`) mucho más desafiante (`Game.ts`)**: escalado real de vida (`bossLevel` 3–7 + `hpMultiplier` 3.0–5.4), velocidad (`+12%..+20%`) y daño (`+20%..+40%`), rondas con jefes dobles desde la Ronda 2 y Trío Final de Élite en Ronda 5, curación entre rondas ajustada (`40% → 25%`) y corrección del doble conteo de jefes purgados
+│   └── **Power-Ups realmente raros (`NUKE` Bomba, `FRENZY` Cadencia, `FREEZE` Hielo)**: probabilidades reducidas en Cajas de Hardware (`25% → 7%`), Jefes de Oleada (`100% → 22%` / `12%` en Boss Rush) y enemigos comunes (`1% → 0.22%`), más enfriamiento global de `18s` entre drops
+│
+└── v1.9.3 — Bóvedas Siempre Visibles, Hackeo con Flechas/WASD, HUD Principal Mejorado y Ultimate Exclusiva en [ESPACIO] (ACTUAL)
+    ├── **Bóvedas y Eventos de Terreno (`TerrainEventSystem.ts`)**: márgenes seguros ampliados al aparecer en arena (`240px` lateral, `215px` superior, evitando la zona del HUD) y recorte automático (*clamping*) de la caja de flechas dentro de pantalla para que nunca quede cortada
+    ├── **Hackeo en Vivo compatible con `WASD` (`Game.ts`)**: mantiene la interfaz limpia mostrando solo las flechas (`▲ ▼ ◄ ►`), pero ahora también acepta `W/A/S/D` para completar la secuencia
+    └── **HUD Superior Izquierdo de Alta Visibilidad y Ultimate en `[ESPACIO]` (`Game.ts`)**: panel ampliado (`420×136`) con barra de `❤ VIDA` más grande, botones claros de `💨 [SHIFT] DASH` y `⚡ [ESPACIO] ULTIMATE` (desactivada la tecla `E` para la Ultimate)
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.9.3] - 2026-11-27
+- **Visibilidad Garantizada en Eventos de Bóveda y Hackeo (`src/systems/TerrainEventSystem.ts`, `src/core/Game.ts`)**:
+  - Ampliados los márgenes de generación en `spawnArenaEvent` (`marginX: 240`, `marginTop: 215`, `marginBottom: 160`) evitando además el cuadrante del HUD superior izquierdo.
+  - Añadido *clamping* de cámara a la caja de secuencia `[FLECHAS]` en `TerrainEventSystem.draw()` para que las 4 flechas jamás se salgan del borde visible.
+  - Habilitado soporte silencioso de `W/A/S/D` además de las flechas para el Hackeo Crítico en vivo, manteniendo intactos los indicadores visuales de flechas.
+- **HUD Principal Más Visible y Ultimate Exclusiva en `[ESPACIO]` (`src/core/Game.ts`)**:
+  - Rediseñado el panel superior izquierdo (`420×136`) con mayor contraste, barra `❤ VIDA` de `24px`, y barras interactivas más grandes (`28px`) para **`💨 [SHIFT] DASH`** y **`⚡ [ESPACIO] ULTIMATE`** con aviso dorado pulsante cuando está lista.
+  - Eliminada la activación de la Ultimate con la tecla `E` (ahora funciona exclusivamente con `[ESPACIO]` o clic en la barra).
+
+### [v1.9.2] - 2026-11-27
+- **Rebalanceo de Dificultad en Coliseo Boss Rush (`src/core/Game.ts`)**:
+  - Escalada drásticamente la resistencia, velocidad y daño de los Jefes en las 5 rondas (`spawnBossRushRound`): Ronda 1 con `RansomwareBoss` reforzado, Rondas 2–4 con **dúos de jefes de élite** y Ronda 5 con un **Trío Final** (`RootkitTitanBoss` + `RansomwareBoss` + `SpywareSpecterBoss`), evitando que el minijuego se complete en pocos segundos con builds de late-game.
+  - Ajustado el buff inicial de arsenal de Nivel 10 y la curación entre rondas (`40% → 25%`), además de corregir el doble incremento de `runBossesKilled` al despejar cada ronda.
+- **Rareza Aumentada para Power-Ups (`NUKE`, `FRENZY`, `FREEZE`) (`src/core/Game.ts`)**:
+  - Reducida la probabilidad de aparición de la Bomba Lógica, Cadencia (Overclock Térmico) y Congelación en Cajas de Hardware (`25% → 7%`), Jefes de Oleada (de garantizado `100%` a `22%`, y `12%` en `BOSS_RUSH`) y enemigos comunes (`1% → 0.22%`).
+  - Añadido un enfriamiento global de `18s` (`powerUpDropCooldown`) entre drops para evitar acumulaciones seguidas en hordas densas.
+
+### [v1.9.1] - 2026-11-25
+- **Rediseño Completo de la Ruleta del Casino (`src/systems/CasinoSystem.ts`)**:
+  - Sustituida la antigua rueda de multiplicadores por una **Ruleta Europea Neón (0–18)** con 19 casillas ordenadas (`0` verde + `1..18` alternando Rojo/Negro), aro exterior con 8 deflectores metálicos diamante, torreta giratoria con visor central del último número y **bola física en contra-giro** con estela luminosa y caída en espiral con rebote sobre la casilla exacta.
+  - Añadido **Tapete Interactivo** en el lateral derecho con parrilla completa (`0` + `1..18` en 6×3) para apostar a **Pleno** (`x18`, `0` paga `x20`), **Terceras** (`1–6`, `7–12`, `13–18` a `x3`) y **Dobles** (`Rojo`, `Negro`, `Par`, `Impar` a `x2`), iluminando en tiempo real todos los números cubiertos por la apuesta e incorporando cinta de historial de los últimos 8 resultados.
+- **Corona VIP Exclusiva de Cyber-Slots (`src/systems/CasinoSystem.ts`)**:
+  - Eliminado el icono y desbloqueo de la **Corona de Cripto-Magnate VIP (`mit_casino`)** en la Ruleta (así como en Cripto-Crash y Firewall Mines), actualizando los textos informativos de la Bahía VIP para que sea recompensa exclusiva de **Cyber-Slots 5×3** (4+ 👑 o línea de 5).
+
+### [v1.9.0] - 2026-11-25
+- **5 Arenas Temáticas Seleccionables y Parallax Profundo (`VisualFXSystem.ts`, `Game.ts`)**:
+  - Nueva barra inferior de selección de arena en el Menú Principal con vista previa en vivo y persistencia segura en `localStorage`: **`⚡ PLACA BASE`**, **`❄️ CRYO LAB`**, **`🌋 VOLCÁN KERNEL`**, **`🌃 NEÓN TOKYO`** y **`🌌 VACÍO CUÁNTICO`**.
+  - Cada minijuego aplica automáticamente su paleta atmosférica característica; en Mapa Infinito se añade una sub-rejilla profunda en parallax `0.5x` (`512×512` pre-cacheada).
+- **Fake Bloom Neón Aditivo y Post-Procesado Ligero (`VisualFXSystem.ts`, `Game.ts`)**:
+  - Pasada aditiva (`globalCompositeOperation = 'lighter'`) con sprites radiales `64×64` pre-cacheados (cero `shadowBlur`, límite estricto de 85 destellos/frame) sobre jugador, proyectiles, power-ups y jefes.
+  - Viñeta cinematográfica pre-cacheada (1 `drawImage`/frame), efecto glitch horizontal seguro de 3 bandas (coordenadas acotadas al tamaño físico del canvas para evitar `IndexSizeError`) al recibir daño fuerte o llegar *El Toro*, decals efímeros de combate en el suelo y transición cyber entre pantallas.
+- **Profundidad 2.5D, Partículas Vectoriales y Game Feel (`WorldEnvironment.ts`, `ParticleSystem.ts`, `Adware.ts`, `Game.ts`)**:
+  - Extrusión frontal `12px` y *rim highlight* superior en todos los tipos de obstáculos del Mapa Infinito sin modificar hitboxes.
+  - Chispas vectoriales orientadas a velocidad con punta blanca, ondas expansivas de doble anillo, textos flotantes con curva *pop* + contorno oscuro, *Squash & Stretch* elástico al golpear enemigos, *Afterimages* durante Dash/Ultimate, *Hitstop* selectivo (solo en solitario para no desincronizar Co-op) y barras de vida con *Trailing Ghost Bar* (jugador y jefes).
+- **Blindaje de Rendimiento y Estabilidad Cross-Browser**:
+  - Pools acotados con compactación *in-place* (0 GC), guards contra `localStorage` bloqueado en modo incógnito y desactivación automática de todos los efectos pesados cuando está activo el Modo Ligero (`[V]`).
+
+### [v1.8.0 – v1.8.4] - 2026-11-20 a 2026-11-24
+- **Dash Táctico y Hackeo en Vivo**: Dash con i-frames (`[Shift]`) sincronizado en Co-op 4P y secuencia de 4 flechas (`[↑↓←→]`) en Bóvedas/Servidores con captura instantánea, `x3 CR` y explosión EMP.
+- **4 Minijuegos (`[J] MINIJUEGOS`)**: *El Ruedo Cyber* (`¡OLÉ! CAPOTAZO`), *Coliseo Boss Rush*, *Defensa del Núcleo* (torretas `[T]`) y *Atraco Relámpago*.
+- **Cripto-Casino VIP (`[C] CASINO`) y Gacha Singularidad**: 4 juegos HD 3D (*Cyber-Slots 5×3*, *Cripto-Crash $DAW*, *Firewall Mines 5×5*, *Ruleta Cuántica*), cofre `🌌 SINGULARIDAD VIP` (600 CR) y Laboratorio ampliado a `Nv 8`.
+- **Optimización Móvil/Tablet y Motor**: Viewport Frustum Culling, compactación *in-place* sin GC, colisión de hordas con muros en $O(N)$, raycasting diferido, corrección de fuga de `BiquadFilterNode` en `SoundSystem.ts`, botones táctiles (`DASH`, `ULT`, `HACK`) y modo ligero `1280×720` fijo solo en móviles/tablets reales.
 
 ### [v1.7.0] - 2026-11-19
 - **Habilidad Activa / Ultimate por Agente Cargada por Bajas (`Player.ts`, `CombatSystem.ts`, `MetaSystem.ts`, `Game.ts`, `CoopRenderer.ts`, `MultiplayerTypes.ts`, `MultiplayerClient.ts`, `server/index.js`)**:

@@ -1245,12 +1245,25 @@ export class WorldEnvironment {
     const y = obs.y;
     const w = obs.width;
     const h = obs.height;
+    const extrudeH = 12;
     ctx.save();
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.64)';
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.58)';
 
     if ((obs.kind === 'DATA_PILLAR' || obs.kind === 'CRYO_SILO') && obs.radius) {
+      const cx = x + obs.radius;
+      const cy = y + obs.radius;
+      const r = obs.radius;
+      // Sombra proyectada en el suelo
       ctx.beginPath();
-      ctx.arc(x + obs.radius + 9, y + obs.radius + 11, obs.radius + 2, 0, Math.PI * 2);
+      ctx.arc(cx + 8, cy + extrudeH + 7, r + 2, 0, Math.PI * 2);
+      ctx.fill();
+      // Falda cilíndrica 2.5D (extrusión frontal)
+      ctx.fillStyle = obs.kind === 'CRYO_SILO' ? '#041a2b' : '#110f30';
+      ctx.beginPath();
+      ctx.arc(cx, cy + extrudeH, r, 0, Math.PI);
+      ctx.lineTo(cx - r, cy);
+      ctx.lineTo(cx + r, cy);
+      ctx.closePath();
       ctx.fill();
       ctx.restore();
       return;
@@ -1258,13 +1271,59 @@ export class WorldEnvironment {
 
     if (obs.kind === 'L_BASTION') {
       const [hRect, vRect] = this.getLBastionRects(obs);
-      ctx.fillRect(hRect.x + 8, hRect.y + 10, hRect.w, hRect.h);
-      ctx.fillRect(vRect.x + 8, vRect.y + 10, vRect.w, vRect.h);
+      ctx.fillRect(hRect.x + 8, hRect.y + extrudeH + 6, hRect.w, hRect.h);
+      ctx.fillRect(vRect.x + 8, vRect.y + extrudeH + 6, vRect.w, vRect.h);
+      // Cara frontal 2.5D extruida
+      ctx.fillStyle = '#190814';
+      ctx.fillRect(hRect.x, hRect.y + hRect.h, hRect.w, extrudeH);
+      ctx.fillRect(vRect.x, vRect.y + vRect.h, vRect.w, extrudeH);
       ctx.restore();
       return;
     }
 
-    ctx.fillRect(x + 8, y + 10, w, h);
+    if (obs.kind === 'HEX_BUNKER') {
+      const cut = w * 0.28;
+      ctx.beginPath();
+      ctx.moveTo(x + cut + 8, y + extrudeH + 6);
+      ctx.lineTo(x + w - cut + 8, y + extrudeH + 6);
+      ctx.lineTo(x + w + 8, y + cut + extrudeH + 6);
+      ctx.lineTo(x + w + 8, y + h - cut + extrudeH + 6);
+      ctx.lineTo(x + w - cut + 8, y + h + extrudeH + 6);
+      ctx.lineTo(x + cut + 8, y + h + extrudeH + 6);
+      ctx.lineTo(x + 8, y + h - cut + extrudeH + 6);
+      ctx.lineTo(x + 8, y + cut + extrudeH + 6);
+      ctx.closePath();
+      ctx.fill();
+
+      // Cara frontal 2.5D del búnker octogonal
+      ctx.fillStyle = '#07181c';
+      ctx.beginPath();
+      ctx.moveTo(x, y + h - cut);
+      ctx.lineTo(x + cut, y + h);
+      ctx.lineTo(x + w - cut, y + h);
+      ctx.lineTo(x + w, y + h - cut);
+      ctx.lineTo(x + w, y + h - cut + extrudeH);
+      ctx.lineTo(x + w - cut, y + h + extrudeH);
+      ctx.lineTo(x + cut, y + h + extrudeH);
+      ctx.lineTo(x, y + h - cut + extrudeH);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    // Sombra proyectada + cara frontal 2.5D para SERVER_BLOCK, FIREWALL_WALL, PLASMA_BARRIER
+    ctx.fillRect(x + 8, y + extrudeH + 6, w, h);
+    ctx.fillStyle =
+      obs.kind === 'FIREWALL_WALL'
+        ? '#140c07'
+        : obs.kind === 'PLASMA_BARRIER'
+        ? '#0f0c18'
+        : '#0b1322';
+    ctx.fillRect(x + 4, y + h - 2, w - 8, extrudeH + 2);
+    // Remache/borde inferior 2.5D
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.fillRect(x + 6, y + h + extrudeH - 2, w - 12, 2);
     ctx.restore();
   }
 
@@ -1627,6 +1686,14 @@ export class WorldEnvironment {
     ctx.lineTo(x, y + cut);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
+
+    // Rim highlight superior 2.5D para sensación de relieve iluminado desde arriba
+    ctx.strokeStyle = 'rgba(224, 242, 254, 0.38)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x + cut + 2, y + 1.5);
+    ctx.lineTo(x + w - cut - 2, y + 1.5);
     ctx.stroke();
 
     ctx.fillStyle = '#0f172a';

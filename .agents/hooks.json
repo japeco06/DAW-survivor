@@ -1,0 +1,11 @@
+{
+  "release-version-sync": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node ./scripts/check-release-sync.mjs",
+        "timeout": 10
+      }
+    ]
+  }
+}

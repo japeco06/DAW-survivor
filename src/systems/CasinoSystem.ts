@@ -47,13 +47,22 @@ interface CasinoHistoryEntry {
   isBigWin: boolean;
 }
 
-interface WheelSector {
-  label: string;
-  mult: number;
+interface RoulettePocket {
+  num: number;
+  colorGroup: 'RED' | 'BLACK' | 'GREEN';
   color: string;
   colorDark: string;
-  colorGroup: 'RED' | 'CYAN' | 'GREEN' | 'DARK';
 }
+
+type RouletteBetType =
+  | 'STRAIGHT'
+  | 'RED'
+  | 'BLACK'
+  | 'EVEN'
+  | 'ODD'
+  | 'LOW_6'
+  | 'MID_6'
+  | 'HIGH_6';
 
 interface CasinoCoinParticle {
   x: number;
@@ -193,24 +202,20 @@ const PAYLINES_5X3: { rows: [number, number, number, number, number]; color: str
   { rows: [1, 2, 1, 0, 1], color: '#a3e635' }, // 9. Zigzag inferior
 ];
 
-const WHEEL_SECTORS: WheelSector[] = [
-  { label: '👑 25x', mult: 25, color: '#10b981', colorDark: '#064e3b', colorGroup: 'GREEN' },
-  { label: '0x', mult: 0, color: '#1e293b', colorDark: '#0f172a', colorGroup: 'DARK' },
-  { label: '2.0x', mult: 2.0, color: '#f43f5e', colorDark: '#881337', colorGroup: 'RED' },
-  { label: '0.5x', mult: 0.5, color: '#334155', colorDark: '#1e293b', colorGroup: 'DARK' },
-  { label: '1.5x', mult: 1.5, color: '#38bdf8', colorDark: '#0c4a6e', colorGroup: 'CYAN' },
-  { label: '0x', mult: 0, color: '#1e293b', colorDark: '#0f172a', colorGroup: 'DARK' },
-  { label: '3.0x', mult: 3.0, color: '#f43f5e', colorDark: '#881337', colorGroup: 'RED' },
-  { label: '1.2x', mult: 1.2, color: '#38bdf8', colorDark: '#0c4a6e', colorGroup: 'CYAN' },
-  { label: '5.0x', mult: 5.0, color: '#f43f5e', colorDark: '#881337', colorGroup: 'RED' },
-  { label: '0x', mult: 0, color: '#1e293b', colorDark: '#0f172a', colorGroup: 'DARK' },
-  { label: '1.5x', mult: 1.5, color: '#38bdf8', colorDark: '#0c4a6e', colorGroup: 'CYAN' },
-  { label: '0.5x', mult: 0.5, color: '#334155', colorDark: '#1e293b', colorGroup: 'DARK' },
-  { label: '2.0x', mult: 2.0, color: '#f43f5e', colorDark: '#881337', colorGroup: 'RED' },
-  { label: '0x', mult: 0, color: '#1e293b', colorDark: '#0f172a', colorGroup: 'DARK' },
-  { label: '10x', mult: 10.0, color: '#38bdf8', colorDark: '#0c4a6e', colorGroup: 'CYAN' },
-  { label: '1.2x', mult: 1.2, color: '#f43f5e', colorDark: '#881337', colorGroup: 'RED' },
+// Orden europeo cibernético de 19 casillas (0 verde + 1..18 alternando Rojo/Negro)
+const ROULETTE_RED_NUMS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18]);
+const ROULETTE_WHEEL_ORDER: number[] = [
+  0, 1, 10, 3, 15, 12, 4, 18, 6, 7, 13, 16, 2, 9, 11, 14, 8, 5, 17,
 ];
+const ROULETTE_POCKETS: RoulettePocket[] = ROULETTE_WHEEL_ORDER.map((num) => {
+  if (num === 0) {
+    return { num: 0, colorGroup: 'GREEN', color: '#10b981', colorDark: '#064e3b' };
+  }
+  if (ROULETTE_RED_NUMS.has(num)) {
+    return { num, colorGroup: 'RED', color: '#e11d48', colorDark: '#881337' };
+  }
+  return { num, colorGroup: 'BLACK', color: '#1e293b', colorDark: '#090d16' };
+});
 
 export class CasinoSystem {
   public activeGame: CasinoGameId = 'SLOTS';
@@ -286,16 +291,23 @@ export class CasinoSystem {
   private minesActiveBet: number = 20;
 
   // ==========================================
-  // 4. ESTADO DE RULETA CUÁNTICA (WHEEL)
+  // 4. ESTADO DE RULETA EUROPEA NEÓN (0-18 + BOLA FÍSICA)
   // ==========================================
   public wheelAngle: number = 0;
   public wheelVelocity: number = 0;
   public isWheelSpinning: boolean = false;
-  public wheelBetMode: 'MULTIPLIER' | 'RED' | 'CYAN' | 'GREEN' = 'MULTIPLIER';
-  private wheelLastSectorIdx: number = -1;
+  public rouletteBetType: RouletteBetType = 'RED';
+  public rouletteStraightNum: number = 7;
   private wheelActiveBet: number = 20;
-  public wheelLastResultText: string = '';
-  private wheelPointerBounce: number = 0;
+  private wheelSpinElapsed: number = 0;
+  private wheelSpinDuration: number = 3.4;
+  private wheelTargetPocketIdx: number = 0;
+  private wheelBallAngle: number = -Math.PI / 2;
+  private wheelBallRadiusRatio: number = 0.66;
+  private wheelBallStartAngle: number = -Math.PI / 2;
+  private wheelLastTickStep: number = -1;
+  public wheelWinningPocketIdx: number = -1;
+  public wheelHistory: number[] = [7, 14, 0, 3, 10, 18, 2, 12];
 
   constructor() {
     this.loadJackpot();
@@ -395,9 +407,6 @@ export class CasinoSystem {
     if (this.slotWinPulseTimer > 0) {
       this.slotWinPulseTimer = Math.max(0, this.slotWinPulseTimer - dt);
     }
-    if (this.wheelPointerBounce > 0) {
-      this.wheelPointerBounce = Math.max(0, this.wheelPointerBounce - dt * 6.5);
-    }
 
     // Actualizar lluvia de monedas 3D y chispas de premio
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -484,25 +493,62 @@ export class CasinoSystem {
       }
     }
 
-    // 4. Actualizar física de la Ruleta Cuántica
+    // 4. Actualizar física de la Ruleta Europea Neón (rotor + bola en contra-giro)
     if (this.isWheelSpinning) {
-      this.wheelAngle = (this.wheelAngle + this.wheelVelocity * dt) % (Math.PI * 2);
-      this.wheelVelocity *= Math.pow(0.24, dt);
+      this.wheelSpinElapsed += dt;
+      const t = Math.min(1, this.wheelSpinElapsed / this.wheelSpinDuration);
+      const easeOutRotor = 1 - Math.pow(1 - t, 2.2);
+      const rotorSpeed = this.wheelVelocity * (1 - easeOutRotor * 0.82);
+      this.wheelAngle = (this.wheelAngle + rotorSpeed * dt) % (Math.PI * 2);
 
-      const sectorAngle = (Math.PI * 2) / WHEEL_SECTORS.length;
-      const pointerAngle = (Math.PI * 1.5 - this.wheelAngle + Math.PI * 4) % (Math.PI * 2);
-      const currentSectorIdx = Math.floor(pointerAngle / sectorAngle) % WHEEL_SECTORS.length;
-      if (currentSectorIdx !== this.wheelLastSectorIdx) {
-        this.wheelLastSectorIdx = currentSectorIdx;
-        this.wheelPointerBounce = 1.0;
-        sound.playCasinoTick(0.95 + Math.min(0.5, this.wheelVelocity * 0.04));
+      const sliceAngle = (Math.PI * 2) / ROULETTE_POCKETS.length;
+      const targetPocketWorldAngle =
+        this.wheelAngle + (this.wheelTargetPocketIdx + 0.5) * sliceAngle;
+
+      if (t < 0.88) {
+        // Bola girando en sentido contrario y cayendo en espiral hacia la casilla objetivo
+        const ballProgress = t / 0.88;
+        const easeBall = 1 - Math.pow(1 - ballProgress, 3.0);
+        // 5 vueltas completas en contra-giro hasta encajar en targetPocketWorldAngle
+        const endAngle = targetPocketWorldAngle - Math.PI * 2 * 5;
+        const startAngle = this.wheelBallStartAngle;
+        // Interpolar hacia la posición futura exacta de la casilla
+        this.wheelBallAngle = startAngle + (endAngle - startAngle) * easeBall;
+
+        if (ballProgress < 0.62) {
+          this.wheelBallRadiusRatio = 0.93;
+        } else {
+          const dropT = (ballProgress - 0.62) / 0.38;
+          const bounce = Math.sin(dropT * Math.PI * 3.5) * (1 - dropT) * 0.045;
+          this.wheelBallRadiusRatio = 0.93 - (0.93 - 0.67) * (dropT * dropT) + bounce;
+        }
+
+        const tickStep = Math.floor(Math.abs(this.wheelBallAngle) / (Math.PI / 6));
+        if (tickStep !== this.wheelLastTickStep) {
+          this.wheelLastTickStep = tickStep;
+          sound.playCasinoTick(0.95 + (1 - ballProgress) * 0.45);
+        }
+      } else {
+        // Bola ya asentada girando junto con la casilla ganadora
+        this.wheelBallAngle = targetPocketWorldAngle;
+        this.wheelBallRadiusRatio = 0.67;
       }
 
-      if (this.wheelVelocity < 0.14) {
+      if (t >= 1) {
         this.wheelVelocity = 0;
         this.isWheelSpinning = false;
-        this.resolveWheelSpin(currentSectorIdx, meta, sound);
+        this.wheelBallAngle = targetPocketWorldAngle;
+        this.wheelBallRadiusRatio = 0.67;
+        this.wheelWinningPocketIdx = this.wheelTargetPocketIdx;
+        this.resolveWheelSpin(this.wheelTargetPocketIdx, meta, sound);
       }
+    } else if (this.wheelWinningPocketIdx >= 0) {
+      // Giro ambiental lento en reposo
+      this.wheelAngle = (this.wheelAngle + dt * 0.14) % (Math.PI * 2);
+      const sliceAngle = (Math.PI * 2) / ROULETTE_POCKETS.length;
+      this.wheelBallAngle = this.wheelAngle + (this.wheelWinningPocketIdx + 0.5) * sliceAngle;
+    } else {
+      this.wheelAngle = (this.wheelAngle + dt * 0.14) % (Math.PI * 2);
     }
   }
 
@@ -847,10 +893,6 @@ export class CasinoSystem {
     );
     this.statusColor = '#10b981';
 
-    if (this.crashCashoutMult >= 10.0) {
-      this.tryUnlockVipCrown(meta, sound, 'RETIRADA 10x+ EN CRIPTO-CRASH');
-    }
-
     this.recordHistory(
       'CRASH',
       'Cripto-Crash $DAW',
@@ -990,10 +1032,6 @@ export class CasinoSystem {
     );
     this.statusColor = '#fbbf24';
 
-    if (this.minesCurrentMult >= 8.0 || (this.minesCount >= 5 && this.minesSafeOpened >= 6)) {
-      this.tryUnlockVipCrown(meta, sound, 'HACKEO MAESTRO EN FIREWALL MINES');
-    }
-
     this.recordHistory(
       'MINES',
       `Mines (${this.minesCount}💣)`,
@@ -1004,16 +1042,43 @@ export class CasinoSystem {
   }
 
   // ==========================================
-  // LÓGICA DE RULETA CUÁNTICA (CYBER WHEEL)
+  // LÓGICA DE RULETA EUROPEA NEÓN (0-18 + BOLA)
   // ==========================================
+  private isNumberCoveredByBet(num: number): boolean {
+    if (this.rouletteBetType === 'STRAIGHT') return num === this.rouletteStraightNum;
+    if (num === 0) return false;
+    if (this.rouletteBetType === 'RED') return ROULETTE_RED_NUMS.has(num);
+    if (this.rouletteBetType === 'BLACK') return !ROULETTE_RED_NUMS.has(num);
+    if (this.rouletteBetType === 'EVEN') return num % 2 === 0;
+    if (this.rouletteBetType === 'ODD') return num % 2 === 1;
+    if (this.rouletteBetType === 'LOW_6') return num >= 1 && num <= 6;
+    if (this.rouletteBetType === 'MID_6') return num >= 7 && num <= 12;
+    if (this.rouletteBetType === 'HIGH_6') return num >= 13 && num <= 18;
+    return false;
+  }
+
+  private getRouletteBetLabel(): string {
+    if (this.rouletteBetType === 'STRAIGHT') {
+      const mult = this.rouletteStraightNum === 0 ? 20 : 18;
+      return i18n.t(`PLENO #${this.rouletteStraightNum} (x${mult})`, `STRAIGHT #${this.rouletteStraightNum} (x${mult})`);
+    }
+    if (this.rouletteBetType === 'RED') return i18n.t('ROJO (x2)', 'RED (x2)');
+    if (this.rouletteBetType === 'BLACK') return i18n.t('NEGRO (x2)', 'BLACK (x2)');
+    if (this.rouletteBetType === 'EVEN') return i18n.t('PAR (x2)', 'EVEN (x2)');
+    if (this.rouletteBetType === 'ODD') return i18n.t('IMPAR (x2)', 'ODD (x2)');
+    if (this.rouletteBetType === 'LOW_6') return '1–6 (x3)';
+    if (this.rouletteBetType === 'MID_6') return '7–12 (x3)';
+    return '13–18 (x3)';
+  }
+
   public spinWheel(meta: MetaSystem, sound: SoundSystem): void {
     if (this.isWheelSpinning) return;
     const bet = Math.max(5, this.currentBet);
     if (meta.coins < bet) {
       sound.playExplosion(false);
       this.statusBanner = i18n.t(
-        `⚠️ CRIPTO INSUFICIENTE PARA GIRAR LA RULETA (NECESITAS ${bet} CR).`,
-        `⚠️ INSUFFICIENT CRYPTO TO SPIN WHEEL (NEED ${bet} CR).`
+        `⚠️ CRIPTO INSUFICIENTE PARA LANZAR LA BOLA (NECESITAS ${bet} CR).`,
+        `⚠️ INSUFFICIENT CRYPTO TO SPIN ROULETTE (NEED ${bet} CR).`
       );
       this.statusColor = '#f43f5e';
       return;
@@ -1024,64 +1089,79 @@ export class CasinoSystem {
     this.contributeToJackpot(bet);
     meta.save();
 
+    this.wheelTargetPocketIdx = Math.floor(Math.random() * ROULETTE_POCKETS.length);
+    this.wheelSpinElapsed = 0;
+    this.wheelSpinDuration = 3.1 + Math.random() * 0.65;
+    this.wheelVelocity = 2.6 + Math.random() * 0.75;
+    this.wheelBallStartAngle = this.wheelBallAngle;
+    this.wheelLastTickStep = -1;
+    this.wheelWinningPocketIdx = -1;
     this.isWheelSpinning = true;
-    this.wheelVelocity = 11.5 + Math.random() * 6.5;
-    sound.playCasinoTick(1.2);
+
+    sound.playCasinoTick(1.25);
     this.statusBanner = i18n.t(
-      '🎡 GIRANDO RULETA CUÁNTICA DE KERNEL...',
-      '🎡 SPINNING KERNEL QUANTUM WHEEL...'
+      `🎡 BOLA EN JUEGO — APUESTA: ${this.getRouletteBetLabel()} (${bet} CR)...`,
+      `🎡 BALL IN PLAY — BET: ${this.getRouletteBetLabel()} (${bet} CR)...`
     );
     this.statusColor = '#38bdf8';
   }
 
-  private resolveWheelSpin(sectorIdx: number, meta: MetaSystem, sound: SoundSystem): void {
-    const sector = WHEEL_SECTORS[sectorIdx] || WHEEL_SECTORS[0];
-    let payout = 0;
-    let multLabel = `${sector.mult}x`;
+  private resolveWheelSpin(pocketIdx: number, meta: MetaSystem, sound: SoundSystem): void {
+    const pocket = ROULETTE_POCKETS[pocketIdx] || ROULETTE_POCKETS[0];
+    this.wheelHistory.unshift(pocket.num);
+    if (this.wheelHistory.length > 8) this.wheelHistory.pop();
 
-    if (this.wheelBetMode === 'MULTIPLIER') {
-      payout = Math.round(this.wheelActiveBet * sector.mult);
-      if (sector.mult >= 25) {
-        payout += Math.round(this.progressiveJackpot * 0.5);
+    const won = this.isNumberCoveredByBet(pocket.num);
+    let mult = 0;
+    if (won) {
+      if (this.rouletteBetType === 'STRAIGHT') {
+        mult = pocket.num === 0 ? 20 : 18;
+      } else if (
+        this.rouletteBetType === 'LOW_6' ||
+        this.rouletteBetType === 'MID_6' ||
+        this.rouletteBetType === 'HIGH_6'
+      ) {
+        mult = 3;
+      } else {
+        mult = 2;
       }
-    } else if (this.wheelBetMode === 'RED' && sector.colorGroup === 'RED') {
-      payout = this.wheelActiveBet * 2;
-      multLabel = 'ROJO 2x';
-    } else if (this.wheelBetMode === 'CYAN' && sector.colorGroup === 'CYAN') {
-      payout = this.wheelActiveBet * 2;
-      multLabel = 'CIAN 2x';
-    } else if (this.wheelBetMode === 'GREEN' && sector.colorGroup === 'GREEN') {
-      payout = this.wheelActiveBet * 14;
-      multLabel = 'VERDE 14x';
     }
 
-    this.wheelLastResultText = `${sector.label} (${sector.colorGroup})`;
+    const payout = Math.round(this.wheelActiveBet * mult);
+    const colorName =
+      pocket.colorGroup === 'GREEN'
+        ? i18n.t('VERDE', 'GREEN')
+        : pocket.colorGroup === 'RED'
+        ? i18n.t('ROJO', 'RED')
+        : i18n.t('NEGRO', 'BLACK');
 
     if (payout > 0) {
       meta.coins += payout;
       meta.save();
       void meta.syncToCloud();
-      const isBig = payout >= this.wheelActiveBet * 3;
+      const isBig = mult >= 3;
       sound.playCasinoWin(isBig);
-      this.spawnCoinShower(this.lastLayoutCx, this.lastLayoutCy, isBig ? 36 : 18, sector.color);
+      this.spawnCoinShower(this.lastLayoutCx, this.lastLayoutCy, isBig ? 42 : 20, pocket.color);
       this.statusBanner = i18n.t(
-        `🎡 ¡LA RULETA CAYÓ EN [${sector.label}]! GANASTE +${payout} CR`,
-        `🎡 WHEEL LANDED ON [${sector.label}]! WON +${payout} CR`
+        `🎡 ¡BOLA EN EL ${pocket.num} (${colorName})! ACERTASTE ${this.getRouletteBetLabel()} → +${payout} CR`,
+        `🎡 BALL LANDED ON ${pocket.num} (${colorName})! HIT ${this.getRouletteBetLabel()} → +${payout} CR`
       );
       this.statusColor = isBig ? '#fbbf24' : '#10b981';
-
-      if (sector.colorGroup === 'GREEN') {
-        this.tryUnlockVipCrown(meta, sound, 'SECTOR 25x EN RULETA CUÁNTICA');
-      }
-      this.recordHistory('WHEEL', 'Ruleta Cuántica', payout - this.wheelActiveBet, multLabel, isBig);
+      this.recordHistory(
+        'WHEEL',
+        `Ruleta #${pocket.num}`,
+        payout - this.wheelActiveBet,
+        `${mult}x`,
+        isBig
+      );
     } else {
       sound.playExplosion(false);
       this.statusBanner = i18n.t(
-        `🎡 Cayó en [${sector.label}] — Sin premio en esta tirada.`,
-        `🎡 Landed on [${sector.label}] — No payout on this spin.`
+        `🎡 Salió el ${pocket.num} (${colorName}) — Sin premio en esta tirada.`,
+        `🎡 Landed on ${pocket.num} (${colorName}) — No payout on this spin.`
       );
       this.statusColor = '#94a3b8';
-      this.recordHistory('WHEEL', 'Ruleta Cuántica', -this.wheelActiveBet, '0x', false);
+      this.recordHistory('WHEEL', `Ruleta #${pocket.num}`, -this.wheelActiveBet, '0x', false);
     }
   }
 
@@ -1251,22 +1331,70 @@ export class CasinoSystem {
         return true;
       }
     } else if (this.activeGame === 'WHEEL') {
-      const spinWheelBtn = { x: leftCx + 18, y: py + 422, width: 320, height: 46 };
+      const feltX = leftCx - 92;
+      const feltW = 446;
+
+      const spinWheelBtn = { x: feltX, y: py + 422, width: feltW, height: 48 };
       if (this.inRect(mx, my, spinWheelBtn)) {
         this.spinWheel(meta, sound);
         return true;
       }
-      const modes: { id: 'MULTIPLIER' | 'RED' | 'CYAN' | 'GREEN'; x: number; y: number; width: number; height: number }[] = [
-        { id: 'MULTIPLIER', x: leftCx + 18, y: py + 266, width: 154, height: 36 },
-        { id: 'RED', x: leftCx + 184, y: py + 266, width: 154, height: 36 },
-        { id: 'CYAN', x: leftCx + 18, y: py + 310, width: 154, height: 36 },
-        { id: 'GREEN', x: leftCx + 184, y: py + 310, width: 154, height: 36 },
-      ];
-      for (const m of modes) {
-        if (this.inRect(mx, my, m) && !this.isWheelSpinning) {
-          this.wheelBetMode = m.id;
-          sound.playCasinoTick(1.1);
+
+      if (!this.isWheelSpinning) {
+        // Casilla 0 verde (Pleno x20)
+        const zeroRect = { x: feltX, y: py + 244, width: 42, height: 96 };
+        if (this.inRect(mx, my, zeroRect)) {
+          this.rouletteBetType = 'STRAIGHT';
+          this.rouletteStraightNum = 0;
+          sound.playCasinoTick(1.2);
           return true;
+        }
+
+        // Parrilla 6x3 de números 1..18 (Pleno x18)
+        const gridStartX = feltX + 47;
+        const gridStartY = py + 244;
+        const cellW = 63;
+        const cellH = 30;
+        const gapX = 4;
+        const gapY = 3;
+        for (let col = 0; col < 6; col++) {
+          for (let row = 0; row < 3; row++) {
+            const num = col * 3 + (3 - row);
+            const r = {
+              x: gridStartX + col * (cellW + gapX),
+              y: gridStartY + row * (cellH + gapY),
+              width: cellW,
+              height: cellH,
+            };
+            if (this.inRect(mx, my, r)) {
+              this.rouletteBetType = 'STRAIGHT';
+              this.rouletteStraightNum = num;
+              sound.playCasinoTick(1.15);
+              return true;
+            }
+          }
+        }
+
+        // Fila 1 de apuestas externas: Terceras (x3)
+        const thirds: RouletteBetType[] = ['LOW_6', 'MID_6', 'HIGH_6'];
+        for (let i = 0; i < thirds.length; i++) {
+          const r = { x: feltX + i * 151, y: py + 346, width: 144, height: 30 };
+          if (this.inRect(mx, my, r)) {
+            this.rouletteBetType = thirds[i];
+            sound.playCasinoTick(1.1);
+            return true;
+          }
+        }
+
+        // Fila 2 de apuestas externas: Dobles (x2)
+        const evens: RouletteBetType[] = ['RED', 'BLACK', 'EVEN', 'ODD'];
+        for (let i = 0; i < evens.length; i++) {
+          const r = { x: feltX + i * 113, y: py + 382, width: 107, height: 32 };
+          if (this.inRect(mx, my, r)) {
+            this.rouletteBetType = evens[i];
+            sound.playCasinoTick(1.1);
+            return true;
+          }
         }
       }
     }
@@ -1305,7 +1433,7 @@ export class CasinoSystem {
       { id: 'SLOTS', label: `[1] 🎰 CYBER-SLOTS 5×3`, accent: '#fbbf24', x: startX, y, width: w, height: h },
       { id: 'CRASH', label: `[2] 📈 CRIPTO-CRASH`, accent: '#10b981', x: startX + (w + gap), y, width: w, height: h },
       { id: 'MINES', label: `[3] 💣 FIREWALL MINES`, accent: '#38bdf8', x: startX + (w + gap) * 2, y, width: w, height: h },
-      { id: 'WHEEL', label: `[4] 🎡 RULETA CUÁNTICA`, accent: '#e879f9', x: startX + (w + gap) * 3, y, width: w, height: h },
+      { id: 'WHEEL', label: `[4] 🎡 RULETA NEÓN 0-18`, accent: '#e879f9', x: startX + (w + gap) * 3, y, width: w, height: h },
     ];
   }
 
@@ -2293,7 +2421,7 @@ export class CasinoSystem {
     ctx.fillStyle = '#94a3b8';
     ctx.font = `bold 10.5px ${FONT_MONO}`;
     ctx.fillText(
-      i18n.t('◄ AUTO-RETIRO (10x+ DESBLOQUEA CORONA VIP)', '◄ AUTO-CASHOUT (10x+ UNLOCKS VIP CROWN)'),
+      i18n.t('◄ AUTO-RETIRO AUTOMÁTICO', '◄ AUTOMATIC CASHOUT TARGET'),
       leftCx - 12,
       py + 410
     );
@@ -2528,7 +2656,7 @@ export class CasinoSystem {
   }
 
   // ==========================================
-  // 4. RENDERIZADO DE RULETA CUÁNTICA (WHEEL)
+  // 4. RENDERIZADO DE RULETA EUROPEA NEÓN (0-18 + BOLA + TAPETE)
   // ==========================================
   private drawQuantumWheelGame(
     ctx: CanvasRenderingContext2D,
@@ -2536,178 +2664,368 @@ export class CasinoSystem {
     py: number,
     now: number
   ): void {
-    const wheelCx = leftCx - 175;
-    const wheelCy = py + 350;
-    const radius = 114;
+    const wheelCx = leftCx - 226;
+    const wheelCy = py + 336;
+    const outerR = 108;
+    const pocketOuterR = 86;
+    const pocketInnerR = 46;
 
-    // Aro exterior de lujo con luces LED de casino
+    // 1. Chasis circular de la Ruleta Europea (Pista exterior + deflectores diamante)
     ctx.save();
     ctx.translate(wheelCx, wheelCy);
+
+    // Aro exterior de obsidiana/caoba cibernética con borde dorado
     ctx.fillStyle = '#090d16';
     ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(0, 0, radius + 10, 0, Math.PI * 2);
+    ctx.arc(0, 0, outerR, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
-    const ledPhase = Math.floor(now / 120);
-    for (let b = 0; b < 24; b++) {
-      const ba = (b * Math.PI * 2) / 24;
-      const lit = (b + ledPhase) % 2 === 0;
-      ctx.fillStyle = lit ? '#fde047' : '#78350f';
-      ctx.beginPath();
-      ctx.arc(Math.cos(ba) * (radius + 5), Math.sin(ba) * (radius + 5), lit ? 2.3 : 1.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Pista de rodadura de la bola
+    ctx.fillStyle = '#131c31';
+    ctx.beginPath();
+    ctx.arc(0, 0, outerR - 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, outerR - 12, 0, Math.PI * 2);
+    ctx.stroke();
 
-    // Sectores giratorios con degradado radial y clavijas metálicas
-    const sliceAngle = (Math.PI * 2) / WHEEL_SECTORS.length;
-    ctx.rotate(this.wheelAngle);
-
-    for (let i = 0; i < WHEEL_SECTORS.length; i++) {
-      const sec = WHEEL_SECTORS[i];
-      const a0 = i * sliceAngle;
-      const a1 = a0 + sliceAngle;
-
-      const sg = ctx.createRadialGradient(0, 0, 22, 0, 0, radius);
-      sg.addColorStop(0, sec.colorDark);
-      sg.addColorStop(1, sec.color);
-
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.arc(0, 0, radius, a0, a1);
-      ctx.closePath();
-      ctx.fillStyle = sg;
-      ctx.fill();
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 1.6;
-      ctx.stroke();
-
-      // Clavija metálica en el borde de cada sector
-      ctx.fillStyle = '#fef08a';
-      ctx.beginPath();
-      ctx.arc(Math.cos(a0) * (radius - 3), Math.sin(a0) * (radius - 3), 2.4, 0, Math.PI * 2);
-      ctx.fill();
-
+    // 8 Deflectores metálicos en forma de diamante en la pista exterior
+    for (let d = 0; d < 8; d++) {
+      const da = (d * Math.PI * 2) / 8;
       ctx.save();
-      ctx.rotate(a0 + sliceAngle / 2);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold 10px ${FONT_MONO}`;
-      ctx.fillText(sec.label, radius - 11, 3.5);
+      ctx.rotate(da);
+      ctx.fillStyle = d % 2 === 0 ? '#fde047' : '#38bdf8';
+      ctx.beginPath();
+      ctx.moveTo(outerR - 12, -3.5);
+      ctx.lineTo(outerR - 7, 0);
+      ctx.lineTo(outerR - 12, 3.5);
+      ctx.lineTo(outerR - 15, 0);
+      ctx.closePath();
+      ctx.fill();
       ctx.restore();
     }
 
-    // Reactor central 3D de la rueda
-    const hubGrad = ctx.createRadialGradient(-5, -5, 2, 0, 0, 26);
-    hubGrad.addColorStop(0, '#fde047');
-    hubGrad.addColorStop(0.5, '#d97706');
-    hubGrad.addColorStop(1, '#451a03');
-    ctx.beginPath();
-    ctx.arc(0, 0, 25, 0, Math.PI * 2);
-    ctx.fillStyle = hubGrad;
-    ctx.fill();
-    ctx.strokeStyle = '#fef9c3';
+    // 2. Rotor giratorio con 19 casillas numeradas (0 verde + 1..18 rojo/negro)
+    const sliceAngle = (Math.PI * 2) / ROULETTE_POCKETS.length;
+    ctx.save();
+    ctx.rotate(this.wheelAngle);
+
+    for (let i = 0; i < ROULETTE_POCKETS.length; i++) {
+      const pocket = ROULETTE_POCKETS[i];
+      const a0 = i * sliceAngle;
+      const a1 = a0 + sliceAngle;
+      const isWinner = !this.isWheelSpinning && i === this.wheelWinningPocketIdx;
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, pocketOuterR, a0, a1);
+      ctx.closePath();
+      ctx.fillStyle = isWinner ? '#f59e0b' : pocket.color;
+      ctx.fill();
+
+      // Anillo interior más oscuro para profundidad 2.5D
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, pocketInnerR + 12, a0, a1);
+      ctx.closePath();
+      ctx.fillStyle = isWinner ? '#b45309' : pocket.colorDark;
+      ctx.fill();
+
+      // Separadores dorados (frets)
+      ctx.strokeStyle = isWinner ? '#fef08a' : 'rgba(251, 191, 36, 0.55)';
+      ctx.lineWidth = isWinner ? 2.0 : 1.0;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a0) * pocketInnerR, Math.sin(a0) * pocketInnerR);
+      ctx.lineTo(Math.cos(a0) * pocketOuterR, Math.sin(a0) * pocketOuterR);
+      ctx.stroke();
+
+      // Número de casilla orientado radialmente
+      ctx.save();
+      ctx.rotate(a0 + sliceAngle / 2);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = isWinner ? '#090d16' : '#f8fafc';
+      ctx.font = `bold 9.5px ${FONT_MONO}`;
+      ctx.fillText(String(pocket.num), pocketOuterR - 11, 0);
+      ctx.restore();
+    }
+
+    // Aro dorado interior entre bolsillos y torreta central
+    ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, pocketOuterR, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.fillStyle = '#090d16';
+    ctx.fillStyle = '#0b1222';
     ctx.beginPath();
-    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.arc(0, 0, pocketInnerR, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // Aspas metálicas de la torreta central (giran con el rotor)
+    ctx.strokeStyle = '#fde047';
+    ctx.lineWidth = 2.6;
+    for (let s = 0; s < 4; s++) {
+      const sa = (s * Math.PI) / 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(sa) * 16, Math.sin(sa) * 16);
+      ctx.lineTo(Math.cos(sa) * (pocketInnerR - 6), Math.sin(sa) * (pocketInnerR - 6));
+      ctx.stroke();
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(Math.cos(sa) * (pocketInnerR - 6), Math.sin(sa) * (pocketInnerR - 6), 3.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
 
-    // Puntero superior con rebote físico cuando pasa una clavija
-    ctx.save();
-    ctx.translate(wheelCx, wheelCy - radius - 8);
-    ctx.rotate(-this.wheelPointerBounce * 0.38);
-    ctx.fillStyle = '#fde047';
-    ctx.strokeStyle = '#b45309';
+    // 3. Bola física plateada/neón orbitando en contra-giro
+    const ballR = outerR * this.wheelBallRadiusRatio;
+    const bx = Math.cos(this.wheelBallAngle) * ballR;
+    const by = Math.sin(this.wheelBallAngle) * ballR;
+    // Estela luminosa cuando la bola va rápida
+    if (this.isWheelSpinning) {
+      ctx.strokeStyle = 'rgba(224, 242, 254, 0.35)';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, ballR, this.wheelBallAngle, this.wheelBallAngle + 0.32);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#f8fafc';
+    ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.moveTo(0, 18);
-    ctx.lineTo(-11, -6);
-    ctx.lineTo(11, -6);
-    ctx.closePath();
+    ctx.arc(bx, by, 5.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(bx - 1.5, by - 1.5, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 4. Visor central fijo con el último número ganador (sin rotar)
+    const lastNum = this.wheelHistory[0] ?? 0;
+    const lastCol =
+      lastNum === 0 ? '#10b981' : ROULETTE_RED_NUMS.has(lastNum) ? '#e11d48' : '#334155';
+    ctx.fillStyle = '#090d16';
+    ctx.strokeStyle = this.isWheelSpinning ? '#38bdf8' : lastCol;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(0, 0, 21, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = this.isWheelSpinning ? '#38bdf8' : '#ffffff';
+    ctx.font = `bold 14px ${FONT_MONO}`;
+    ctx.fillText(this.isWheelSpinning ? '?' : String(lastNum), 0, 1);
     ctx.restore();
 
-    const infoX = leftCx + 18;
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = `bold 12px ${FONT_DISPLAY}`;
-    ctx.fillText(
-      i18n.t('SELECCIONA TIPO DE APUESTA EN LA RULETA:', 'SELECT WHEEL BET MODE:'),
-      infoX,
-      py + 252
-    );
-
-    const modes: {
-      id: 'MULTIPLIER' | 'RED' | 'CYAN' | 'GREEN';
-      label: string;
-      stroke: string;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    }[] = [
-      { id: 'MULTIPLIER', label: '🎡 MULTIPLICADOR', stroke: '#fbbf24', x: infoX, y: py + 266, width: 154, height: 36 },
-      { id: 'RED', label: '🔴 ROJO (PAGA x2)', stroke: '#f43f5e', x: infoX + 166, y: py + 266, width: 154, height: 36 },
-      { id: 'CYAN', label: '🔵 CIAN (PAGA x2)', stroke: '#38bdf8', x: infoX, y: py + 310, width: 154, height: 36 },
-      { id: 'GREEN', label: '🟢 VERDE (x14 + VIP)', stroke: '#10b981', x: infoX + 166, y: py + 310, width: 154, height: 36 },
-    ];
-
-    for (const m of modes) {
-      const active = this.wheelBetMode === m.id;
+    // 5. Cinta de historial de los últimos 8 números bajo la ruleta
+    const histCount = Math.min(8, this.wheelHistory.length);
+    const pillW = 26;
+    const pillGap = 4;
+    const histStartX = wheelCx - (histCount * pillW + (histCount - 1) * pillGap) / 2;
+    for (let i = 0; i < histCount; i++) {
+      const n = this.wheelHistory[i];
+      const px = histStartX + i * (pillW + pillGap);
+      const col = n === 0 ? '#10b981' : ROULETTE_RED_NUMS.has(n) ? '#e11d48' : '#334155';
       this.drawBox(
         ctx,
-        m.x,
-        m.y,
-        m.width,
-        m.height,
-        active ? 'rgba(30, 41, 59, 0.98)' : 'rgba(15, 23, 42, 0.9)',
-        active ? m.stroke : '#475569',
+        px,
+        py + 450,
+        pillW,
+        20,
+        i === 0 ? col : 'rgba(15, 23, 42, 0.94)',
+        col,
+        i === 0 ? 1.8 : 1.1
+      );
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold 10px ${FONT_MONO}`;
+      ctx.fillText(String(n), px + pillW / 2, py + 464);
+    }
+
+    // 6. Tapete de Apuestas Interactivo (Derecha)
+    const feltX = leftCx - 92;
+    const feltW = 446;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = `bold 11px ${FONT_DISPLAY}`;
+    ctx.fillText(
+      i18n.t('TAPETE NEÓN • PLENO (x18 / 0=x20) O EXTERNAS:', 'NEON FELT • STRAIGHT (x18 / 0=x20) OR OUTSIDE:'),
+      feltX,
+      py + 236
+    );
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#fde047';
+    ctx.font = `bold 10.5px ${FONT_MONO}`;
+    ctx.fillText(this.getRouletteBetLabel(), feltX + feltW, py + 236);
+
+    // Casilla 0 verde (3 filas de alto)
+    const zeroSelected = this.isNumberCoveredByBet(0);
+    const zeroWon = !this.isWheelSpinning && this.wheelWinningPocketIdx >= 0 && ROULETTE_POCKETS[this.wheelWinningPocketIdx].num === 0;
+    this.drawBox(
+      ctx,
+      feltX,
+      py + 244,
+      42,
+      96,
+      zeroSelected ? 'rgba(16, 185, 129, 0.95)' : 'rgba(6, 78, 59, 0.92)',
+      zeroWon ? '#ffffff' : zeroSelected ? '#fde047' : '#10b981',
+      zeroSelected || zeroWon ? 2.4 : 1.3
+    );
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold 16px ${FONT_MONO}`;
+    ctx.fillText('0', feltX + 21, py + 292);
+    ctx.fillStyle = '#a7f3d0';
+    ctx.font = `bold 8.5px ${FONT_MONO}`;
+    ctx.fillText('x20', feltX + 21, py + 310);
+
+    // Parrilla 6x3 de números 1..18
+    const gridStartX = feltX + 47;
+    const gridStartY = py + 244;
+    const cellW = 63;
+    const cellH = 30;
+    const gapX = 4;
+    const gapY = 3;
+    const winNum =
+      !this.isWheelSpinning && this.wheelWinningPocketIdx >= 0
+        ? ROULETTE_POCKETS[this.wheelWinningPocketIdx].num
+        : -1;
+
+    for (let col = 0; col < 6; col++) {
+      for (let row = 0; row < 3; row++) {
+        const num = col * 3 + (3 - row);
+        const rx = gridStartX + col * (cellW + gapX);
+        const ry = gridStartY + row * (cellH + gapY);
+        const isRed = ROULETTE_RED_NUMS.has(num);
+        const covered = this.isNumberCoveredByBet(num);
+        const isWinCell = num === winNum;
+
+        const bg = isRed
+          ? covered
+            ? 'rgba(225, 29, 72, 0.96)'
+            : 'rgba(136, 19, 55, 0.85)'
+          : covered
+          ? 'rgba(51, 65, 85, 0.98)'
+          : 'rgba(15, 23, 42, 0.92)';
+
+        this.drawBox(
+          ctx,
+          rx,
+          ry,
+          cellW,
+          cellH,
+          bg,
+          isWinCell ? '#ffffff' : covered ? '#fde047' : isRed ? '#fb7185' : '#475569',
+          isWinCell ? 2.6 : covered ? 2.0 : 1.1
+        );
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = isWinCell ? '#fde047' : '#ffffff';
+        ctx.font = `bold 12.5px ${FONT_MONO}`;
+        ctx.fillText(String(num), rx + cellW / 2, ry + 19.5);
+
+        // Ficha dorada en el número si es apuesta Pleno
+        if (this.rouletteBetType === 'STRAIGHT' && this.rouletteStraightNum === num) {
+          ctx.fillStyle = '#fde047';
+          ctx.beginPath();
+          ctx.arc(rx + cellW - 10, ry + 10, 4.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // Fila 1 de apuestas externas: Terceras (x3)
+    const thirdDefs: { id: RouletteBetType; label: string }[] = [
+      { id: 'LOW_6', label: '1 – 6  (x3)' },
+      { id: 'MID_6', label: '7 – 12  (x3)' },
+      { id: 'HIGH_6', label: '13 – 18  (x3)' },
+    ];
+    for (let i = 0; i < thirdDefs.length; i++) {
+      const td = thirdDefs[i];
+      const active = this.rouletteBetType === td.id;
+      const rx = feltX + i * 151;
+      this.drawBox(
+        ctx,
+        rx,
+        py + 346,
+        144,
+        30,
+        active ? 'rgba(88, 28, 135, 0.96)' : 'rgba(15, 23, 42, 0.92)',
+        active ? '#e879f9' : '#475569',
         active ? 2.2 : 1.2
       );
       ctx.textAlign = 'center';
       ctx.fillStyle = active ? '#ffffff' : '#cbd5e1';
-      ctx.font = `bold 11px ${FONT_DISPLAY}`;
-      ctx.fillText(m.label, m.x + m.width / 2, m.y + 22);
+      ctx.font = `bold 11px ${FONT_MONO}`;
+      ctx.fillText(td.label, rx + 72, py + 365);
     }
 
-    this.drawBox(ctx, infoX, py + 358, 320, 52, 'rgba(11, 19, 34, 0.95)', '#38bdf8', 1.4);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#7dd3fc';
-    ctx.font = `bold 11px ${FONT_MONO}`;
-    ctx.fillText(
-      this.wheelLastResultText
-        ? `${i18n.t('ÚLTIMO SECTOR', 'LAST SECTOR')}: ${this.wheelLastResultText}`
-        : i18n.t('EL SECTOR 👑 25x OTORGA LA CORONA VIP', 'SECTOR 👑 25x GRANTS THE VIP CROWN'),
-      infoX + 160,
-      py + 388
-    );
+    // Fila 2 de apuestas externas: Dobles (x2)
+    const evenDefs: { id: RouletteBetType; label: string; stroke: string; activeBg: string }[] = [
+      { id: 'RED', label: i18n.t('🔴 ROJO (x2)', '🔴 RED (x2)'), stroke: '#f43f5e', activeBg: 'rgba(136, 19, 55, 0.96)' },
+      { id: 'BLACK', label: i18n.t('⚫ NEGRO (x2)', '⚫ BLACK (x2)'), stroke: '#94a3b8', activeBg: 'rgba(30, 41, 59, 0.98)' },
+      { id: 'EVEN', label: i18n.t('PAR (x2)', 'EVEN (x2)'), stroke: '#38bdf8', activeBg: 'rgba(12, 74, 110, 0.96)' },
+      { id: 'ODD', label: i18n.t('IMPAR (x2)', 'ODD (x2)'), stroke: '#fbbf24', activeBg: 'rgba(120, 53, 15, 0.96)' },
+    ];
+    for (let i = 0; i < evenDefs.length; i++) {
+      const ed = evenDefs[i];
+      const active = this.rouletteBetType === ed.id;
+      const rx = feltX + i * 113;
+      this.drawBox(
+        ctx,
+        rx,
+        py + 382,
+        107,
+        32,
+        active ? ed.activeBg : 'rgba(15, 23, 42, 0.92)',
+        active ? ed.stroke : '#475569',
+        active ? 2.2 : 1.2
+      );
+      ctx.textAlign = 'center';
+      ctx.fillStyle = active ? '#ffffff' : '#cbd5e1';
+      ctx.font = `bold 10.5px ${FONT_DISPLAY}`;
+      ctx.fillText(ed.label, rx + 53.5, py + 402);
+    }
 
-    const spinBtn = { x: infoX, y: py + 422, width: 320, height: 46 };
+    // Botón principal de lanzar bola
+    const spinBtn = { x: feltX, y: py + 422, width: feltW, height: 48 };
+    const pulseBorder = this.isWheelSpinning ? '#38bdf8' : Math.sin(now * 0.006) > 0 ? '#6ee7b7' : '#10b981';
     this.drawBox(
       ctx,
       spinBtn.x,
       spinBtn.y,
       spinBtn.width,
       spinBtn.height,
-      this.isWheelSpinning ? 'rgba(30, 41, 59, 0.95)' : 'rgba(6, 78, 59, 0.98)',
-      this.isWheelSpinning ? '#64748b' : '#10b981',
+      this.isWheelSpinning ? 'rgba(15, 23, 42, 0.96)' : 'rgba(6, 78, 59, 0.98)',
+      pulseBorder,
       2.2
     );
+    ctx.textAlign = 'center';
     ctx.fillStyle = '#ffffff';
-    ctx.font = `bold 13.5px ${FONT_DISPLAY}`;
+    ctx.font = `bold 13px ${FONT_DISPLAY}`;
     ctx.fillText(
       this.isWheelSpinning
-        ? i18n.t('🎡 GIRANDO RULETA...', '🎡 WHEEL SPINNING...')
-        : i18n.t(`🎡 GIRAR RULETA (${this.currentBet} CR) [ESP]`, `🎡 SPIN WHEEL (${this.currentBet} CR) [SPC]`),
-      spinBtn.x + 160,
-      spinBtn.y + 28
+        ? i18n.t('🎡 BOLA GIRANDO EN PISTA...', '🎡 BALL SPINNING ON TRACK...')
+        : i18n.t(
+            `🎡 LANZAR BOLA • ${this.getRouletteBetLabel()} (${this.currentBet} CR) [ESP]`,
+            `🎡 SPIN BALL • ${this.getRouletteBetLabel()} (${this.currentBet} CR) [SPC]`
+          ),
+      spinBtn.x + spinBtn.width / 2,
+      spinBtn.y + 29,
+      spinBtn.width - 20
     );
   }
 
@@ -2800,7 +3118,7 @@ export class CasinoSystem {
     ctx.fillText(
       hasCrown
         ? i18n.t('¡Trofeo VIP en tu colección!', 'VIP Trophy in your collection!')
-        : i18n.t('Gánala con 4+ 👑, Crash 10x+ o Ruleta 25x', 'Win with 4+ 👑, Crash 10x+ or Wheel 25x'),
+        : i18n.t('Exclusiva de Cyber-Slots (4+ 👑 o línea de 5)', 'Exclusive to Cyber-Slots (4+ 👑 or 5-in-a-row)'),
       cx,
       bayY + 172
     );
