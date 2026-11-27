@@ -387,15 +387,24 @@ DAW-SURVIVOR ( Kernel Defense Protocol )
 │   ├── **Hackeo en Vivo compatible con `WASD` (`Game.ts`)**: mantiene la interfaz limpia mostrando solo las flechas (`▲ ▼ ◄ ►`), pero ahora también acepta `W/A/S/D` para completar la secuencia
 │   └── **HUD Superior Izquierdo de Alta Visibilidad y Ultimate en `[ESPACIO]` (`Game.ts`)**: panel ampliado (`420×136`) con barra de `❤ VIDA` más grande, botones claros de `💨 [SHIFT] DASH` y `⚡ [ESPACIO] ULTIMATE` (desactivada la tecla `E` para la Ultimate)
 │
-└── v1.9.4 — Balanceo de Ultimates (100 Bajas), Dash 2.5s y Escalado Acelerado en Minijuegos (ACTUAL)
-    ├── **Ultimates cada 100 bajas (`MetaSystem.ts`, `Player.ts`)**: coste base unificado de `35 → 100` bajas para todos los agentes (con mínimo `50` tras mejoras de Laboratorio)
-    ├── **Dash Táctico cada `2.5s` (`Player.ts`)**: ajustado el enfriamiento base del Dash de `2.6s → 2.5s`
-    └── **Escalado acelerado en Minijuegos (`Spawner.ts`, `Game.ts`)**: nuevo modo `isMinigameFastScale` que arranca los enemigos un `+45%` más resistentes (`+20%` daño, `+8%` velocidad), acelera la línea temporal de oleadas (`35s + t * 2.4`) y multiplica la velocidad de escalado para partidas cortas
+├── v1.9.4 — Balanceo de Ultimates (100 Bajas), Dash 2.5s y Escalado Acelerado en Minijuegos
+│   ├── **Ultimates cada 100 bajas (`MetaSystem.ts`, `Player.ts`)**: coste base unificado de `35 → 100` bajas para todos los agentes (con mínimo `50` tras mejoras de Laboratorio)
+│   ├── **Dash Táctico cada `2.5s` (`Player.ts`)**: ajustado el enfriamiento base del Dash de `2.6s → 2.5s`
+│   └── **Escalado acelerado en Minijuegos (`Spawner.ts`, `Game.ts`)**: nuevo modo `isMinigameFastScale` que arranca los enemigos un `+45%` más resistentes (`+20%` daño, `+8%` velocidad), acelera la línea temporal de oleadas (`35s + t * 2.4`) y multiplica la velocidad de escalado para partidas cortas
+│
+└── v1.9.5 — Bóvedas Más Raras en Modo Normal y Modo Pesadilla (ACTUAL)
+    ├── **Modo Normal / Clásico (`Game.ts`, `TerrainEventSystem.ts`)**: eliminada la bóveda gratuita al segundo `0`, primer evento retrasado (`10s → 38s`), intervalo ampliado (`22s → 55s`), máximo `1` evento activo simultáneo y menor probabilidad de Bóveda (`55% → 30%`)
+    └── **Modo Pesadilla (`TerrainEventSystem.ts`)**: sin bóveda inicial inmediata, intervalo de generación ampliado (`8.5s → 22s`), máximo `3` objetivos simultáneos (máximo `1` Bóveda activa a la vez) y probabilidad reducida (`30% → 16%`)
 ```
 
 ---
 
 ## Historial Detallado de Versiones
+
+### [v1.9.5] - 2026-11-27
+- **Menor Frecuencia de Bóvedas en Normal y Pesadilla (`src/core/Game.ts`, `src/systems/TerrainEventSystem.ts`)**:
+  - **Modo Normal**: eliminada la aparición instantánea de una Bóveda al iniciar la partida; primer evento a los `38s` (antes `10s`), recarga cada `55s` (antes `22s`), tope de `1` evento simultáneo en pantalla y probabilidad de Bóveda reducida de `55%` a `30%`.
+  - **Modo Pesadilla**: eliminada la Bóveda inicial en `reset()`, temporizador de eventos ampliado de `8.5s` a `22s` (arranque en `18s`), límite reducido de `5` a `3` objetivos activos, máximo `1` Bóveda activa simultáneamente y peso reducido de `30%` a `16%`. *(El minijuego Atraco Relámpago / `VAULT_BLITZ` mantiene intactas sus 3 bóvedas activas).*
 
 ### [v1.9.4] - 2026-11-27
 - **Coste de Ultimates a 100 Bajas (`src/systems/MetaSystem.ts`, `src/entities/Player.ts`)**:

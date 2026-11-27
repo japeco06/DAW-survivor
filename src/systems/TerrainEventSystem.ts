@@ -57,10 +57,9 @@ export class TerrainEventSystem {
   public reset(playerX: number, playerY: number, worldEnv?: WorldEnvironment): void {
     this.nodes = [];
     this.nextId = 1;
-    this.spawnTimer = 3.0;
+    this.spawnTimer = 18.0;
     this.stormTimer = 9.5;
     this.spawnRandomEventAround(playerX, playerY, 'COOLING_SERVER', 480, 760, worldEnv);
-    this.spawnRandomEventAround(playerX, playerY, 'CORRUPTED_VAULT', 640, 980, worldEnv);
     this.spawnRandomEventAround(playerX, playerY, 'EMP_PYLON', 520, 860, worldEnv);
   }
 
@@ -98,7 +97,7 @@ export class TerrainEventSystem {
     let type: TerrainEventType = forcedType ?? 'CORRUPTED_VAULT';
     if (!forcedType) {
       const r = Math.random();
-      type = r < 0.55 ? 'CORRUPTED_VAULT' : r < 0.8 ? 'COOLING_SERVER' : 'EMP_PYLON';
+      type = r < 0.3 ? 'CORRUPTED_VAULT' : r < 0.65 ? 'COOLING_SERVER' : 'EMP_PYLON';
     }
     const config =
       type === 'COOLING_SERVER'
@@ -176,9 +175,10 @@ export class TerrainEventSystem {
 
     let type: TerrainEventType = forcedType ?? 'COOLING_SERVER';
     if (!forcedType) {
+      const hasActiveVault = this.nodes.some((n) => n.active && n.type === 'CORRUPTED_VAULT');
       const r = Math.random();
-      if (r < 0.36) type = 'COOLING_SERVER';
-      else if (r < 0.7) type = 'EMP_PYLON';
+      if (r < 0.42) type = 'COOLING_SERVER';
+      else if (r < 0.84 || hasActiveVault) type = 'EMP_PYLON';
       else type = 'CORRUPTED_VAULT';
     }
 
@@ -246,8 +246,8 @@ export class TerrainEventSystem {
 
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      this.spawnTimer = 8.5;
-      if (activeObjectiveCount < 5) {
+      this.spawnTimer = 22.0;
+      if (activeObjectiveCount < 3) {
         this.spawnRandomEventAround(anchor.x, anchor.y, undefined, 580, 1280, worldEnv);
       }
     }

@@ -137,7 +137,7 @@ interface CoopPeerRuntime {
 export const LOGICAL_WIDTH = 1920;
 export const LOGICAL_HEIGHT = 1080;
 
-const GAME_VERSION = 'v1.9.4';
+const GAME_VERSION = 'v1.9.5';
 const FONT_DISPLAY = '"Segoe UI", "Inter", system-ui, -apple-system, sans-serif';
 const FONT_MONO = '"JetBrains Mono", Consolas, monospace';
 const LIGHT_GFX_STORAGE_KEY = 'daw_survivor_light_gfx_v3';
@@ -244,7 +244,7 @@ export class Game {
   private coreDefenseTurrets: CoreDefenseTurret[] = [];
   private vaultBlitzTimeLeft: number = 60;
   private vaultBlitzVaultsCracked: number = 0;
-  private classicVaultSpawnTimer: number = 12;
+  private classicVaultSpawnTimer: number = 38;
   private runRevivesDone: number = 0;
   private runTimesDowned: number = 0;
   private coopGameOverSquad: CoopSquadMvpEntry[] = [];
@@ -1108,7 +1108,7 @@ export class Game {
     this.minigameVictory = false;
     this.coreDefenseTurrets = [];
     this.bullLastOleTime.clear();
-    this.classicVaultSpawnTimer = 10;
+    this.classicVaultSpawnTimer = 38;
     this.hoveredPauseAction = null;
     this.hoveredGameOverBtn = null;
     this.runRevivesDone = 0;
@@ -3338,7 +3338,7 @@ export class Game {
     this.minigameVictory = false;
     this.coreDefenseTurrets = [];
     this.bullLastOleTime.clear();
-    this.classicVaultSpawnTimer = 10;
+    this.classicVaultSpawnTimer = 38;
     this.hoveredPauseAction = null;
     this.hoveredGameOverBtn = null;
     this.runRevivesDone = 0;
@@ -3366,7 +3366,6 @@ export class Game {
       this.terrainEvents.reset(this.player.x, this.player.y, this.worldEnv);
     } else {
       this.terrainEvents.nodes = [];
-      this.terrainEvents.spawnArenaEvent(LOGICAL_WIDTH, LOGICAL_HEIGHT, 'CORRUPTED_VAULT');
     }
     this.particleSystem.clear();
     this.elapsedTime = 0;
@@ -4293,8 +4292,8 @@ export class Game {
     if (!this.isNightmareRun && !this.isCoopMode && this.activeMinigame === 'NONE') {
       this.classicVaultSpawnTimer -= dt;
       if (this.classicVaultSpawnTimer <= 0) {
-        this.classicVaultSpawnTimer = 22;
-        if (this.terrainEvents.nodes.length < 2) {
+        this.classicVaultSpawnTimer = 55;
+        if (this.terrainEvents.nodes.length < 1) {
           this.terrainEvents.spawnArenaEvent(LOGICAL_WIDTH, LOGICAL_HEIGHT);
         }
       }
